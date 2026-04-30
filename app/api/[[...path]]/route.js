@@ -140,15 +140,20 @@ async function route(request, { params }) {
       });
       if (cErr) return err(cErr.message, 400);
       const user = created.user;
-
-      // Generate unique login_id
       const login_id = await generateLoginId(admin);
 
       await admin.from('user_profiles').insert({
-        id: user.id, email, role, full_name: full_name || null, login_id,
+        id: user.id,
+        email,
+        role,
+        full_name: full_name || null,
+        login_id,
       });
-      if (role === 'worker') await admin.from('workers').insert({ user_id: user.id });
-      else                   await admin.from('employers').insert({ user_id: user.id });
+      if (role === 'worker') {
+        await admin.from('workers').insert({ user_id: user.id });
+      } else {
+        await admin.from('employers').insert({ user_id: user.id });
+      }
 
       // Sign in
       const supaAnon = (await import('@supabase/supabase-js')).createClient(
@@ -158,9 +163,23 @@ async function route(request, { params }) {
       const { data: signed, error: sErr } = await supaAnon.auth.signInWithPassword({ email, password });
       if (sErr) return err(sErr.message, 400);
 
-      sendEmail({
-        to: email, subject: 'Welcome to Work2Wish',
-        html: `<h2>Welcome, ${full_name || 'there'}!</h2><p>Your ${role} account is ready. Your unique login ID is <b>${login_id}</b>.</p>`,
+      await sendEmail({
+        to: email,
+        subject: 'Welcome to Work2Wish',
+        html: `
+          <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#f8fafc">
+            <div style="background:#4f46e5;color:#ffffff;padding:24px;border-radius:16px;text-align:center">
+              <h1 style="margin:0;font-size:24px;">Welcome to Work2Wish</h1>
+            </div>
+            <div style="background:#ffffff;padding:24px;border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,0.08);margin-top:-16px">
+              <p style="font-size:16px;color:#0f172a;margin:0 0 16px;">Hi ${full_name || 'there'},</p>
+              <p style="font-size:15px;color:#334155;line-height:1.7;margin:0 0 16px;">Your ${role} account has been created successfully. You can now sign in using your email address or your unique Work2Wish login ID.</p>
+              <p style="font-size:15px;color:#334155;line-height:1.7;margin:0 0 12px;">Login ID:</p>
+              <div style="font-size:22px;font-weight:700;color:#4f46e5;padding:16px 18px;background:#eef2ff;border-radius:12px;text-align:center;letter-spacing:2px;">${login_id}</div>
+              <p style="font-size:14px;color:#64748b;line-height:1.7;margin:18px 0 0;">If you ever need help, reply to this email or visit Work2Wish support.</p>
+            </div>
+          </div>
+        `,
       });
 
       return json({ user: signed.user, session: signed.session, role, login_id });
