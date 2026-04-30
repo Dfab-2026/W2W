@@ -10,7 +10,7 @@ async function sendEmail({ to, subject, html }) {
     if (!process.env.RESEND_API_KEY) return;
     const resend = new Resend(process.env.RESEND_API_KEY);
     await resend.emails.send({
-      from: 'Work2Wish <onboarding@resend.dev>',
+      from: 'Work2Wish <work2wish@work2wish.com>',
       to: [to],
       subject,
       html,
