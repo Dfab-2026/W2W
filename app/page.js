@@ -191,7 +191,7 @@ export default function App() {
   //        | 'oauth-role' | 'forgot-email' | 'forgot-reset' | 'worker-app' | 'employer-app'
   const [screen, setScreen] = useState('splash');
   const [auth, setAuth] = useState(null);
-  const [signup, setSignup] = useState({ role: null, full_name: '', email: '', password: '' });
+  const [signup, setSignup] = useState({ role: null, full_name: '', email: '', password: '', confirm_password: '' });
   const [oauthCtx, setOauthCtx] = useState(null);
   const [forgotEmail, setForgotEmail] = useState('');
 
@@ -211,7 +211,7 @@ export default function App() {
             };
             saveSession(validated.session, validated.role, validated.profile);
             setAuth(validated);
-            setScreen(validated.role === 'employer' ? 'employer-app' : 'worker-app');
+            setScreen(validated.role === 'admin' ? 'admin-app' : validated.role === 'employer' ? 'employer-app' : 'worker-app');
             return;
           }
         } catch {
@@ -229,15 +229,23 @@ export default function App() {
             method: 'POST', body: { access_token: data.session.access_token },
           });
           if (fin.needs_role) {
-            setOauthCtx({ access_token: data.session.access_token, email: fin.email, full_name: fin.full_name });
-            setScreen('oauth-role');
+            setSignup({
+              role: null,
+              full_name: fin.full_name || '',
+              email: fin.email || '',
+              password: '',
+              confirm_password: '',
+              is_google_signup: true,
+              google_access_token: data.session.access_token,
+            });
+            setScreen('signup-role');
             return;
           }
           const profile = fin.profile || { id: data.session.user.id, role: fin.role, login_id: fin.login_id };
           const payload = { session: data.session, role: fin.role, profile };
           saveSession(payload.session, payload.role, payload.profile);
           setAuth(payload);
-          setScreen(fin.role === 'employer' ? 'employer-app' : 'worker-app');
+          setScreen(fin.role === 'admin' ? 'admin-app' : fin.role === 'employer' ? 'employer-app' : 'worker-app');
           if (typeof window !== 'undefined' && window.location.hash) {
             window.history.replaceState({}, '', window.location.pathname);
           }
@@ -245,7 +253,7 @@ export default function App() {
         }
       } catch (e) { /* no oauth session */ }
 
-      const t = setTimeout(() => setScreen('login'), 1300);
+      const t = setTimeout(() => setScreen('login'), 1000);
       return () => clearTimeout(t);
     };
     boot();
@@ -255,7 +263,7 @@ export default function App() {
     try { await getSupabase().auth.signOut(); } catch {}
     clearSession();
     setAuth(null);
-    setSignup({ role: null, full_name: '', email: '', password: '' });
+    setSignup({ role: null, full_name: '', email: '', password: '', confirm_password: '' });
     setScreen('login');
   };
 
@@ -263,7 +271,7 @@ export default function App() {
     const payload = { session: data.session, role: data.role, profile: data.profile || data.user };
     saveSession(payload.session, payload.role, payload.profile);
     setAuth(payload);
-    setScreen(data.role === 'employer' ? 'employer-app' : 'worker-app');
+    setScreen(data.role === 'admin' ? 'admin-app' : data.role === 'employer' ? 'employer-app' : 'worker-app');
     toast.success('Welcome to Work2Wish!');
   };
 
@@ -287,7 +295,8 @@ export default function App() {
         <LoginPage key="login"
           onAuthed={handleAuthed}
           onGotoSignup={() => setScreen('signup-role')}
-          onGotoForgot={() => setScreen('forgot-email')} />
+          onGotoForgot={() => setScreen('forgot-email')}
+          onAdminAuthed={handleAuthed} />
       )}
       {screen === 'forgot-email' && (
         <ForgotEmail key="forgot-email"
@@ -303,7 +312,8 @@ export default function App() {
       {screen === 'signup-role' && (
         <SignupRolePicker key="signup-role"
           onPick={(role) => { setSignup(s => ({ ...s, role })); setScreen('signup-form'); }}
-          onBack={() => setScreen('login')} />
+          onBack={() => setScreen('login')}
+          onAdminAuthed={handleAuthed} />
       )}
       {screen === 'signup-form' && (
         <SignupForm key="signup-form" data={signup}
@@ -319,6 +329,11 @@ export default function App() {
       {screen === 'oauth-role' && (
         <OAuthRolePicker key="oauth-role" ctx={oauthCtx} onPick={completeOAuthRole} />
       )}
+      {screen === 'admin-app' && (
+        <motion.div key="admin-app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <AdminApp auth={auth} onLogout={handleLogout} />
+        </motion.div>
+      )}
       {screen === 'worker-app' && (
         <motion.div key="worker-app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <WorkerApp auth={auth} onLogout={handleLogout} />
@@ -330,6 +345,333 @@ export default function App() {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+
+function AdminAccessButton({ onAuthed }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    if (!email || !password) return toast.error('Enter admin email and password');
+    setBusy(true);
+    try {
+      const data = await api('auth/login', { method: 'POST', body: { identifier: email, password } });
+      if (data.role !== 'admin') {
+        toast.error('This email is not registered as admin');
+        return;
+      }
+      setOpen(false);
+      onAuthed?.(data);
+      toast.success('Admin verified');
+    } catch (e) {
+      toast.error(e.message || 'Admin login failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button type="button" variant="outline" onClick={() => setOpen(true)} className="bg-white/80 backdrop-blur border-slate-200 shadow-sm hover:bg-white">
+        <ShieldCheck className="w-4 h-4 mr-2" /> Admin Panel
+      </Button>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Admin verification</DialogTitle>
+          <DialogDescription>Login with the email you marked as admin in Supabase.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <Label>Admin email</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
+          </div>
+          <div>
+            <Label>Password</Label>
+            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+          </div>
+          <Button type="submit" disabled={busy} className="w-full bg-slate-900 hover:bg-slate-800 text-white">
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Verify Admin <ArrowRight className="w-4 h-4 ml-2" /></>}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AdminApp({ auth, onLogout }) {
+  const token = auth?.session?.access_token;
+  const [users, setUsers] = useState([]);
+  const [q, setQ] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  const loadUsers = async () => {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (roleFilter !== 'all') params.set('role', roleFilter);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      const d = await api(`admin/users${params.toString() ? `?${params.toString()}` : ''}`, { token });
+      setUsers(d.users || []);
+    } catch (e) {
+      toast.error(e.message || 'Unable to load admin users');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => { loadUsers(); }, [token, roleFilter, statusFilter]);
+
+  // Keep admin panel fresh when users submit verification from another tab/device.
+  useEffect(() => {
+    if (!token) return;
+    const t = setInterval(() => {
+      loadUsers();
+    }, 8000);
+    return () => clearInterval(t);
+  }, [token, roleFilter, statusFilter]);
+
+  const openDetails = async (user) => {
+    setSelected(user);
+    setMessages([]);
+    setLoadingDetails(true);
+    try {
+      const detail = await api(`admin/users/${user.id}`, { token });
+      const msg = await api(`admin/users/${user.id}/messages`, { token });
+      setSelected(detail.user || user);
+      setMessages(msg.messages || []);
+    } catch (e) {
+      toast.error(e.message || 'Unable to load details');
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const blockUser = async (id, blocked) => {
+    setBusy(true);
+    try {
+      await api(`admin/users/${id}/block`, { method: 'PATCH', token, body: { blocked } });
+      toast.success(blocked ? 'User blocked' : 'User unblocked');
+      await loadUsers();
+      if (selected?.id === id) setSelected((s) => ({ ...s, blocked }));
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  const verifyUser = async (id, verified = true) => {
+    setBusy(true);
+    try {
+      await api(`admin/users/${id}/verify`, { method: 'PATCH', token, body: { verified } });
+      toast.success(verified ? 'Account verified' : 'Verification rejected');
+      await loadUsers();
+      if (selected?.id === id) await openDetails(selected);
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  const deleteUser = async (id, email) => {
+    if (!confirm(`Permanently delete ${email || 'this user'}?`)) return;
+    if (!confirm('This removes user auth, profile, jobs/applications/messages. Continue?')) return;
+    setBusy(true);
+    try {
+      await api(`admin/users/${id}`, { method: 'DELETE', token });
+      toast.success('User deleted');
+      setSelected(null);
+      await loadUsers();
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  const localFiltered = users.filter((u) => {
+    const text = `${u.email || ''} ${u.full_name || ''} ${u.company_name || ''} ${u.role || ''} ${u.login_id || ''} ${u.location_text || ''} ${u.aadhaar_number || ''} ${u.pan_number || ''}`.toLowerCase();
+    return text.includes(q.toLowerCase());
+  });
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b sticky top-0 z-20">
+        <div className="container py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Work2Wish</p>
+            <h1 className="text-2xl font-extrabold flex items-center gap-2"><ShieldCheck className="w-6 h-6 text-indigo-600" /> Admin Dashboard</h1>
+            <p className="text-sm text-muted-foreground">View users, documents, card numbers, chats and verification status.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={loadUsers} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}</Button>
+            <Button onClick={onLogout} className="bg-emerald-600 hover:bg-emerald-700"><LogOut className="w-4 h-4 mr-2" /> Logout</Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container py-6 space-y-5">
+        <div className="grid sm:grid-cols-5 gap-3">
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total users</p><p className="text-2xl font-bold">{users.length}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Workers</p><p className="text-2xl font-bold">{users.filter(u => u.role === 'worker').length}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Employers</p><p className="text-2xl font-bold">{users.filter(u => u.role === 'employer').length}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Pending verify</p><p className="text-2xl font-bold text-amber-600">{users.filter(u => u.verification_status === 'submitted' || u.verification_status === 'pending').length}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Blocked</p><p className="text-2xl font-bold text-red-600">{users.filter(u => u.blocked).length}</p></CardContent></Card>
+        </div>
+
+        <Card>
+          <CardHeader className="space-y-3">
+            <div className="flex flex-col gap-3">
+              <div>
+                <CardTitle>All user details</CardTitle>
+                <CardDescription>Filter like Supabase, inspect documents/chats, verify, block or delete accounts.</CardDescription>
+              </div>
+              <div className="grid md:grid-cols-4 gap-2">
+                <div className="relative md:col-span-2">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadUsers()} className="pl-9" placeholder="Search email, name, login ID, card, location" />
+                </div>
+                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <SelectTrigger><SelectValue placeholder="Role" /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">All roles</SelectItem><SelectItem value="worker">Workers</SelectItem><SelectItem value="employer">Employers</SelectItem><SelectItem value="admin">Admins</SelectItem></SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">All status</SelectItem><SelectItem value="pending">Pending verification</SelectItem><SelectItem value="verified">Verified</SelectItem><SelectItem value="unverified">Unverified</SelectItem><SelectItem value="blocked">Blocked</SelectItem></SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full text-sm bg-white">
+                <thead className="bg-slate-100 text-slate-600">
+                  <tr>
+                    <th className="text-left p-3">User</th>
+                    <th className="text-left p-3">Role</th>
+                    <th className="text-left p-3">Login ID</th>
+                    <th className="text-left p-3">Cards</th>
+                    <th className="text-left p-3">Location</th>
+                    <th className="text-left p-3">Status</th>
+                    <th className="text-right p-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {localFiltered.map((u) => (
+                    <tr key={u.id} className="border-t align-top hover:bg-slate-50">
+                      <td className="p-3 min-w-64"><p className="font-semibold">{u.full_name || u.company_name || 'No name'}</p><p className="text-xs text-muted-foreground">{u.email}</p>{u.company_name && <p className="text-xs text-muted-foreground">{u.company_name}</p>}</td>
+                      <td className="p-3 capitalize"><Badge variant="secondary">{u.role}</Badge></td>
+                      <td className="p-3">{u.login_id || '—'}</td>
+                      <td className="p-3 min-w-52">
+                        {u.role === 'worker' ? (
+                          <>
+                            <p className="text-xs">Aadhaar: {u.aadhaar_number || '—'}</p>
+                            <p className="text-xs">PAN: {u.pan_number || '—'}</p>
+                          </>
+                        ) : u.role === 'employer' ? (
+                          <>
+                            <p className="text-xs">Company PAN: {u.pan_number || '—'}</p>
+                            <p className="text-xs">GST: {u.gst_number || '—'}</p>
+                          </>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Admin account</p>
+                        )}
+                      </td>
+                      <td className="p-3 min-w-72"><p className="line-clamp-2">{u.location_text || 'No saved location'}</p>{u.latitude && u.longitude && <p className="text-xs text-muted-foreground">{formatCoordinates(u.latitude, u.longitude)}</p>}</td>
+                      <td className="p-3 space-y-1">
+                        {u.blocked ? <Badge className="bg-red-100 text-red-700">Blocked</Badge> : <Badge className="bg-emerald-100 text-emerald-700">Active</Badge>}
+                        {u.verified ? <Badge className="bg-emerald-100 text-emerald-700 block w-fit">Verified</Badge> : <Badge variant="outline" className="block w-fit">{u.verification_status || 'Unverified'}</Badge>}
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className="flex justify-end gap-2 flex-wrap">
+                          <Button size="sm" variant="outline" onClick={() => openDetails(u)}>View</Button>
+                          <Button size="sm" variant="outline" disabled={busy || u.role === 'admin'} onClick={() => blockUser(u.id, !u.blocked)}>{u.blocked ? 'Unblock' : 'Block'}</Button>
+                          <Button size="sm" variant="destructive" disabled={busy || u.role === 'admin'} onClick={() => deleteUser(u.id, u.email)}>Delete</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {localFiltered.length === 0 && <tr><td colSpan="7" className="p-8 text-center text-muted-foreground">No users found.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+
+      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selected?.full_name || selected?.company_name || selected?.email || 'User details'}</DialogTitle>
+            <DialogDescription>Complete user record, documents and recent chats.</DialogDescription>
+          </DialogHeader>
+          {loadingDetails ? <div className="py-10 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : selected && (
+            <div className="space-y-5">
+              <div className="grid md:grid-cols-3 gap-3">
+                <InfoTile label="Email" value={selected.email} />
+                <InfoTile label="Role" value={selected.role} />
+                <InfoTile label="Login ID" value={selected.login_id} />
+                <InfoTile label="Phone" value={selected.phone} />
+                <InfoTile label="Location" value={selected.location_text} />
+                <InfoTile label="Address" value={selected.role === 'employer' ? selected.company_address : selected.address} />
+                <InfoTile label="Coordinates" value={selected.latitude && selected.longitude ? formatCoordinates(selected.latitude, selected.longitude) : '—'} />
+                {selected.role === 'worker' && <InfoTile label="Aadhaar" value={selected.aadhaar_number} />}
+                <InfoTile label={selected.role === 'employer' ? 'Company PAN' : 'PAN'} value={selected.pan_number} />
+                {selected.role === 'employer' && <InfoTile label="GST" value={selected.gst_number} />}
+                <InfoTile label="Verification" value={selected.verified ? 'Verified' : (selected.verification_status || 'Not submitted')} />
+              </div>
+
+              <div>
+                <h3 className="font-bold mb-2">Uploaded documents</h3>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {selected.role === 'worker' && <AdminDocPreview title="Aadhaar front" url={selected.aadhaar_front_url} />}
+                  {selected.role === 'worker' && <AdminDocPreview title="Aadhaar back" url={selected.aadhaar_back_url} />}
+                  <AdminDocPreview title={selected.role === 'employer' ? 'Company PAN front' : 'PAN front'} url={selected.pan_image_url} />
+                  <AdminDocPreview title={selected.role === 'employer' ? 'Company PAN back' : 'PAN back'} url={selected.pan_back_url} />
+                  {selected.role === 'employer' && <AdminDocPreview title="GST certificate" url={selected.gst_certificate_url} />}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={busy || selected.role === 'admin'} onClick={() => verifyUser(selected.id, true)} className="bg-emerald-600 hover:bg-emerald-700"><ShieldCheck className="w-4 h-4 mr-2" /> Verify this account</Button>
+                <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => verifyUser(selected.id, false)}><XCircle className="w-4 h-4 mr-2" /> Reject verification</Button>
+                <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => blockUser(selected.id, !selected.blocked)}>{selected.blocked ? 'Unblock user' : 'Block user'}</Button>
+                <Button disabled={busy || selected.role === 'admin'} variant="destructive" onClick={() => deleteUser(selected.id, selected.email)}>Delete user</Button>
+              </div>
+
+              <div>
+                <h3 className="font-bold mb-2 flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Recent chats/messages</h3>
+                <div className="rounded-xl border bg-slate-50 max-h-72 overflow-y-auto">
+                  {messages.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No messages found.</p> : messages.map((m) => (
+                    <div key={m.id} className="p-3 border-b bg-white">
+                      <p className="text-xs text-muted-foreground">{new Date(m.created_at).toLocaleString()} · From {m.sender_id} → {m.receiver_id}</p>
+                      <p className="text-sm mt-1 whitespace-pre-wrap">{m.content}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function InfoTile({ label, value }) {
+  return <div className="rounded-xl border bg-white p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold break-words">{value || '—'}</p></div>;
+}
+
+function AdminDocPreview({ title, url }) {
+  return (
+    <div className="rounded-xl border bg-white p-3">
+      <p className="font-semibold text-sm mb-2">{title}</p>
+      <div className="h-40 rounded-lg bg-slate-50 border grid place-items-center overflow-hidden">
+        {url ? <img src={url} alt={title} className="w-full h-full object-contain" /> : <p className="text-xs text-muted-foreground">Not uploaded</p>}
+      </div>
+      {url && <a href={url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline mt-2 inline-block">Open file</a>}
+    </div>
   );
 }
 
@@ -382,7 +724,7 @@ function Splash() {
 // ============================================================
 // LOGIN PAGE  (combined: email or login_id + password + Google)
 // ============================================================
-function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
+function LoginPage({ onAuthed, onGotoSignup, onGotoForgot, onAdminAuthed }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -410,9 +752,12 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
 
   return (
     <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 grid lg:grid-cols-2 relative overflow-hidden">
+      className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-indigo-50 grid lg:grid-cols-2 relative">
+      <div className="absolute right-5 top-5 z-20">
+        <AdminAccessButton onAuthed={onAdminAuthed} />
+      </div>
       {/* left: marketing with 3D depth */}
-      <div className="hidden lg:flex flex-col justify-between p-10 bg-gradient-to-br from-indigo-700 via-blue-600 to-emerald-500 text-white relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-center p-10 bg-gradient-to-br from-indigo-700 via-blue-600 to-emerald-500 text-white relative overflow-hidden">
         <GradientMesh />
         <Particles count={22} color="bg-white/30" />
         <div className="relative z-10" style={{ perspective: 1200 }}>
@@ -451,34 +796,6 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
             ))}
           </motion.ul>
 
-          {/* 3D Today-near-you preview card */}
-          <Tilt3D className="mt-10 max-w-md">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-              className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 ring-1 ring-white/30 shadow-2xl">
-              <div className="flex items-center justify-between text-white/90 text-xs">
-                <span className="font-semibold">Today near you</span>
-                <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" />Auto</span>
-              </div>
-              <div className="space-y-2 mt-3">
-                {[
-                  { t: 'Carpenter — 2 days', p: 1200, c: 'Modular Homes', d: '1.2 km' },
-                  { t: 'Electrician — 1 day', p: 1500, c: 'BrightSpark', d: '0.6 km' },
-                ].map((j, i) => (
-                  <motion.div key={i}
-                    initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.7 + i * 0.1 }}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-white/10">
-                    <div className="w-8 h-8 rounded-lg bg-white/20 grid place-items-center text-white"><Hammer className="w-4 h-4" /></div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate">{j.t}</p>
-                      <p className="text-[10px] opacity-80">{j.c} · {j.d}</p>
-                    </div>
-                    <span className="text-sm font-bold">{fmtMoney(j.p)}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          </Tilt3D>
         </div>
         <p className="relative text-white/60 text-xs">© {new Date().getFullYear()} Work2Wish</p>
       </div>
@@ -669,12 +986,15 @@ function ForgotReset({ email, onAuthed, onBack }) {
 // ============================================================
 // SIGNUP — Step 1: pick role
 // ============================================================
-function SignupRolePicker({ onPick, onBack }) {
+function SignupRolePicker({ onPick, onBack, onAdminAuthed }) {
   return (
     <motion.div key="signup-role" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
       className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 p-6 flex flex-col relative overflow-hidden">
       <GradientMesh />
-      <Button variant="ghost" size="sm" onClick={onBack} className="self-start relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
+      <div className="relative z-10 flex items-center justify-between">
+        <Button variant="ghost" size="sm" onClick={onBack} className="relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
+        <AdminAccessButton onAuthed={onAdminAuthed} />
+      </div>
       <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full relative">
         <motion.h1 className="text-4xl sm:text-5xl font-extrabold text-center"
           initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
@@ -716,20 +1036,39 @@ function SignupRolePicker({ onPick, onBack }) {
 // ============================================================
 // SIGNUP — Step 2: form
 // ============================================================
+function getPasswordStrength(password = '') {
+  let score = 0;
+  if (password.length >= 6) score++;
+  if (password.length >= 10) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+
+  if (score <= 1) return { label: 'Weak', width: '25%', color: 'bg-red-500' };
+  if (score <= 3) return { label: 'Medium', width: '60%', color: 'bg-amber-500' };
+  return { label: 'Strong', width: '100%', color: 'bg-emerald-500' };
+}
+
 function SignupForm({ data, onChange, onSent, onBack }) {
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
-    if (!data.full_name || !data.email || !data.password) return toast.error('Fill all fields');
+    if (!data.full_name || !data.email || !data.password || !data.confirm_password) return toast.error('Fill all fields');
     if (data.password.length < 6) return toast.error('Password must be at least 6 characters');
+    if (getPasswordStrength(data.password).label === 'Weak') return toast.error('Use a stronger password');
+    if (data.password !== data.confirm_password) return toast.error('Passwords do not match');
     setBusy(true);
     try {
-      await api('auth/send-otp', { method: 'POST', body: data });
+      await api(
+        data.is_google_signup ? 'auth/google-send-otp' : 'auth/send-otp',
+        { method: 'POST', body: data }
+      );
       toast.success(`OTP sent to ${data.email}`);
       onSent();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
+  const strength = getPasswordStrength(data.password || '');
   const accent = data.role === 'employer' ? 'emerald' : 'indigo';
   return (
     <motion.div key="signup-form" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
@@ -744,24 +1083,64 @@ function SignupForm({ data, onChange, onSent, onBack }) {
               {data.role === 'employer' ? <Briefcase className="w-7 h-7" /> : <HardHat className="w-7 h-7" />}
             </div>
             <CardTitle className="text-2xl">Create your account</CardTitle>
-            <CardDescription>Signing up as <span className="font-semibold capitalize">{data.role}</span></CardDescription>
+            <CardDescription>
+              Signing up as <span className="font-semibold capitalize">{data.role}</span>{data.is_google_signup ? ' with Google' : ''}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-3">
               <div>
                 <Label>Full name</Label>
-                <Input value={data.full_name} onChange={e => onChange({ full_name: e.target.value })} placeholder="Your name" />
+                <Input
+                  value={data.full_name}
+                  disabled={data.is_google_signup}
+                  onChange={e => onChange({ full_name: e.target.value })}
+                  placeholder="Your name"
+                  className={data.is_google_signup ? 'bg-slate-100 cursor-not-allowed' : ''}
+                />
               </div>
               <div>
                 <Label>Email</Label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input type="email" className="pl-9" value={data.email} onChange={e => onChange({ email: e.target.value })} placeholder="you@example.com" />
+                  <Input
+                    type="email"
+                    className={`pl-9 ${data.is_google_signup ? 'bg-slate-100 cursor-not-allowed' : ''}`}
+                    value={data.email}
+                    disabled={data.is_google_signup}
+                    onChange={e => onChange({ email: e.target.value })}
+                    placeholder="you@example.com"
+                  />
                 </div>
               </div>
               <div>
                 <Label>Password</Label>
-                <PasswordInput value={data.password} onChange={e => onChange({ password: e.target.value })} placeholder="At least 6 characters" />
+                <PasswordInput
+                  value={data.password}
+                  onChange={e => onChange({ password: e.target.value })}
+                  placeholder="At least 6 characters"
+                  autoComplete="new-password"
+                />
+                {data.password && (
+                  <div className="mt-2">
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full transition-all duration-300 ${strength.color}`} style={{ width: strength.width }} />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Strength: <b>{strength.label}</b></p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label>Confirm password</Label>
+                <PasswordInput
+                  value={data.confirm_password || ''}
+                  onChange={e => onChange({ confirm_password: e.target.value })}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                />
+                {data.confirm_password && data.password !== data.confirm_password && (
+                  <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                )}
               </div>
               <Button type="submit" disabled={busy}
                       className={`w-full h-11 ${accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
@@ -795,7 +1174,15 @@ function SignupOTP({ data, onAuthed, onBack }) {
     if (code.length !== 6) return toast.error('Enter the 6-digit code');
     setBusy(true);
     try {
-      const d = await api('auth/verify-otp', { method: 'POST', body: { email: data.email, otp: code } });
+      const d = await api(
+        data.is_google_signup ? 'auth/google-verify-otp' : 'auth/verify-otp',
+        {
+          method: 'POST',
+          body: data.is_google_signup
+            ? { email: data.email, otp: code, google_access_token: data.google_access_token }
+            : { email: data.email, otp: code },
+        }
+      );
       onAuthed(d);
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
@@ -944,17 +1331,51 @@ function WorkerApp({ auth, onLogout }) {
                   {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white" />}
                 </Button>
               </SheetTrigger>
-              <SheetContent>
-                <SheetHeader><SheetTitle>Notifications</SheetTitle></SheetHeader>
-                <ScrollArea className="h-[80vh] mt-3">
-                  {notifs.length === 0 && <p className="text-sm text-muted-foreground p-4">No notifications yet.</p>}
-                  {notifs.map(n => (
-                    <div key={n.id} className={`p-3 rounded-lg border mb-2 ${n.read ? '' : 'bg-indigo-50/40 border-indigo-100'}`}>
-                      <p className="font-semibold text-sm">{n.title}</p>
-                      <p className="text-xs text-muted-foreground">{n.body}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.created_at).toLocaleString()}</p>
+              <SheetContent className="p-0 overflow-hidden">
+                <SheetHeader className="px-5 py-4 border-b bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
+                  <SheetTitle className="text-white flex items-center gap-2">
+                    <Bell className="w-5 h-5" /> Notifications
+                  </SheetTitle>
+                  <p className="text-xs text-white/80">Live updates for jobs, chats, applications and verification.</p>
+                </SheetHeader>
+                <ScrollArea className="h-[calc(100vh-94px)] bg-slate-50">
+                  {notifs.length === 0 && (
+                    <div className="m-4 p-6 rounded-2xl bg-white border text-center">
+                      <Bell className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                      <p className="text-sm font-semibold">No notifications yet</p>
+                      <p className="text-xs text-muted-foreground mt-1">New updates will appear here instantly.</p>
                     </div>
-                  ))}
+                  )}
+                  <div className="p-3 space-y-2">
+                    {notifs.map(n => {
+                      const isChat = n.type === 'message' || n.type === 'chat';
+                      const isVerification = n.type === 'verification';
+                      const isApplication = n.type === 'application';
+                      const tone = isChat ? 'emerald' : isVerification ? 'indigo' : isApplication ? 'amber' : 'slate';
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={async () => {
+                            try { await api(`notifications/${n.id}/read`, { method: 'POST', token }); await refreshNotifs(); } catch {}
+                          }}
+                          className={`w-full text-left p-3 rounded-2xl border bg-white hover:shadow-md transition flex gap-3 ${!n.read ? `ring-1 ring-${tone}-100` : 'opacity-80'}`}
+                        >
+                          <div className={`w-10 h-10 rounded-full grid place-items-center shrink-0 ${tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' : tone === 'indigo' ? 'bg-indigo-100 text-indigo-700' : tone === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {isChat ? <MessageSquare className="w-5 h-5" /> : isVerification ? <ShieldCheck className="w-5 h-5" /> : isApplication ? <ClipboardList className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-semibold text-sm leading-snug truncate">{n.title}</p>
+                              {!n.read && <span className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1 ${tone === 'emerald' ? 'bg-emerald-500' : tone === 'indigo' ? 'bg-indigo-500' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400'}`} />}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>
+                            <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </ScrollArea>
               </SheetContent>
             </Sheet>
@@ -963,7 +1384,7 @@ function WorkerApp({ auth, onLogout }) {
       </header>
 
       <main className="container py-4">
-        {tab === 'home'    && <WorkerHome token={token} onChat={openChatWith} />}
+        {tab === 'home'    && <WorkerHome token={token} me={me} onChat={openChatWith} />}
         {tab === 'myjobs'  && <WorkerMyJobs token={token} onChat={openChatWith} />}
         {tab === 'chats'   && <ChatScreen token={token} me={{ id: me?.profile?.id, profile: me?.profile }} peerHint={chatPeer} color="indigo" />}
         {tab === 'profile' && <WorkerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
@@ -989,9 +1410,503 @@ function WorkerApp({ auth, onLogout }) {
   );
 }
 
-function WorkerHome({ token }) {
+
+function getDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function formatCoordinates(lat, lng) {
+  if (lat === undefined || lat === null || lng === undefined || lng === null) return '';
+  const a = Number(lat);
+  const b = Number(lng);
+  if (Number.isNaN(a) || Number.isNaN(b)) return '';
+  return `${a.toFixed(5)}, ${b.toFixed(5)}`;
+}
+
+
+function getGoogleMapsApiKey() {
+  return process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+}
+
+let googleMapsLoaderPromise = null;
+function loadGoogleMapsPlaces() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Google Maps can only load in browser'));
+  if (window.google?.maps?.places) return Promise.resolve(window.google);
+
+  const key = getGoogleMapsApiKey();
+  if (!key) return Promise.reject(new Error('Google Maps API key missing. Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in .env.local'));
+
+  if (!googleMapsLoaderPromise) {
+    googleMapsLoaderPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-w2w-google-maps="true"]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(window.google));
+        existing.addEventListener('error', () => reject(new Error('Google Maps failed to load')));
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.dataset.w2wGoogleMaps = 'true';
+      script.onload = () => resolve(window.google);
+      script.onerror = () => reject(new Error('Google Maps failed to load. Check API key restrictions and enabled APIs.'));
+      document.head.appendChild(script);
+    });
+  }
+  return googleMapsLoaderPromise;
+}
+
+async function reverseGeocodeLocation(lat, lng) {
+  try {
+    const google = await loadGoogleMapsPlaces();
+    const geocoder = new google.maps.Geocoder();
+    const result = await geocoder.geocode({ location: { lat: Number(lat), lng: Number(lng) } });
+    return result?.results?.[0]?.formatted_address || `GPS: ${formatCoordinates(lat, lng)}`;
+  } catch {
+    return `GPS: ${formatCoordinates(lat, lng)}`;
+  }
+}
+
+async function getPlacePredictions(query) {
+  const q = (query || '').trim();
+  if (q.length < 2) return [];
+
+  const google = await loadGoogleMapsPlaces();
+  const service = new google.maps.places.AutocompleteService();
+  const sessionToken = new google.maps.places.AutocompleteSessionToken();
+
+  const requestBase = {
+    input: q,
+    componentRestrictions: { country: 'in' },
+    sessionToken,
+  };
+
+  const getPredictions = (request) => new Promise((resolve) => {
+    service.getPlacePredictions(request, (predictions, status) => {
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+        resolve([]);
+        return;
+      }
+      resolve(predictions);
+    });
+  });
+
+  const getQueries = () => new Promise((resolve) => {
+    service.getQueryPredictions(requestBase, (predictions, status) => {
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+        resolve([]);
+        return;
+      }
+      resolve(predictions);
+    });
+  });
+
+  const [businesses, allPlaces, addresses, queries] = await Promise.all([
+    getPredictions({ ...requestBase, types: ['establishment'] }),
+    getPredictions(requestBase),
+    getPredictions({ ...requestBase, types: ['geocode'] }),
+    getQueries(),
+  ]);
+
+  const seen = new Set();
+  return [...businesses, ...allPlaces, ...queries, ...addresses]
+    .filter((item) => {
+      const key = item.place_id || item.description;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 10);
+}
+
+async function getPlaceDetails(placeId, fallbackText = '') {
+  if (!placeId && fallbackText) return geocodeTypedAddress(fallbackText);
+
+  const google = await loadGoogleMapsPlaces();
+  const holder = document.createElement('div');
+  const service = new google.maps.places.PlacesService(holder);
+
+  return new Promise((resolve, reject) => {
+    service.getDetails(
+      {
+        placeId,
+        fields: ['place_id', 'name', 'formatted_address', 'geometry', 'types', 'business_status'],
+      },
+      (place, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !place?.geometry?.location) {
+          reject(new Error('Unable to fetch selected location. Try choosing another suggestion.'));
+          return;
+        }
+
+        const name = place.name || '';
+        const address = place.formatted_address || fallbackText || name;
+        const text = name && address && !address.toLowerCase().startsWith(name.toLowerCase())
+          ? `${name} - ${address}`
+          : (address || name || fallbackText || 'Selected location');
+
+        resolve({
+          location_text: text,
+          place_name: name,
+          place_id: place.place_id || placeId || '',
+          latitude: place.geometry.location.lat(),
+          longitude: place.geometry.location.lng(),
+        });
+      }
+    );
+  });
+}
+
+async function findPlaceFromText(query) {
+  const q = (query || '').trim();
+  if (q.length < 3) throw new Error('Type at least 3 characters for location');
+
+  const google = await loadGoogleMapsPlaces();
+  const holder = document.createElement('div');
+  const service = new google.maps.places.PlacesService(holder);
+
+  const normalizePlace = (first) => {
+    const name = first.name || '';
+    const address = first.formatted_address || first.vicinity || q;
+    const text = name && address && !address.toLowerCase().startsWith(name.toLowerCase())
+      ? `${name} - ${address}`
+      : (address || name || q);
+    return {
+      location_text: text,
+      place_name: name,
+      place_id: first.place_id || '',
+      latitude: first.geometry.location.lat(),
+      longitude: first.geometry.location.lng(),
+    };
+  };
+
+  const byFindPlace = await new Promise((resolve) => {
+    service.findPlaceFromQuery(
+      {
+        query: q,
+        fields: ['name', 'formatted_address', 'geometry', 'place_id', 'types', 'business_status'],
+        locationBias: { lat: 12.9716, lng: 77.5946 },
+      },
+      (results, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.[0]?.geometry?.location) {
+          resolve(null);
+          return;
+        }
+        resolve(normalizePlace(results[0]));
+      }
+    );
+  });
+
+  if (byFindPlace) return byFindPlace;
+
+  const byTextSearch = await new Promise((resolve) => {
+    service.textSearch(
+      {
+        query: q,
+        region: 'in',
+      },
+      (results, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.[0]?.geometry?.location) {
+          resolve(null);
+          return;
+        }
+        resolve(normalizePlace(results[0]));
+      }
+    );
+  });
+
+  if (byTextSearch) return byTextSearch;
+  throw new Error('No place result');
+}
+
+async function geocodeTypedAddress(address) {
+  const q = (address || '').trim();
+  if (q.length < 3) throw new Error('Type at least 3 characters for location');
+
+  const google = await loadGoogleMapsPlaces();
+  const geocoder = new google.maps.Geocoder();
+
+  const geocodeResult = await new Promise((resolve) => {
+    geocoder.geocode(
+      {
+        address: q,
+        componentRestrictions: { country: 'IN' },
+      },
+      (results, status) => {
+        if (status !== google.maps.GeocoderStatus.OK || !results?.[0]?.geometry?.location) {
+          resolve(null);
+          return;
+        }
+        const first = results[0];
+        resolve({
+          location_text: first.formatted_address || q,
+          place_name: '',
+          place_id: first.place_id || '',
+          latitude: first.geometry.location.lat(),
+          longitude: first.geometry.location.lng(),
+        });
+      }
+    );
+  });
+
+  if (geocodeResult) return geocodeResult;
+
+  try {
+    return await findPlaceFromText(q);
+  } catch {
+    throw new Error('Unable to find this company/place/address. Try full company name with area, or select a Google suggestion.');
+  }
+}
+
+function LocationSearchBox({
+  label = 'Location',
+  value = '',
+  latitude,
+  longitude,
+  onChange,
+  color = 'indigo',
+  placeholder = 'Search company, shop, landmark, area or full address',
+  helper = 'Type like Google Maps. Choose a company/place suggestion to save exact latitude and longitude.',
+}) {
+  const inputRef = useRef(null);
+  const debounceRef = useRef(null);
+  const blurRef = useRef(null);
+  const [query, setQuery] = useState(value || '');
+  const [predictions, setPredictions] = useState([]);
+  const [showPredictions, setShowPredictions] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setQuery(value || '');
+  }, [value]);
+
+  useEffect(() => {
+    let active = true;
+    loadGoogleMapsPlaces()
+      .then(() => { if (active) setReady(true); })
+      .catch(() => { if (active) setReady(false); });
+    return () => { active = false; };
+  }, []);
+
+  const applyLocation = (loc, successText = 'Location selected with exact GPS') => {
+    const clean = {
+      location_text: loc.location_text || '',
+      place_name: loc.place_name || loc.name || '',
+      place_id: loc.place_id || '',
+      latitude: loc.latitude !== undefined && loc.latitude !== null ? Number(loc.latitude) : null,
+      longitude: loc.longitude !== undefined && loc.longitude !== null ? Number(loc.longitude) : null,
+    };
+    onChange?.(clean);
+    setQuery(clean.location_text || '');
+    setPredictions([]);
+    setShowPredictions(false);
+    toast.success(successText);
+  };
+
+  const fetchPredictions = async (text) => {
+    const q = (text || '').trim();
+    if (q.length < 2) {
+      setPredictions([]);
+      setShowPredictions(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const list = await getPlacePredictions(q);
+      setPredictions(list || []);
+      setShowPredictions(true);
+    } catch (e) {
+      setPredictions([]);
+      setShowPredictions(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const v = e.target.value;
+    setQuery(v);
+    onChange?.({ location_text: v, latitude: null, longitude: null });
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchPredictions(v), 250);
+  };
+
+  const selectPrediction = async (prediction) => {
+    if (!prediction?.place_id) return;
+    setLoading(true);
+    try {
+      const loc = await getPlaceDetails(prediction.place_id, prediction.description);
+      applyLocation(loc, 'Location selected from suggestions');
+    } catch (e) {
+      toast.error(e.message || 'Unable to select this location');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualSearch = async () => {
+    const q = (query || inputRef.current?.value || '').trim();
+    if (q.length < 3) {
+      toast.error('Type at least 3 characters for location');
+      return;
+    }
+    setLoading(true);
+    try {
+      const loc = await geocodeTypedAddress(q);
+      applyLocation(loc, 'Typed address converted to exact GPS');
+    } catch (e) {
+      toast.error(e.message || 'Unable to find this company/place/address. Please choose from suggestions.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const useCurrent = () => {
+    if (!navigator.geolocation) {
+      toast.error('Location is not supported on this device');
+      return;
+    }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const text = await reverseGeocodeLocation(lat, lng);
+        applyLocation(
+          { location_text: text, latitude: lat, longitude: lng },
+          'Current GPS location selected'
+        );
+        setGpsLoading(false);
+      },
+      () => {
+        setGpsLoading(false);
+        toast.error('Please allow location permission');
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  };
+
+  const selectedText = formatCoordinates(latitude, longitude);
+  const activeColor = color === 'emerald' ? 'emerald' : 'indigo';
+  const buttonClass = activeColor === 'emerald'
+    ? 'bg-emerald-600 hover:bg-emerald-700'
+    : 'bg-indigo-600 hover:bg-indigo-700';
+  const borderClass = activeColor === 'emerald'
+    ? 'focus-within:ring-emerald-500/30 focus-within:border-emerald-400'
+    : 'focus-within:ring-indigo-500/30 focus-within:border-indigo-400';
+  const selectedClass = activeColor === 'emerald'
+    ? 'bg-emerald-50 text-emerald-700'
+    : 'bg-indigo-50 text-indigo-700';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label>{label}</Label>
+        <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+          {ready ? 'Search ready' : 'Loading search'}
+        </span>
+      </div>
+
+      <div className="relative">
+        <div className={`relative rounded-xl border bg-white shadow-sm transition-all focus-within:ring-4 ${borderClass}`}>
+          <MapPin className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${activeColor === 'emerald' ? 'text-emerald-600' : 'text-indigo-600'}`} />
+          <Input
+            ref={inputRef}
+            value={query}
+            onChange={handleInputChange}
+            onFocus={() => {
+              if (query.trim().length >= 2) {
+                fetchPredictions(query);
+                setShowPredictions(true);
+              }
+            }}
+            onBlur={() => {
+              blurRef.current = setTimeout(() => setShowPredictions(false), 160);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (predictions.length > 0 && showPredictions) selectPrediction(predictions[0]);
+                else handleManualSearch();
+              }
+            }}
+            placeholder={placeholder}
+            autoComplete="off"
+            className="pl-9 pr-32 border-0 shadow-none focus-visible:ring-0 h-11 rounded-xl"
+          />
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
+            <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-8 px-2" title="Search typed address">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            </Button>
+            <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={useCurrent} disabled={gpsLoading} className={`h-8 px-2 text-white ${buttonClass}`} title="Use current GPS">
+              {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+
+        {showPredictions && predictions.length > 0 && (
+          <div className="absolute z-[999999] mt-2 w-full overflow-hidden rounded-2xl border bg-white shadow-2xl ring-1 ring-slate-200">
+            {predictions.map((p) => (
+              <button
+                key={p.place_id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => selectPrediction(p)}
+                className="w-full text-left px-4 py-3 hover:bg-slate-50 transition flex items-start gap-3 border-b last:border-b-0"
+              >
+                <div className={`mt-0.5 w-8 h-8 rounded-full grid place-items-center ${selectedClass}`}>
+                  {(p.types || []).includes('establishment') ? <Building2 className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900 truncate">
+                    {p.structured_formatting?.main_text || p.description}
+                  </p>
+                  <p className="text-xs text-muted-foreground line-clamp-2">
+                    {p.structured_formatting?.secondary_text || p.description}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-muted-foreground px-1">{helper}</p>
+
+      {selectedText ? (
+        <div className={`text-xs rounded-lg px-3 py-2 ${selectedClass}`}>
+          Exact GPS saved: <b>{selectedText}</b>
+        </div>
+      ) : (
+        <div className="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-700">
+          Type and choose one suggestion. Nearby matching needs exact GPS.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkerHome({ token, me }) {
   const [jobs, setJobs] = useState([]);
+  const [nearbyJobs, setNearbyJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [hasCheckedNearby, setHasCheckedNearby] = useState(false);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState(null);
 
@@ -1003,6 +1918,66 @@ function WorkerHome({ token }) {
     } catch (e) { toast.error(e.message); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+
+  const findNearbyFromCoords = async (userLat, userLng, sourceLabel = 'selected location') => {
+    setLocationLoading(true);
+    setLocationError('');
+    setHasCheckedNearby(true);
+    try {
+      const d = await api('jobs', { token });
+      const filtered = (d.jobs || [])
+        .map((job) => {
+          const hasCoords = job.latitude !== null && job.latitude !== undefined && job.longitude !== null && job.longitude !== undefined;
+          const distance = hasCoords
+            ? getDistanceKm(userLat, userLng, Number(job.latitude), Number(job.longitude))
+            : null;
+          return { ...job, distance_km: distance };
+        })
+        .filter((job) => job.distance_km !== null && job.distance_km <= 10)
+        .sort((a, b) => a.distance_km - b.distance_km);
+
+      setNearbyJobs(filtered);
+      if (filtered.length > 0) toast.success(`${filtered.length} nearby job(s) found within 10 km from your ${sourceLabel}`);
+      if (filtered.length === 0) toast.info(`No jobs found within 10 km from your ${sourceLabel}`);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const loadNearbyJobs = async () => {
+    if (!navigator.geolocation) {
+      setLocationError('Location is not supported on this device');
+      return;
+    }
+
+    setLocationLoading(true);
+    setLocationError('');
+    setHasCheckedNearby(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        await findNearbyFromCoords(pos.coords.latitude, pos.coords.longitude, 'current location');
+      },
+      () => {
+        setLocationError('Please allow location permission to see nearby jobs');
+        setLocationLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  };
+
+  const loadNearbyFromSavedLocation = async () => {
+    const lat = Number(me?.extra?.latitude);
+    const lng = Number(me?.extra?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setLocationError('Save your home/preferred location in Profile first, or use current location.');
+      setHasCheckedNearby(true);
+      return;
+    }
+    await findNearbyFromCoords(lat, lng, 'saved location');
+  };
 
   const apply = async (jobId) => {
     try {
@@ -1023,8 +1998,86 @@ function WorkerHome({ token }) {
         <Button onClick={load} variant="outline"><Filter className="w-4 h-4 mr-1" />Search</Button>
       </div>
 
+      <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white grid place-items-center">
+              <MapPin className="w-5 h-5" />
+            </span>
+            Jobs near you within 10 km
+          </CardTitle>
+          <CardDescription>
+            Allow location access to find nearby day-work opportunities based on your current location.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Button
+              onClick={loadNearbyJobs}
+              disabled={locationLoading}
+              className="bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20"
+            >
+              {locationLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <MapPin className="w-4 h-4 mr-2" />
+              )}
+              Use current location
+            </Button>
+            <Button
+              type="button"
+              onClick={loadNearbyFromSavedLocation}
+              disabled={locationLoading}
+              variant="outline"
+              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            >
+              <MapPin className="w-4 h-4 mr-2" />
+              Use saved/home location
+            </Button>
+          </div>
+
+          {locationError && <p className="text-sm text-red-500 mt-3">{locationError}</p>}
+
+          <div className="grid sm:grid-cols-2 gap-3 mt-4">
+            {nearbyJobs.map((job) => (
+              <button
+                key={job.id}
+                onClick={() => setSelected(job)}
+                className="text-left bg-white rounded-xl border p-4 hover:shadow-md transition group"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate group-hover:text-indigo-700">{job.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">{job.employers?.company_name} · {job.location_text || 'Location not added'}</p>
+                  </div>
+                  <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 shrink-0">
+                    {job.distance_km.toFixed(1)} km
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between mt-3 text-sm">
+                  <span className="font-bold text-emerald-700">{fmtMoney(job.daily_pay)}/day</span>
+                  <span className="text-muted-foreground">{job.duration_days} day(s)</span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {hasCheckedNearby && !locationLoading && nearbyJobs.length === 0 && !locationError && (
+            <p className="text-sm text-muted-foreground mt-3">
+              No jobs found within 10 km right now. Try again later or search all jobs below.
+            </p>
+          )}
+
+          {!hasCheckedNearby && (
+            <p className="text-sm text-muted-foreground mt-3">
+              Click “Find nearby jobs” to check jobs within 10 km.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <div>
-        <h2 className="font-bold text-lg mb-2">Jobs near you</h2>
+        <h2 className="font-bold text-lg mb-2">All open jobs</h2>
         {loading && <div className="grid place-items-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}
         {!loading && jobs.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No jobs yet. Check back soon.</p>}
         <div className="grid sm:grid-cols-2 gap-3">
@@ -1038,7 +2091,10 @@ function WorkerHome({ token }) {
             <>
               <DialogHeader>
                 <DialogTitle className="text-2xl">{selected.title}</DialogTitle>
-                <DialogDescription>{selected.employers?.company_name} · {selected.location_text}</DialogDescription>
+                <DialogDescription>
+                  {selected.employers?.company_name} · {selected.location_text}
+                  {selected.distance_km !== undefined && selected.distance_km !== null ? ` · ${selected.distance_km.toFixed(1)} km away` : ''}
+                </DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-3 gap-2 my-3">
                 <div className="p-3 rounded-lg bg-emerald-50 text-emerald-700">
@@ -1152,6 +2208,303 @@ function WorkerMyJobs({ token, onChat }) {
   );
 }
 
+
+function SavedLocationEditor({ label, value, latitude, longitude, color = 'indigo', placeholder, helper, onChange }) {
+  const hasSaved = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && !!value;
+  const [editing, setEditing] = useState(!hasSaved);
+
+  useEffect(() => {
+    const freshSaved = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && !!value;
+    setEditing(!freshSaved);
+  }, [value, latitude, longitude]);
+
+  const colorClasses = color === 'emerald'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+    : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100';
+
+  if (hasSaved && !editing) {
+    return (
+      <div className="rounded-2xl border bg-white p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0">
+            <Label>{label}</Label>
+            <p className="text-sm font-semibold text-slate-900 mt-1 break-words">{value}</p>
+            <p className="text-xs text-muted-foreground mt-1">Saved GPS: {formatCoordinates(latitude, longitude)}</p>
+          </div>
+          <Button type="button" variant="outline" className={`shrink-0 ${colorClasses}`} onClick={() => setEditing(true)}>
+            <MapPin className="w-4 h-4 mr-2" /> Change location
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">This saved location will be reused after login until you change it.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border bg-slate-50 p-4 space-y-3">
+      {hasSaved && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">Editing enabled. Select a new place or use current GPS.</p>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+        </div>
+      )}
+      <LocationSearchBox
+        label={label}
+        value={value || ''}
+        latitude={latitude}
+        longitude={longitude}
+        color={color}
+        placeholder={placeholder}
+        helper={helper}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
+
+
+function VerificationDocumentsCard({ token, role, verified, form, setForm, onSaved, color = 'indigo' }) {
+  const [busy, setBusy] = useState(false);
+  const status = form.verification_status || (verified ? 'verified' : 'not_submitted');
+  const accent = color === 'emerald' ? 'emerald' : 'indigo';
+  const isEmployer = role === 'employer';
+
+  const cleanAadhaar = (value) => String(value || '').replace(/\D/g, '').slice(0, 12);
+  const cleanPan = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  const cleanGst = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
+  const isValidAadhaar = (value) => /^\d{12}$/.test(String(value || ''));
+  const isValidPan = (value) => /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(value || ''));
+  const isValidGst = (value) => /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(String(value || ''));
+
+  const uploadDoc = async (file, field, kind) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { url } = await uploadFile(file, kind, token);
+      setForm((s) => ({ ...s, [field]: url, verification_status: 'submitted' }));
+      toast.success('Document uploaded');
+    } catch (e) {
+      toast.error(e.message || 'Upload failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitVerification = async () => {
+    const pan = cleanPan(form.pan_number);
+
+    if (!pan || !isValidPan(pan)) return toast.error('Enter valid PAN format, e.g. ABCDE1234F');
+
+    if (isEmployer) {
+      const gst = cleanGst(form.gst_number);
+      if (!form.company_address?.trim()) return toast.error('Enter company address');
+      if (!gst || !isValidGst(gst)) return toast.error('Enter valid 15-character GST number');
+      if (!form.pan_image_url || !form.pan_back_url || !form.gst_certificate_url) {
+        return toast.error('Upload PAN front, PAN back and GST certificate');
+      }
+    } else {
+      const aadhaar = cleanAadhaar(form.aadhaar_number);
+      if (!form.address?.trim()) return toast.error('Enter full address');
+      if (!aadhaar || !isValidAadhaar(aadhaar)) return toast.error('Aadhaar must be exactly 12 digits');
+      if (!form.aadhaar_front_url || !form.aadhaar_back_url || !form.pan_image_url || !form.pan_back_url) {
+        return toast.error('Upload Aadhaar front/back and PAN front/back images');
+      }
+    }
+
+    setBusy(true);
+    try {
+      const body = isEmployer
+        ? {
+            company_address: form.company_address,
+            gst_number: cleanGst(form.gst_number),
+            pan_number: pan,
+            pan_image_url: form.pan_image_url,
+            pan_back_url: form.pan_back_url,
+            gst_certificate_url: form.gst_certificate_url,
+            verification_status: 'submitted',
+          }
+        : {
+            address: form.address,
+            aadhaar_number: cleanAadhaar(form.aadhaar_number),
+            pan_number: pan,
+            aadhaar_front_url: form.aadhaar_front_url,
+            aadhaar_back_url: form.aadhaar_back_url,
+            pan_image_url: form.pan_image_url,
+            pan_back_url: form.pan_back_url,
+            verification_status: 'submitted',
+          };
+
+      await api('me/profile', { method: 'PATCH', token, body });
+      setForm((s) => ({ ...s, ...body }));
+      toast.success('Verification submitted for admin review');
+      onSaved?.();
+    } catch (e) {
+      toast.error(e.message || 'Unable to submit verification');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputClass = 'h-11 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0';
+
+  return (
+    <Card className="border-slate-200 shadow-sm overflow-hidden">
+      <CardHeader className={`${accent === 'emerald' ? 'bg-emerald-50/70' : 'bg-indigo-50/70'} border-b`}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ShieldCheck className={`w-5 h-5 ${verified ? 'text-emerald-600' : 'text-slate-500'}`} />
+              {isEmployer ? 'Company verification' : 'Worker verification'}
+            </CardTitle>
+            <CardDescription>
+              {isEmployer
+                ? 'Submit GST and company PAN documents for admin approval.'
+                : 'Submit Aadhaar/PAN and address details for admin approval.'}
+            </CardDescription>
+          </div>
+          {verified ? (
+            <Badge className="bg-emerald-100 text-emerald-700">Verified</Badge>
+          ) : status === 'submitted' ? (
+            <Badge className="bg-amber-100 text-amber-700">Pending review</Badge>
+          ) : status === 'rejected' ? (
+            <Badge className="bg-red-100 text-red-700">Rejected</Badge>
+          ) : (
+            <Badge variant="outline">Unverified</Badge>
+          )}
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-4 sm:p-5 space-y-4" onKeyDown={(e) => { if (e.key === 'Enter' && e.target?.tagName !== 'TEXTAREA') { e.preventDefault(); if (!busy && !verified) submitVerification(); } }}>
+        {isEmployer ? (
+          <>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label>GST number</Label>
+                <Input
+                  value={form.gst_number || ''}
+                  maxLength={15}
+                  onChange={(e) => setForm((s) => ({ ...s, gst_number: cleanGst(e.target.value) }))}
+                  placeholder="22AAAAA0000A1Z5"
+                  className={inputClass}
+                />
+                <p className="text-xs text-muted-foreground mt-1">15 characters. Example: 22AAAAA0000A1Z5</p>
+                {form.gst_number && !isValidGst(form.gst_number) && <p className="text-xs text-red-500 mt-1">Invalid GST format</p>}
+              </div>
+              <div>
+                <Label>Company PAN number</Label>
+                <Input
+                  value={form.pan_number || ''}
+                  maxLength={10}
+                  onChange={(e) => setForm((s) => ({ ...s, pan_number: cleanPan(e.target.value) }))}
+                  placeholder="ABCDE1234F"
+                  className={inputClass}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Format: 5 letters + 4 digits + 1 letter</p>
+                {form.pan_number && !isValidPan(form.pan_number) && <p className="text-xs text-red-500 mt-1">Invalid PAN format</p>}
+              </div>
+            </div>
+
+            <div>
+              <Label>Company address</Label>
+              <Textarea
+                rows={3}
+                value={form.company_address || ''}
+                onChange={(e) => setForm((s) => ({ ...s, company_address: e.target.value }))}
+                placeholder="Door no, street, area, city, state, pincode"
+                className="rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0 resize-none"
+              />
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <DocumentUploadBox label="Company PAN front" url={form.pan_image_url} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_image_url', 'company-pan-front')} />
+              <DocumentUploadBox label="Company PAN back" url={form.pan_back_url} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_back_url', 'company-pan-back')} />
+              <DocumentUploadBox label="GST certificate" url={form.gst_certificate_url} disabled={busy} onFile={(file) => uploadDoc(file, 'gst_certificate_url', 'gst-certificate')} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label>Aadhaar number</Label>
+                <Input
+                  value={form.aadhaar_number || ''}
+                  maxLength={12}
+                  inputMode="numeric"
+                  onChange={(e) => setForm((s) => ({ ...s, aadhaar_number: cleanAadhaar(e.target.value) }))}
+                  placeholder="123412341234"
+                  className={inputClass}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Exactly 12 digits</p>
+                {form.aadhaar_number && !isValidAadhaar(form.aadhaar_number) && <p className="text-xs text-red-500 mt-1">Aadhaar must be 12 digits</p>}
+              </div>
+              <div>
+                <Label>PAN number</Label>
+                <Input
+                  value={form.pan_number || ''}
+                  maxLength={10}
+                  onChange={(e) => setForm((s) => ({ ...s, pan_number: cleanPan(e.target.value) }))}
+                  placeholder="ABCDE1234F"
+                  className={inputClass}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Format: ABCDE1234F</p>
+                {form.pan_number && !isValidPan(form.pan_number) && <p className="text-xs text-red-500 mt-1">Invalid PAN format</p>}
+              </div>
+            </div>
+
+            <div>
+              <Label>Full address</Label>
+              <Textarea
+                rows={3}
+                value={form.address || ''}
+                onChange={(e) => setForm((s) => ({ ...s, address: e.target.value }))}
+                placeholder="Door no, street, area, city, district, state, pincode"
+                className="rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0 resize-none"
+              />
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <DocumentUploadBox label="Aadhaar front" url={form.aadhaar_front_url} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_front_url', 'aadhaar-front')} />
+              <DocumentUploadBox label="Aadhaar back" url={form.aadhaar_back_url} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_back_url', 'aadhaar-back')} />
+              <DocumentUploadBox label="PAN front" url={form.pan_image_url} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_image_url', 'pan-front')} />
+              <DocumentUploadBox label="PAN back" url={form.pan_back_url} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_back_url', 'pan-back')} />
+            </div>
+          </>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between rounded-xl bg-slate-50 border p-3">
+          <div>
+            <p className="text-sm font-semibold">Admin approval required</p>
+            <p className="text-xs text-muted-foreground">After submission, admin checks your details and clicks Verify account.</p>
+            {form.verification_notes && <p className="text-xs text-red-600 mt-1">Note: {form.verification_notes}</p>}
+          </div>
+          <Button type="button" onClick={submitVerification} disabled={busy || verified} className={`${accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : verified ? 'Already verified' : 'Submit verification'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DocumentUploadBox({ label, url, onFile, disabled }) {
+  return (
+    <div className="rounded-xl border bg-white p-3">
+      <Label>{label}</Label>
+      <div className="mt-2 flex items-center gap-3">
+        <div className="w-16 h-16 rounded-lg border bg-slate-50 grid place-items-center overflow-hidden shrink-0">
+          {url ? <img src={url} alt={label} className="w-full h-full object-cover" /> : <ImgIcon className="w-6 h-6 text-slate-400" />}
+        </div>
+        <label className="inline-flex items-center justify-center px-3 py-2 rounded-md border text-sm cursor-pointer hover:bg-slate-50">
+          <Upload className="w-4 h-4 mr-2" /> Upload
+          <input type="file" accept="image/*,.pdf" className="hidden" disabled={disabled} onChange={(e) => onFile(e.target.files?.[0])} />
+        </label>
+      </div>
+      {url && <a className="text-xs text-indigo-600 hover:underline mt-2 inline-block" href={url} target="_blank" rel="noreferrer">View uploaded file</a>}
+    </div>
+  );
+}
+
 function WorkerProfile({ token, me, onSaved, onLogout }) {
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
@@ -1164,7 +2517,20 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       experience_years: me.extra?.experience_years || 0,
       expected_daily_wage: me.extra?.expected_daily_wage || 0,
       location_text: me.extra?.location_text || '',
+      latitude: me.extra?.latitude || '',
+      longitude: me.extra?.longitude || '',
+      place_id: me.extra?.place_id || '',
+      place_name: me.extra?.place_name || '',
       bio: me.extra?.bio || '',
+      address: me.extra?.address || '',
+      aadhaar_number: me.extra?.aadhaar_number || '',
+      pan_number: me.extra?.pan_number || '',
+      aadhaar_front_url: me.extra?.aadhaar_front_url || '',
+      aadhaar_back_url: me.extra?.aadhaar_back_url || '',
+      pan_image_url: me.extra?.pan_image_url || '',
+      pan_back_url: me.extra?.pan_back_url || '',
+      verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
+      verification_notes: me.extra?.verification_notes || '',
     });
   }, [me]);
 
@@ -1182,6 +2548,26 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       toast.success('Profile saved');
       onSaved();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+
+  const deleteAccount = async () => {
+    const first = confirm('Are you sure you want to permanently delete your account?');
+    if (!first) return;
+
+    const second = confirm('This will remove your account and data from Work2Wish permanently. This cannot be undone. Continue?');
+    if (!second) return;
+
+    setBusy(true);
+    try {
+      await api('me/account', { method: 'DELETE', token });
+      toast.success('Account deleted successfully');
+      onLogout();
+    } catch (e) {
+      toast.error(e.message || 'Failed to delete account');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!me) return <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
@@ -1217,6 +2603,16 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
         </CardContent>
       </Card>
 
+      <VerificationDocumentsCard
+        token={token}
+        role="worker"
+        verified={!!me.extra?.verified}
+        form={form}
+        setForm={setForm}
+        onSaved={onSaved}
+        color="indigo"
+      />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Edit profile</CardTitle></CardHeader>
         <CardContent className="grid sm:grid-cols-2 gap-3">
@@ -1225,7 +2621,18 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           <Field label="Age"        v={form.age}                 on={(v) => setForm(f => ({ ...f, age: v }))} type="number" />
           <Field label="Experience (years)" v={form.experience_years} on={(v) => setForm(f => ({ ...f, experience_years: v }))} type="number" />
           <Field label="Expected daily wage (₹)" v={form.expected_daily_wage} on={(v) => setForm(f => ({ ...f, expected_daily_wage: v }))} type="number" />
-          <Field label="Location" v={form.location_text} on={(v) => setForm(f => ({ ...f, location_text: v }))} />
+          <div className="sm:col-span-2">
+            <SavedLocationEditor
+              label="Home / preferred work location"
+              value={form.location_text || ''}
+              latitude={form.latitude}
+              longitude={form.longitude}
+              color="indigo"
+              placeholder="Search home area, landmark, city"
+              helper="Workers can use this saved location or current GPS to find jobs within 10 km."
+              onChange={(loc) => setForm(f => ({ ...f, ...loc }))}
+            />
+          </div>
           <div className="sm:col-span-2">
             <Label>Skills (comma-separated)</Label>
             <Input value={form.skills || ''} onChange={(e) => setForm(f => ({ ...f, skills: e.target.value }))} placeholder="Carpentry, Electrical, Painting" />
@@ -1237,11 +2644,70 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={busy} className="flex-1 bg-indigo-600 hover:bg-indigo-700">
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4 mr-2" />}Save profile
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Button
+          onClick={save}
+          disabled={busy}
+          className="h-12 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20"
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          Save profile
         </Button>
-        <Button variant="outline" onClick={onLogout}><LogOut className="w-4 h-4 mr-2" />Logout</Button>
+
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              className="h-12 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+            >
+              <ShieldCheck className="w-4 h-4 mr-2" />
+              Account settings
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>Account settings</SheetTitle>
+            </SheetHeader>
+
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Signed in as</p>
+                <p className="text-sm text-muted-foreground truncate mt-1">{me.profile?.email}</p>
+                {me.profile?.login_id && (
+                  <p className="text-xs text-indigo-700 mt-2">Login ID: <b>{me.profile.login_id}</b></p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border p-4">
+                <p className="text-sm font-semibold text-slate-900">Session</p>
+                <p className="text-xs text-muted-foreground mt-1">Use logout when you only want to leave this device.</p>
+                <Button
+                  onClick={onLogout}
+                  disabled={busy}
+                  className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-semibold text-red-700">Danger zone</p>
+                <p className="text-xs text-red-600/80 mt-1">Deleting your account permanently removes your profile, applications, messages, notifications, and Supabase Auth user.</p>
+                <Button
+                  variant="destructive"
+                  onClick={deleteAccount}
+                  disabled={busy}
+                  className="w-full mt-4"
+                >
+                  Delete Account Permanently
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );
@@ -1436,7 +2902,7 @@ function StatCard({ label, value, icon: Icon, color }) {
 
 function PostJob({ token, onPosted }) {
   const [f, setF] = useState({
-    title: '', category: 'general', description: '', location_text: '',
+    title: '', category: 'general', description: '', location_text: '', latitude: '', longitude: '',
     daily_pay: 1000, duration_days: 1, start_date: '',
   });
   const [busy, setBusy] = useState(false);
@@ -1454,7 +2920,7 @@ function PostJob({ token, onPosted }) {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Post a new job</CardTitle><CardDescription>Reach workers near your location instantly.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>Post a new job</CardTitle><CardDescription>Reach workers near your saved company location instantly. If you leave job location empty, your company location will be used automatically.</CardDescription></CardHeader>
       <CardContent>
         <form onSubmit={submit} className="grid sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><Label>Job title</Label><Input value={f.title} onChange={e => setF(s => ({ ...s, title: e.target.value }))} placeholder="e.g. Carpenter for 2 days" /></div>
@@ -1469,7 +2935,18 @@ function PostJob({ token, onPosted }) {
               </SelectContent>
             </Select>
           </div>
-          <div><Label>Location</Label><Input value={f.location_text} onChange={e => setF(s => ({ ...s, location_text: e.target.value }))} placeholder="Area, City" /></div>
+          <div className="sm:col-span-2">
+            <LocationSearchBox
+              label="Job location override (optional)"
+              value={f.location_text || ''}
+              latitude={f.latitude}
+              longitude={f.longitude}
+              color="emerald"
+              placeholder="Search job site, landmark, area"
+              helper="Leave this empty to automatically use your saved company location. Use this only if the job site is different."
+              onChange={(loc) => setF(s => ({ ...s, ...loc }))}
+            />
+          </div>
           <div><Label>Daily pay (₹)</Label><Input type="number" value={f.daily_pay} onChange={e => setF(s => ({ ...s, daily_pay: e.target.value }))} /></div>
           <div><Label>Duration (days)</Label><Input type="number" value={f.duration_days} onChange={e => setF(s => ({ ...s, duration_days: e.target.value }))} /></div>
           <div className="sm:col-span-2"><Label>Start date</Label><Input type="date" value={f.start_date} onChange={e => setF(s => ({ ...s, start_date: e.target.value }))} /></div>
@@ -1495,7 +2972,22 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
       company_name: me.extra?.company_name || '',
       industry: me.extra?.industry || '',
       location_text: me.extra?.location_text || '',
+      latitude: me.extra?.latitude || '',
+      longitude: me.extra?.longitude || '',
+      place_id: me.extra?.place_id || '',
+      place_name: me.extra?.place_name || '',
       description: me.extra?.description || '',
+      company_address: me.extra?.company_address || '',
+      gst_number: me.extra?.gst_number || '',
+      gst_certificate_url: me.extra?.gst_certificate_url || '',
+      aadhaar_number: me.extra?.aadhaar_number || '',
+      pan_number: me.extra?.pan_number || '',
+      aadhaar_front_url: me.extra?.aadhaar_front_url || '',
+      aadhaar_back_url: me.extra?.aadhaar_back_url || '',
+      pan_image_url: me.extra?.pan_image_url || '',
+      pan_back_url: me.extra?.pan_back_url || '',
+      verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
+      verification_notes: me.extra?.verification_notes || '',
     });
   }, [me]);
 
@@ -1503,6 +2995,58 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
     setBusy(true);
     try { await api('me/profile', { method: 'PATCH', token, body: f }); toast.success('Saved'); onSaved(); }
     catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  const useCompanyCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Location is not supported on this device');
+      return;
+    }
+
+    setBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const latitude = pos.coords.latitude;
+        const longitude = pos.coords.longitude;
+        const locationText = f.location_text?.trim() || `GPS: ${formatCoordinates(latitude, longitude)}`;
+        const next = { ...f, latitude, longitude, location_text: locationText };
+        setF(next);
+        try {
+          await api('me/profile', { method: 'PATCH', token, body: next });
+          toast.success('Company location saved');
+          onSaved();
+        } catch (e) {
+          toast.error(e.message);
+        } finally {
+          setBusy(false);
+        }
+      },
+      () => {
+        toast.error('Please allow location permission to save company location');
+        setBusy(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  };
+
+
+  const deleteAccount = async () => {
+    const first = confirm('Are you sure you want to permanently delete your account?');
+    if (!first) return;
+
+    const second = confirm('This will remove your account and data from Work2Wish permanently. This cannot be undone. Continue?');
+    if (!second) return;
+
+    setBusy(true);
+    try {
+      await api('me/account', { method: 'DELETE', token });
+      toast.success('Account deleted successfully');
+      onLogout();
+    } catch (e) {
+      toast.error(e.message || 'Failed to delete account');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!me) return <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
@@ -1536,6 +3080,16 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
         </CardContent>
       </Card>
 
+      <VerificationDocumentsCard
+        token={token}
+        role="employer"
+        verified={!!me.extra?.verified}
+        form={f}
+        setForm={setF}
+        onSaved={onSaved}
+        color="emerald"
+      />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Company profile</CardTitle></CardHeader>
         <CardContent className="grid sm:grid-cols-2 gap-3">
@@ -1543,7 +3097,18 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
           <Field label="Phone"       v={f.phone}        on={(v) => setF(s => ({ ...s, phone: v }))} />
           <Field label="Company"     v={f.company_name} on={(v) => setF(s => ({ ...s, company_name: v }))} />
           <Field label="Industry"    v={f.industry}     on={(v) => setF(s => ({ ...s, industry: v }))} />
-          <Field label="Location"    v={f.location_text} on={(v) => setF(s => ({ ...s, location_text: v }))} />
+          <div className="sm:col-span-2">
+            <SavedLocationEditor
+              label="Company fixed location"
+              value={f.location_text || ''}
+              latitude={f.latitude}
+              longitude={f.longitude}
+              color="emerald"
+              placeholder="Search company name, area, landmark, city"
+              helper="This fixed company location is used automatically when posting jobs and for worker nearby matching."
+              onChange={(loc) => setF(s => ({ ...s, ...loc }))}
+            />
+          </div>
           <div className="sm:col-span-2">
             <Label>About</Label>
             <Textarea rows={3} value={f.description || ''} onChange={(e) => setF(s => ({ ...s, description: e.target.value }))} />
@@ -1551,11 +3116,70 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={busy} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4 mr-2" />}Save
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Button
+          onClick={save}
+          disabled={busy}
+          className="h-12 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          Save profile
         </Button>
-        <Button variant="outline" onClick={onLogout}><LogOut className="w-4 h-4 mr-2" />Logout</Button>
+
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              className="h-12 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+            >
+              <ShieldCheck className="w-4 h-4 mr-2" />
+              Account settings
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>Account settings</SheetTitle>
+            </SheetHeader>
+
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Signed in as</p>
+                <p className="text-sm text-muted-foreground truncate mt-1">{me.profile?.email}</p>
+                {me.profile?.login_id && (
+                  <p className="text-xs text-emerald-700 mt-2">Login ID: <b>{me.profile.login_id}</b></p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border p-4">
+                <p className="text-sm font-semibold text-slate-900">Session</p>
+                <p className="text-xs text-muted-foreground mt-1">Use logout when you only want to leave this device.</p>
+                <Button
+                  onClick={onLogout}
+                  disabled={busy}
+                  className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-semibold text-red-700">Danger zone</p>
+                <p className="text-xs text-red-600/80 mt-1">Deleting your account permanently removes your company profile, jobs, applications, messages, notifications, and Supabase Auth user.</p>
+                <Button
+                  variant="destructive"
+                  onClick={deleteAccount}
+                  disabled={busy}
+                  className="w-full mt-4"
+                >
+                  Delete Account Permanently
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );

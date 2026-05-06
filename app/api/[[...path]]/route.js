@@ -259,6 +259,7 @@ async function route(request, { params }) {
       );
       const { data: signed } = await supaAnon.auth.signInWithPassword({ email, password: new_password });
       const { data: profile } = await admin.from('user_profiles').select('*').eq('id', userId).maybeSingle();
+      if (profile?.blocked) return err('Your account has been blocked by admin.', 403);
 
       sendEmail({
         to: email,
@@ -308,6 +309,7 @@ async function route(request, { params }) {
       const user = u.user;
       const { data: profile } = await admin.from('user_profiles').select('*').eq('id', user.id).maybeSingle();
       if (profile) {
+        if (profile.blocked) return err('Your account has been blocked by admin.', 403);
         return json({ ok: true, role: profile.role, login_id: profile.login_id, profile });
       }
       // No profile yet — need role
@@ -326,6 +328,125 @@ async function route(request, { params }) {
       if (chosenRole === 'worker') await admin.from('workers').insert({ user_id: user.id });
       else                          await admin.from('employers').insert({ user_id: user.id });
       return json({ ok: true, role: chosenRole, login_id });
+    }
+
+
+    // Google signup OTP: used when a new Google user completes the normal Create Account flow.
+    if (path === 'auth/google-send-otp' && method === 'POST') {
+      const { email, password, role, full_name, google_access_token } = await request.json();
+      if (!email || !password || !role || !google_access_token) {
+        return err('email, password, role, google_access_token required', 400);
+      }
+      if (!['worker', 'employer'].includes(role)) return err('Invalid role', 400);
+
+      const { data: u } = await admin.auth.getUser(google_access_token);
+      if (!u?.user) return err('Invalid Google session', 401);
+      if (u.user.email !== email) return err('Google email mismatch', 400);
+
+      const { data: existing } = await admin.from('user_profiles').select('id').eq('email', email).maybeSingle();
+      if (existing) return err('An account with this email already exists. Please log in.', 409);
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expires_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      await admin.from('otp_codes').update({ consumed: true })
+        .eq('email', email).eq('consumed', false);
+
+      const { error: insErr } = await admin.from('otp_codes').insert({
+        email,
+        code,
+        expires_at,
+        payload: {
+          type: 'google_signup',
+          user_id: u.user.id,
+          role,
+          full_name,
+          password,
+          photo_url: u.user.user_metadata?.avatar_url || u.user.user_metadata?.picture || null,
+        },
+      });
+      if (insErr) return err(insErr.message, 400);
+
+      await sendEmail({
+        to: email,
+        subject: `Your Work2Wish code: ${code}`,
+        html: otpEmailHtml(code, full_name),
+      });
+
+      return json({ ok: true, expires_at });
+    }
+
+    if (path === 'auth/google-verify-otp' && method === 'POST') {
+      const { email, otp, google_access_token } = await request.json();
+      if (!email || !otp || !google_access_token) {
+        return err('email, otp, google_access_token required', 400);
+      }
+
+      const { data: u } = await admin.auth.getUser(google_access_token);
+      if (!u?.user) return err('Invalid Google session', 401);
+      if (u.user.email !== email) return err('Google email mismatch', 400);
+
+      const { data: row } = await admin.from('otp_codes').select('*')
+        .eq('email', email).eq('consumed', false)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+      if (!row || row.payload?.type !== 'google_signup') {
+        return err('No pending Google signup. Please request a new code.', 400);
+      }
+      if (new Date(row.expires_at) < new Date()) return err('Code expired. Request a new one.', 400);
+      if (row.attempts >= 5) return err('Too many attempts. Request a new code.', 400);
+
+      if (String(row.code) !== String(otp)) {
+        await admin.from('otp_codes').update({ attempts: row.attempts + 1 }).eq('id', row.id);
+        return err('Invalid code', 400);
+      }
+
+      await admin.from('otp_codes').update({ consumed: true }).eq('id', row.id);
+
+      const { user_id, role, full_name, password, photo_url } = row.payload || {};
+
+      const { error: updateErr } = await admin.auth.admin.updateUserById(user_id, {
+        password,
+        email_confirm: true,
+        user_metadata: { role, full_name, avatar_url: photo_url || null },
+      });
+      if (updateErr) return err(updateErr.message, 400);
+
+      const login_id = await generateLoginId(admin);
+
+      const { error: profileErr } = await admin.from('user_profiles').insert({
+        id: user_id,
+        email,
+        role,
+        full_name: full_name || null,
+        photo_url: photo_url || null,
+        login_id,
+      });
+      if (profileErr) return err(profileErr.message, 400);
+
+      if (role === 'worker') await admin.from('workers').insert({ user_id });
+      else await admin.from('employers').insert({ user_id });
+
+      const supaAnon = (await import('@supabase/supabase-js')).createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data: signed, error: signErr } = await supaAnon.auth.signInWithPassword({ email, password });
+      if (signErr) return err(signErr.message, 400);
+
+      await sendEmail({
+        to: email,
+        subject: 'Welcome to Work2Wish',
+        html: `<h2>Welcome, ${full_name || 'there'}!</h2><p>Your ${role} account is ready. Your Login ID is <b>${login_id}</b>.</p>`,
+      });
+
+      return json({
+        user: signed.user,
+        session: signed.session,
+        role,
+        login_id,
+        profile: { id: user_id, email, role, full_name, photo_url, login_id },
+      });
     }
 
     // LOGIN — accepts email OR 6-digit login_id
@@ -349,6 +470,7 @@ async function route(request, { params }) {
       const { data: signed, error: sErr } = await supaAnon.auth.signInWithPassword({ email: resolvedEmail, password });
       if (sErr) return err(sErr.message, 401);
       const { data: profile } = await admin.from('user_profiles').select('*').eq('id', signed.user.id).maybeSingle();
+      if (profile?.blocked) return err('Your account has been blocked by admin.', 403);
       return json({ user: signed.user, session: signed.session, role: profile?.role || 'worker', login_id: profile?.login_id, profile });
     }
 
@@ -356,9 +478,163 @@ async function route(request, { params }) {
     const me = await getUserFromRequest(request);
     if (!me) return err('Unauthorized', 401);
 
+
+    async function requireAdmin() {
+      const { data: profile } = await admin.from('user_profiles').select('role,blocked').eq('id', me.id).maybeSingle();
+      if (!profile || profile.role !== 'admin') return { error: 'Admin access required', status: 403 };
+      if (profile.blocked) return { error: 'Admin account is blocked', status: 403 };
+      return { ok: true };
+    }
+
+    async function deleteUserEverywhere(userId) {
+      await admin.from('messages').delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+      await admin.from('notifications').delete().eq('user_id', userId);
+      await admin.from('applications').delete().eq('worker_id', userId);
+      const { data: ownedJobs } = await admin.from('jobs').select('id').eq('employer_id', userId);
+      const ownedJobIds = (ownedJobs || []).map(j => j.id);
+      if (ownedJobIds.length) await admin.from('applications').delete().in('job_id', ownedJobIds);
+      await admin.from('jobs').delete().eq('employer_id', userId);
+      await admin.from('workers').delete().eq('user_id', userId);
+      await admin.from('employers').delete().eq('user_id', userId);
+      await admin.from('user_profiles').delete().eq('id', userId);
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error) throw new Error(error.message);
+    }
+
+
+    async function getUserAdminDetail(userId) {
+      const { data: profile } = await admin.from('user_profiles').select('*').eq('id', userId).maybeSingle();
+      if (!profile) return null;
+      let extra = null;
+      if (profile.role === 'worker') {
+        const { data } = await admin.from('workers').select('*').eq('user_id', userId).maybeSingle();
+        extra = data;
+      } else if (profile.role === 'employer') {
+        const { data } = await admin.from('employers').select('*').eq('user_id', userId).maybeSingle();
+        extra = data;
+      }
+      return { ...profile, ...(extra || {}) };
+    }
+
+    if (path === 'admin/users' && method === 'GET') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+
+      const url = new URL(request.url);
+      const roleFilter = url.searchParams.get('role') || '';
+      const statusFilter = url.searchParams.get('status') || '';
+      const search = (url.searchParams.get('q') || '').toLowerCase();
+
+      const { data: profiles, error } = await admin.from('user_profiles')
+        .select('id,email,full_name,phone,photo_url,role,login_id,blocked,created_at,updated_at')
+        .order('created_at', { ascending: false });
+      if (error) return err(error.message, 400);
+
+      let users = [];
+      for (const p of profiles || []) {
+        const detail = await getUserAdminDetail(p.id);
+        if (!detail) continue;
+        users.push(detail);
+      }
+
+      if (roleFilter && roleFilter !== 'all') users = users.filter(u => u.role === roleFilter);
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'blocked') users = users.filter(u => u.blocked);
+        else if (statusFilter === 'verified') users = users.filter(u => u.verified);
+        else if (statusFilter === 'pending') users = users.filter(u => u.verification_status === 'submitted' || u.verification_status === 'pending');
+        else if (statusFilter === 'unverified') users = users.filter(u => !u.verified);
+      }
+      if (search) {
+        users = users.filter(u => `${u.email || ''} ${u.full_name || ''} ${u.company_name || ''} ${u.role || ''} ${u.login_id || ''} ${u.location_text || ''} ${u.address || ''} ${u.company_address || ''} ${u.aadhaar_number || ''} ${u.pan_number || ''} ${u.gst_number || ''} ${u.verification_status || ''}`.toLowerCase().includes(search));
+      }
+
+      // Show newly submitted verification requests at the top of the admin table.
+      users.sort((a, b) => {
+        const aPending = ['submitted', 'pending'].includes(a.verification_status || '');
+        const bPending = ['submitted', 'pending'].includes(b.verification_status || '');
+        if (aPending !== bPending) return aPending ? -1 : 1;
+        return new Date(b.verification_submitted_at || b.updated_at || b.created_at || 0) - new Date(a.verification_submitted_at || a.updated_at || a.created_at || 0);
+      });
+
+      return json({ users });
+    }
+
+
+    if (path.match(/^admin\/users\/[^/]+$/) && method === 'GET') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const user = await getUserAdminDetail(userId);
+      if (!user) return err('User not found', 404);
+      return json({ user });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+\/verify$/) && method === 'PATCH') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const body = await request.json().catch(() => ({}));
+      const verified = body.verified !== false;
+      const notes = body.notes || null;
+      const { data: profile } = await admin.from('user_profiles').select('role').eq('id', userId).maybeSingle();
+      if (!profile) return err('User not found', 404);
+      if (!['worker', 'employer'].includes(profile.role)) return err('Only worker/employer accounts can be verified', 400);
+      const table = profile.role === 'worker' ? 'workers' : 'employers';
+      const { error } = await admin.from(table).update({
+        verified,
+        verification_status: verified ? 'verified' : 'rejected',
+        verification_notes: notes,
+        verified_at: verified ? new Date().toISOString() : null,
+      }).eq('user_id', userId);
+      if (error) return err(error.message, 400);
+      await notify(admin, userId, verified ? 'Account verified' : 'Verification update', verified ? 'Your Work2Wish account is now verified.' : 'Your verification was not approved. Please update your documents.', 'verification', userId);
+      return json({ ok: true, verified });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+\/messages$/) && method === 'GET') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const { data, error } = await admin.from('messages')
+        .select('*')
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) return err(error.message, 400);
+      return json({ messages: data || [] });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+\/block$/) && method === 'PATCH') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const body = await request.json().catch(() => ({}));
+      const blocked = !!body.blocked;
+      if (userId === me.id) return err('You cannot block your own admin account', 400);
+      const { data: target } = await admin.from('user_profiles').select('role').eq('id', userId).maybeSingle();
+      if (!target) return err('User not found', 404);
+      if (target.role === 'admin') return err('Cannot block another admin from this panel', 403);
+      const { error } = await admin.from('user_profiles').update({ blocked, updated_at: new Date().toISOString() }).eq('id', userId);
+      if (error) return err(error.message, 400);
+      return json({ ok: true, blocked });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+$/) && method === 'DELETE') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      if (userId === me.id) return err('You cannot delete your own admin account', 400);
+      const { data: target } = await admin.from('user_profiles').select('role').eq('id', userId).maybeSingle();
+      if (!target) return err('User not found', 404);
+      if (target.role === 'admin') return err('Cannot delete another admin from this panel', 403);
+      try { await deleteUserEverywhere(userId); } catch (e) { return err(e.message, 400); }
+      return json({ ok: true });
+    }
+
     // ---------- ME / profile ----------
     if (path === 'me' && method === 'GET') {
       const { data: profile } = await admin.from('user_profiles').select('*').eq('id', me.id).maybeSingle();
+      if (profile?.blocked) return err('Your account has been blocked by admin.', 403);
       let extra = null;
       if (profile?.role === 'worker') {
         const { data } = await admin.from('workers').select('*').eq('user_id', me.id).maybeSingle();
@@ -368,6 +644,23 @@ async function route(request, { params }) {
         extra = data;
       }
       return json({ profile, extra });
+    }
+
+    if (path === 'me/account' && method === 'DELETE') {
+      const userId = me.id;
+
+      await admin.from('messages').delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+      await admin.from('notifications').delete().eq('user_id', userId);
+      await admin.from('applications').delete().eq('worker_id', userId);
+      await admin.from('jobs').delete().eq('employer_id', userId);
+      await admin.from('workers').delete().eq('user_id', userId);
+      await admin.from('employers').delete().eq('user_id', userId);
+      await admin.from('user_profiles').delete().eq('id', userId);
+
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error) return err(error.message, 400);
+
+      return json({ ok: true });
     }
 
     if (path === 'me/profile' && method === 'PATCH') {
@@ -382,18 +675,68 @@ async function route(request, { params }) {
       const { data: profile } = await admin.from('user_profiles').select('*').eq('id', me.id).maybeSingle();
 
       const role = profile?.role;
+      let updatedExtra = null;
+
       if (role === 'worker') {
         const wf = ['age', 'skills', 'experience_years', 'expected_daily_wage',
-                    'location_text', 'latitude', 'longitude', 'bio', 'available'];
+                    'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'bio', 'available', 'address',
+                    'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url',
+                    'verification_status', 'verification_notes'];
         const wu = {}; for (const k of wf) if (k in body) wu[k] = body[k];
-        if (Object.keys(wu).length) await admin.from('workers').update(wu).eq('user_id', me.id);
+
+        if (body.verification_status === 'submitted') {
+          wu.verified = false;
+          wu.verification_status = 'submitted';
+          wu.verification_notes = null;
+          wu.verification_submitted_at = new Date().toISOString();
+        }
+
+        if (Object.keys(wu).length) {
+          const { data: existingWorker } = await admin.from('workers').select('user_id').eq('user_id', me.id).maybeSingle();
+          let result;
+          if (existingWorker) {
+            result = await admin.from('workers').update(wu).eq('user_id', me.id).select().maybeSingle();
+          } else {
+            result = await admin.from('workers').insert({ user_id: me.id, ...wu }).select().maybeSingle();
+          }
+          if (result.error) return err(result.error.message, 400);
+          updatedExtra = result.data;
+        }
       } else if (role === 'employer') {
         const ef = ['company_name', 'company_logo', 'industry', 'location_text',
-                    'latitude', 'longitude', 'description'];
+                    'latitude', 'longitude', 'place_id', 'place_name', 'description', 'company_address', 'gst_number',
+                    'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'gst_certificate_url',
+                    'verification_status', 'verification_notes'];
         const eu = {}; for (const k of ef) if (k in body) eu[k] = body[k];
-        if (Object.keys(eu).length) await admin.from('employers').update(eu).eq('user_id', me.id);
+
+        if (body.verification_status === 'submitted') {
+          eu.verified = false;
+          eu.verification_status = 'submitted';
+          eu.verification_notes = null;
+          eu.verification_submitted_at = new Date().toISOString();
+        }
+
+        if (Object.keys(eu).length) {
+          const { data: existingEmployer } = await admin.from('employers').select('user_id').eq('user_id', me.id).maybeSingle();
+          let result;
+          if (existingEmployer) {
+            result = await admin.from('employers').update(eu).eq('user_id', me.id).select().maybeSingle();
+          } else {
+            result = await admin.from('employers').insert({ user_id: me.id, ...eu }).select().maybeSingle();
+          }
+          if (result.error) return err(result.error.message, 400);
+          updatedExtra = result.data;
+        }
       }
-      return json({ ok: true });
+
+      if (body.verification_status === 'submitted') {
+        const { data: admins } = await admin.from('user_profiles').select('id').eq('role', 'admin').eq('blocked', false);
+        for (const a of admins || []) {
+          await notify(admin, a.id, 'New verification request', `${profile?.full_name || profile?.email || 'A user'} submitted verification documents.`, 'verification', me.id);
+        }
+      }
+
+      return json({ ok: true, profile, extra: updatedExtra });
     }
 
     // ---------- Jobs ----------
@@ -418,10 +761,28 @@ async function route(request, { params }) {
       // ensure employer
       const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
       if (profile?.role !== 'employer') return err('Only employers can post jobs', 403);
+
+      const { data: employer } = await admin.from('employers')
+        .select('location_text, latitude, longitude')
+        .eq('user_id', me.id)
+        .maybeSingle();
+
+      const locationText = (body.location_text || '').trim() || employer?.location_text || null;
+      const latitude = body.latitude !== undefined && body.latitude !== null && body.latitude !== ''
+        ? Number(body.latitude)
+        : (employer?.latitude !== undefined && employer?.latitude !== null ? Number(employer.latitude) : null);
+      const longitude = body.longitude !== undefined && body.longitude !== null && body.longitude !== ''
+        ? Number(body.longitude)
+        : (employer?.longitude !== undefined && employer?.longitude !== null ? Number(employer.longitude) : null);
+
       const payload = {
         employer_id: me.id,
-        title: body.title, category: body.category, description: body.description,
-        location_text: body.location_text, latitude: body.latitude, longitude: body.longitude,
+        title: body.title,
+        category: body.category,
+        description: body.description,
+        location_text: locationText,
+        latitude: Number.isFinite(latitude) ? latitude : null,
+        longitude: Number.isFinite(longitude) ? longitude : null,
         daily_pay: Number(body.daily_pay) || 0,
         duration_days: Number(body.duration_days) || 1,
         start_date: body.start_date || null,
