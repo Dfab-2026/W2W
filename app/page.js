@@ -7,7 +7,8 @@ import {
   Sparkles, ShieldCheck, ArrowRight, Smartphone, Apple, Loader2, Building2,
   Hammer, Users, ClipboardList, Clock, CheckCircle2, XCircle, MessageSquare,
   Edit3, Camera, ChevronLeft, Filter, Banknote, Upload, ArrowLeft, Image as ImgIcon,
-  Mail, KeyRound, Hash, Copy, Eye, EyeOff, Lock, ShieldAlert
+  Mail, KeyRound, Hash, Copy, Eye, EyeOff, Lock, ShieldAlert, X,
+  FileText, Tag, IndianRupee, Calendar, Award
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -59,7 +60,17 @@ async function api(path, { method = 'GET', body, token } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!res.ok) {
+    const message = data.error || `Request failed (${res.status})`;
+    if (res.status === 401 || /unauthorized|jwt|token|session/i.test(message)) {
+      try { clearSession(); } catch {}
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('w2w-session-expired'));
+      }
+      throw new Error('Session expired. Please login again.');
+    }
+    throw new Error(message);
+  }
   return data;
 }
 
@@ -194,6 +205,7 @@ export default function App() {
   const [signup, setSignup] = useState({ role: null, full_name: '', email: '', password: '', confirm_password: '' });
   const [oauthCtx, setOauthCtx] = useState(null);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [language, setLanguage] = useState('en'); // en, hi, etc.
 
   // ----- Boot sequence -----
   useEffect(() => {
@@ -257,6 +269,17 @@ export default function App() {
       return () => clearTimeout(t);
     };
     boot();
+  }, []);
+
+  useEffect(() => {
+    const onExpired = () => {
+      clearSession();
+      setAuth(null);
+      setScreen('login');
+      toast.error('Session expired. Please login again.');
+    };
+    window.addEventListener('w2w-session-expired', onExpired);
+    return () => window.removeEventListener('w2w-session-expired', onExpired);
   }, []);
 
   const handleLogout = async () => {
@@ -1312,9 +1335,9 @@ function WorkerApp({ auth, onLogout }) {
   const unreadCount = notifs.filter(n => !n.read).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
+    <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
       {/* top bar */}
-      <header className="bg-white border-b sticky top-0 z-10">
+      <header className="bg-white border-b shrink-0 z-10">
         <div className="container py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-blue-500 grid place-items-center text-white"><Hammer className="w-4 h-4" /></div>
@@ -1383,7 +1406,7 @@ function WorkerApp({ auth, onLogout }) {
         </div>
       </header>
 
-      <main className="container py-4">
+      <main className={tab === 'chats' ? "container flex-1 min-h-0 py-3 overflow-hidden" : "container flex-1 min-h-0 overflow-y-auto py-4 pb-4"}>
         {tab === 'home'    && <WorkerHome token={token} me={me} onChat={openChatWith} />}
         {tab === 'myjobs'  && <WorkerMyJobs token={token} onChat={openChatWith} />}
         {tab === 'chats'   && <ChatScreen token={token} me={{ id: me?.profile?.id, profile: me?.profile }} peerHint={chatPeer} color="indigo" />}
@@ -1391,7 +1414,7 @@ function WorkerApp({ auth, onLogout }) {
       </main>
 
       {/* bottom nav */}
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+      <nav className="shrink-0 bg-white border-t shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
         <div className="container grid grid-cols-4">
           {[
             { k: 'home',    i: Search,         l: 'Find' },
@@ -1813,13 +1836,15 @@ function LocationSearchBox({
     : 'bg-indigo-50 text-indigo-700';
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <Label>{label}</Label>
-        <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-          {ready ? 'Search ready' : 'Loading search'}
-        </span>
-      </div>
+    <div className="space-y-1.5">
+      {label && (
+        <div className="flex items-center justify-between gap-2">
+          <Label>{label}</Label>
+          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+            {ready ? 'Search ready' : 'Loading search'}
+          </span>
+        </div>
+      )}
 
       <div className="relative">
         <div className={`relative rounded-xl border bg-white shadow-sm transition-all focus-within:ring-4 ${borderClass}`}>
@@ -1846,13 +1871,13 @@ function LocationSearchBox({
             }}
             placeholder={placeholder}
             autoComplete="off"
-            className="pl-9 pr-32 border-0 shadow-none focus-visible:ring-0 h-11 rounded-xl"
+            className="pl-9 pr-24 border-0 shadow-none focus-visible:ring-0 h-10 rounded-xl"
           />
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
-            <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-8 px-2" title="Search typed address">
+            <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-7 px-2" title="Search typed address">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             </Button>
-            <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={useCurrent} disabled={gpsLoading} className={`h-8 px-2 text-white ${buttonClass}`} title="Use current GPS">
+            <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={useCurrent} disabled={gpsLoading} className={`h-7 px-2 text-white ${buttonClass}`} title="Use current GPS">
               {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
             </Button>
           </div>
@@ -1885,15 +1910,15 @@ function LocationSearchBox({
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground px-1">{helper}</p>
+      {helper ? <p className="text-xs text-muted-foreground px-1">{helper}</p> : null}
 
       {selectedText ? (
-        <div className={`text-xs rounded-lg px-3 py-2 ${selectedClass}`}>
-          Exact GPS saved: <b>{selectedText}</b>
+        <div className={`text-[10px] rounded-md px-2 py-1 ${selectedClass}`}>
+          GPS: <b>{selectedText}</b>
         </div>
       ) : (
-        <div className="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-700">
-          Type and choose one suggestion. Nearby matching needs exact GPS.
+        <div className="text-[10px] rounded-md px-2 py-1 bg-amber-50 text-amber-700">
+          Optional: choose suggestion for exact GPS.
         </div>
       )}
     </div>
@@ -2191,15 +2216,44 @@ function WorkerMyJobs({ token, onChat }) {
                 <span>·</span>
                 <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
               </div>
-              <Button size="sm" variant="outline" className="w-full mt-3"
-                      onClick={() => onChat?.({
-                        peer_id: a.jobs?.employer_id,
-                        peer_name: a.jobs?.employers?.company_name || 'Employer',
-                        peer_photo: a.jobs?.employers?.company_logo,
-                        peer_role: 'employer',
-                      })}>
-                <MessageSquare className="w-4 h-4 mr-1" /> Message employer
-              </Button>
+              <div className="mt-3 flex gap-2">
+                {a.status === 'accepted' && a.jobs?.start_date && new Date(a.jobs.start_date) <= new Date() && (
+                  <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                          onClick={async () => {
+                            try {
+                              await api(`applications/${a.id}`, { method: 'PATCH', token, body: { status: 'ongoing' } });
+                              load();
+                              toast.success('Work started!');
+                            } catch (e) { toast.error(e.message); }
+                          }}>
+                    <CheckCircle2 className="w-4 h-4 mr-1" /> Start Work
+                  </Button>
+                )}
+                {a.status === 'completed' && !a.feedback_given && (
+                  <Button size="sm" variant="outline" className="flex-1"
+                          onClick={() => {
+                            // Open feedback dialog
+                            const rating = prompt('Rate the company (1-5):');
+                            const feedback = prompt('Feedback for the company:');
+                            if (rating && feedback) {
+                              api('feedback/company', { method: 'POST', token, body: { application_id: a.id, rating: parseInt(rating), feedback_text: feedback } })
+                                .then(() => { load(); toast.success('Feedback submitted!'); })
+                                .catch(e => toast.error(e.message));
+                            }
+                          }}>
+                    <Star className="w-4 h-4 mr-1" /> Give Feedback
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="flex-1"
+                        onClick={() => onChat?.({
+                          peer_id: a.jobs?.employer_id,
+                          peer_name: a.jobs?.employers?.company_name || 'Employer',
+                          peer_photo: a.jobs?.employers?.company_logo,
+                          peer_role: 'employer',
+                        })}>
+                  <MessageSquare className="w-4 h-4 mr-1" /> Message
+                </Button>
+              </div>
             </div>
           ))}
         </TabsContent>
@@ -2515,7 +2569,16 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       age: me.extra?.age || '',
       skills: (me.extra?.skills || []).join(', '),
       experience_years: me.extra?.experience_years || 0,
+      experience_level: me.extra?.experience_level || 'beginner',
       expected_daily_wage: me.extra?.expected_daily_wage || 0,
+      gender: me.extra?.gender || '',
+      languages_known: Array.isArray(me.extra?.languages_known) ? me.extra.languages_known.join(', ') : (me.extra?.languages_known || ''),
+      bank_account: me.extra?.bank_account || '',
+      upi_id: me.extra?.upi_id || '',
+      selfie_url: me.extra?.selfie_url || '',
+      certificate_url: me.extra?.certificate_url || '',
+      previous_employer_reference: me.extra?.previous_employer_reference || '',
+      available: me.extra?.available ?? true,
       location_text: me.extra?.location_text || '',
       latitude: me.extra?.latitude || '',
       longitude: me.extra?.longitude || '',
@@ -2531,6 +2594,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       pan_back_url: me.extra?.pan_back_url || '',
       verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
       verification_notes: me.extra?.verification_notes || '',
+      language: me.profile?.language || 'en',
     });
   }, [me]);
 
@@ -2542,7 +2606,9 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
         age: form.age ? Number(form.age) : null,
         skills: typeof form.skills === 'string' ? form.skills.split(',').map(s => s.trim()).filter(Boolean) : form.skills,
         experience_years: Number(form.experience_years) || 0,
+        experience_level: form.experience_level || 'beginner',
         expected_daily_wage: Number(form.expected_daily_wage) || 0,
+        languages_known: typeof form.languages_known === 'string' ? form.languages_known.split(',').map(s => s.trim()).filter(Boolean) : form.languages_known,
       };
       await api('me/profile', { method: 'PATCH', token, body });
       toast.success('Profile saved');
@@ -2619,8 +2685,29 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           <Field label="Full name"  v={form.full_name}           on={(v) => setForm(f => ({ ...f, full_name: v }))} />
           <Field label="Phone"      v={form.phone}               on={(v) => setForm(f => ({ ...f, phone: v }))} />
           <Field label="Age"        v={form.age}                 on={(v) => setForm(f => ({ ...f, age: v }))} type="number" />
+          <div>
+            <Label>Gender</Label>
+            <Select value={form.gender || ''} onValueChange={(v) => setForm(f => ({ ...f, gender: v }))}>
+              <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+              <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent>
+            </Select>
+          </div>
           <Field label="Experience (years)" v={form.experience_years} on={(v) => setForm(f => ({ ...f, experience_years: v }))} type="number" />
+          <div>
+            <Label>Experience level</Label>
+            <Select value={form.experience_level || 'beginner'} onValueChange={(v) => setForm(f => ({ ...f, experience_level: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="beginner">Beginner</SelectItem><SelectItem value="skilled">Skilled</SelectItem><SelectItem value="experienced">Experienced</SelectItem><SelectItem value="expert">Expert</SelectItem></SelectContent>
+            </Select>
+          </div>
           <Field label="Expected daily wage (₹)" v={form.expected_daily_wage} on={(v) => setForm(f => ({ ...f, expected_daily_wage: v }))} type="number" />
+          <div>
+            <Label>Availability</Label>
+            <Select value={String(form.available ?? true)} onValueChange={(v) => setForm(f => ({ ...f, available: v === 'true' }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="true">Available now</SelectItem><SelectItem value="false">Not available</SelectItem></SelectContent>
+            </Select>
+          </div>
           <div className="sm:col-span-2">
             <SavedLocationEditor
               label="Home / preferred work location"
@@ -2635,11 +2722,47 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           </div>
           <div className="sm:col-span-2">
             <Label>Skills (comma-separated)</Label>
-            <Input value={form.skills || ''} onChange={(e) => setForm(f => ({ ...f, skills: e.target.value }))} placeholder="Carpentry, Electrical, Painting" />
+            <Input value={form.skills || ''} onChange={(e) => setForm(f => ({ ...f, skills: e.target.value }))} placeholder="TIG welding, CNC, Fitter, Helper" />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Languages known</Label>
+            <Input value={form.languages_known || ''} onChange={(e) => setForm(f => ({ ...f, languages_known: e.target.value }))} placeholder="Tamil, English, Kannada, Hindi" />
+          </div>
+          <Field label="Bank account number" v={form.bank_account} on={(v) => setForm(f => ({ ...f, bank_account: v }))} />
+          <Field label="UPI ID" v={form.upi_id} on={(v) => setForm(f => ({ ...f, upi_id: v }))} />
+          <div className="sm:col-span-2 grid sm:grid-cols-3 gap-3">
+            <DocumentUploadBox label="Selfie verification" url={form.selfie_url} disabled={busy} onFile={async (file) => { if (!file) return; const { url } = await uploadFile(file, 'selfie', token); setForm(f => ({ ...f, selfie_url: url })); }} />
+            <DocumentUploadBox label="Skill certificate" url={form.certificate_url} disabled={busy} onFile={async (file) => { if (!file) return; const { url } = await uploadFile(file, 'certificate', token); setForm(f => ({ ...f, certificate_url: url })); }} />
+            <div className="rounded-xl border bg-slate-50 p-3">
+              <Label>Trust badges</Label>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {me.extra?.verified && <Badge className="bg-emerald-100 text-emerald-700">Verified Worker</Badge>}
+                {Number(form.experience_years || 0) >= 3 && <Badge className="bg-indigo-100 text-indigo-700">Experienced</Badge>}
+                {form.available !== false && <Badge className="bg-amber-100 text-amber-700">Immediate Joiner</Badge>}
+                {form.certificate_url && <Badge className="bg-blue-100 text-blue-700">Skilled Worker</Badge>}
+              </div>
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Previous employer reference</Label>
+            <Textarea rows={2} value={form.previous_employer_reference || ''} onChange={(e) => setForm(f => ({ ...f, previous_employer_reference: e.target.value }))} placeholder="Company/person name and contact if available" />
           </div>
           <div className="sm:col-span-2">
             <Label>Bio</Label>
             <Textarea rows={3} value={form.bio || ''} onChange={(e) => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="Tell employers about yourself" />
+          </div>
+          <div>
+            <Label>Language</Label>
+            <Select value={form.language} onValueChange={(v) => setForm(f => ({ ...f, language: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="hi">Hindi</SelectItem>
+                <SelectItem value="te">Telugu</SelectItem>
+                <SelectItem value="ta">Tamil</SelectItem>
+                <SelectItem value="kn">Kannada</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -2744,8 +2867,8 @@ function EmployerApp({ auth, onLogout }) {
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      <header className="bg-white border-b sticky top-0 z-10">
+    <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
+      <header className="bg-white border-b shrink-0 z-10">
         <div className="container py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-500 grid place-items-center text-white"><Briefcase className="w-4 h-4" /></div>
@@ -2757,14 +2880,14 @@ function EmployerApp({ auth, onLogout }) {
         </div>
       </header>
 
-      <main className="container py-4">
+      <main className={tab === 'post' || tab === 'chats' ? "w-full flex-1 min-h-0 p-1 md:p-2 overflow-hidden" : "container flex-1 min-h-0 overflow-y-auto py-4 pb-4"}>
         {tab === 'dashboard' && <EmployerDashboard token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} />}
         {tab === 'post'      && <PostJob token={token} onPosted={() => { refreshJobs(); setTab('dashboard'); }} />}
         {tab === 'chats'     && <ChatScreen token={token} me={{ id: me?.profile?.id, profile: me?.profile }} peerHint={chatPeer} color="emerald" />}
         {tab === 'profile'   && <EmployerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
       </main>
 
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t">
+      <nav className="shrink-0 bg-white border-t">
         <div className="container grid grid-cols-4">
           {[
             { k: 'dashboard', i: ClipboardList, l: 'Jobs' },
@@ -2872,6 +2995,33 @@ function EmployerDashboard({ token, jobs, reload, onChat }) {
                       </Button>
                     </div>
                   )}
+                  {a.status === 'completed' && (
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" className="flex-1"
+                              onClick={() => {
+                                const rating = prompt('Rate the worker (1-5):');
+                                const feedback = prompt('Feedback for the worker:');
+                                if (rating && feedback) {
+                                  api('feedback/worker', { method: 'POST', token, body: { application_id: a.id, rating: parseInt(rating), feedback_text: feedback } })
+                                    .then(() => { toast.success('Feedback submitted!'); loadApplicants(); })
+                                    .catch(e => toast.error(e.message));
+                                }
+                              }}>
+                        <Star className="w-4 h-4 mr-1" /> Rate Worker
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1"
+                              onClick={() => {
+                                const feedback = prompt('Additional feedback for the worker:');
+                                if (feedback) {
+                                  api('feedback/employer', { method: 'POST', token, body: { application_id: a.id, rating: 5, feedback_text: feedback } })
+                                    .then(() => { toast.success('Feedback submitted!'); loadApplicants(); })
+                                    .catch(e => toast.error(e.message));
+                                }
+                              }}>
+                        <MessageSquare className="w-4 h-4 mr-1" /> Feedback
+                      </Button>
+                    </div>
+                  )}
                   <Button size="sm" variant="ghost" className="w-full mt-2 text-emerald-700 hover:bg-emerald-50"
                           onClick={() => onChat?.({ peer_id: a.worker_id, peer_name: up.full_name || up.email, peer_photo: up.photo_url, peer_role: 'worker' })}>
                     <MessageSquare className="w-4 h-4 mr-1" /> Message worker
@@ -2901,66 +3051,222 @@ function StatCard({ label, value, icon: Icon, color }) {
 }
 
 function PostJob({ token, onPosted }) {
+  const [step, setStep] = useState(1);
   const [f, setF] = useState({
     title: '', category: 'general', description: '', location_text: '', latitude: '', longitude: '',
-    daily_pay: 1000, duration_days: 1, start_date: '',
+    daily_pay: 1000, duration_days: 1, start_date: '', workers_needed: 1,
+    shift_timing: 'day', experience: 'beginner', contact_number: '',
+    skill_needed: '', accommodation_available: 'no', food_included: 'no', urgent_hiring: false,
+    overtime_available: false, transportation_provided: false,
   });
   const [busy, setBusy] = useState(false);
 
+  const categories = ['general','construction','electrical','plumbing','painting','carpentry','cleaning','delivery','farming','warehouse','welding','machining','fabrication','metalworking','assembly'];
+
+  const nextStep = (e) => {
+    e.preventDefault();
+    if (!f.title?.trim() || !f.category || !f.daily_pay || !f.duration_days || !f.start_date || !f.workers_needed) {
+      toast.error('Please fill all required fields before continuing');
+      return;
+    }
+    setStep(2);
+  };
+
+  const prevStep = () => setStep(1);
+
   const submit = async (e) => {
     e.preventDefault();
-    if (!f.title) return toast.error('Title required');
+    if (busy) return;
+    if (!token) { toast.error('Session expired. Please login again.'); return; }
+    if (!f.description?.trim() || !f.shift_timing || !f.experience || !f.contact_number?.trim()) {
+      toast.error('Please fill all required fields before publishing');
+      return;
+    }
     setBusy(true);
     try {
       await api('jobs', { method: 'POST', token, body: f });
-      toast.success('Job posted!');
+      toast.success('Job posted successfully!');
       onPosted();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
   return (
-    <Card>
-      <CardHeader><CardTitle>Post a new job</CardTitle><CardDescription>Reach workers near your saved company location instantly. If you leave job location empty, your company location will be used automatically.</CardDescription></CardHeader>
-      <CardContent>
-        <form onSubmit={submit} className="grid sm:grid-cols-2 gap-3">
-          <div className="sm:col-span-2"><Label>Job title</Label><Input value={f.title} onChange={e => setF(s => ({ ...s, title: e.target.value }))} placeholder="e.g. Carpenter for 2 days" /></div>
-          <div>
-            <Label>Category</Label>
-            <Select value={f.category} onValueChange={(v) => setF(s => ({ ...s, category: v }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {['general','construction','electrical','plumbing','painting','carpentry','cleaning','delivery','farming','warehouse'].map(c => (
-                  <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="h-full min-h-0 overflow-hidden bg-slate-50 flex items-center justify-center px-1">
+      <Card className="w-full max-w-[1320px] h-full max-h-full overflow-hidden rounded-2xl border-slate-200 shadow-md flex flex-col bg-white">
+        <CardHeader className="shrink-0 border-b px-3 py-2 md:px-5 md:py-2 bg-white">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Button variant="ghost" size="icon" onClick={onPosted} className="h-8 w-8 shrink-0 rounded-full">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <div className="min-w-0">
+                <CardTitle className="text-lg md:text-xl leading-tight">Post a new job</CardTitle>
+                <CardDescription className="text-xs md:text-sm leading-snug truncate md:whitespace-normal">
+                  Reach workers near your saved company location instantly. Leave job location empty to use your company location.
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <motion.div animate={{ scale: step === 1 ? 1.18 : 1 }} className={`w-3 h-3 rounded-full ${step >= 1 ? 'bg-emerald-600' : 'bg-slate-300'}`} />
+              <motion.div animate={{ scale: step === 2 ? 1.18 : 1 }} className={`w-3 h-3 rounded-full ${step >= 2 ? 'bg-emerald-600' : 'bg-slate-300'}`} />
+            </div>
           </div>
-          <div className="sm:col-span-2">
-            <LocationSearchBox
-              label="Job location override (optional)"
-              value={f.location_text || ''}
-              latitude={f.latitude}
-              longitude={f.longitude}
-              color="emerald"
-              placeholder="Search job site, landmark, area"
-              helper="Leave this empty to automatically use your saved company location. Use this only if the job site is different."
-              onChange={(loc) => setF(s => ({ ...s, ...loc }))}
-            />
-          </div>
-          <div><Label>Daily pay (₹)</Label><Input type="number" value={f.daily_pay} onChange={e => setF(s => ({ ...s, daily_pay: e.target.value }))} /></div>
-          <div><Label>Duration (days)</Label><Input type="number" value={f.duration_days} onChange={e => setF(s => ({ ...s, duration_days: e.target.value }))} /></div>
-          <div className="sm:col-span-2"><Label>Start date</Label><Input type="date" value={f.start_date} onChange={e => setF(s => ({ ...s, start_date: e.target.value }))} /></div>
-          <div className="sm:col-span-2"><Label>Description</Label><Textarea rows={4} value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="What needs to be done?" /></div>
-          <div className="sm:col-span-2">
-            <Button type="submit" disabled={busy} className="w-full h-11 bg-emerald-600 hover:bg-emerald-700">
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}Post job
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        </CardHeader>
+
+        <CardContent className="flex-1 min-h-0 overflow-hidden p-2 md:p-3 bg-white text-sm">
+          <AnimatePresence mode="wait">
+            {step === 1 && (
+              <motion.form
+                key="step1"
+                initial={{ opacity: 0, x: -18 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 18 }}
+                onSubmit={nextStep}
+                className="h-full min-h-0 flex flex-col justify-between gap-2"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
+                  <div className="md:col-span-2 space-y-1">
+                    <Label className="text-sm">Job title *</Label>
+                    <Input className="h-9" value={f.title} onChange={e => setF(s => ({ ...s, title: e.target.value }))} placeholder="Enter role name, e.g. TIG Welder, CNC Operator" required />
+                  </div>
+
+                  <div className="md:col-span-2 space-y-1">
+                    <Label className="text-sm">Category *</Label>
+                    <Select value={f.category} onValueChange={(v) => setF(s => ({ ...s, category: v }))}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Select work category" /></SelectTrigger>
+                      <SelectContent>{categories.map(c => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-sm">Daily pay (₹) *</Label>
+                    <Input className="h-9" type="number" value={f.daily_pay} onChange={e => setF(s => ({ ...s, daily_pay: e.target.value }))} min="1" required />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-sm">Duration (days) *</Label>
+                    <Input className="h-9" type="number" value={f.duration_days} onChange={e => setF(s => ({ ...s, duration_days: e.target.value }))} min="1" required />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-sm">Start date *</Label>
+                    <Input className="h-9" type="date" value={f.start_date} onChange={e => setF(s => ({ ...s, start_date: e.target.value }))} required />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-sm">Workers needed *</Label>
+                    <Input className="h-9" type="number" value={f.workers_needed} onChange={e => setF(s => ({ ...s, workers_needed: e.target.value }))} min="1" required />
+                  </div>
+                </div>
+
+                <Button type="submit" className="w-full h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
+                  Continue <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </motion.form>
+            )}
+
+            {step === 2 && (
+              <motion.form
+                key="step2"
+                initial={{ opacity: 0, x: 18 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -18 }}
+                onSubmit={submit}
+                className="h-full min-h-0 flex flex-col justify-between gap-2"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3">
+                  <div className="md:col-span-12 space-y-1">
+                    <Label className="text-sm">Job location override <span className="font-normal text-slate-500">(optional)</span></Label>
+                    <LocationSearchBox
+                      label=""
+                      value={f.location_text || ''}
+                      latitude={f.latitude}
+                      longitude={f.longitude}
+                      color="emerald"
+                      placeholder="Search factory location, site address, landmark, or work area"
+                      helper=""
+                      onChange={(loc) => setF(s => ({ ...s, ...loc }))}
+                    />
+                  </div>
+
+                  <div className="md:col-span-12 space-y-1">
+                    <Label className="text-sm">Description *</Label>
+                    <Textarea className="min-h-[60px] h-[60px] resize-none" value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="Explain fabrication work details, welding type, materials, shift timing, tools, and worker requirements." required />
+                  </div>
+
+                  <div className="md:col-span-6 space-y-1">
+                    <Label className="text-sm">Shift timing *</Label>
+                    <Select value={f.shift_timing} onValueChange={(v) => setF(s => ({ ...s, shift_timing: v }))}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">Day Shift (8AM-5PM)</SelectItem>
+                        <SelectItem value="night">Night Shift (8PM-5AM)</SelectItem>
+                        <SelectItem value="flexible">Flexible Hours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-6 space-y-1">
+                    <Label className="text-sm">Experience needed *</Label>
+                    <Select value={f.experience} onValueChange={(v) => setF(s => ({ ...s, experience: v }))}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="beginner">Beginner (0-1 year)</SelectItem>
+                        <SelectItem value="intermediate">Intermediate (1-3 years)</SelectItem>
+                        <SelectItem value="experienced">Experienced (3-5 years)</SelectItem>
+                        <SelectItem value="expert">Expert (5+ years)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-6 space-y-1">
+                    <Label className="text-sm">Skill needed</Label>
+                    <Input className="h-9" value={f.skill_needed} onChange={e => setF(s => ({ ...s, skill_needed: e.target.value }))} placeholder="TIG welding, CNC, helper, fitter" />
+                  </div>
+
+                  <div className="md:col-span-6 space-y-1">
+                    <Label className="text-sm">Contact number *</Label>
+                    <Input className="h-9" type="tel" value={f.contact_number} onChange={e => setF(s => ({ ...s, contact_number: e.target.value }))} placeholder="Workers can contact this number directly" required />
+                  </div>
+
+                  <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-5 gap-2">
+                    {[
+                      ['accommodation_available', 'Accommodation'],
+                      ['food_included', 'Food'],
+                      ['urgent_hiring', 'Urgent'],
+                      ['overtime_available', 'Overtime'],
+                      ['transportation_provided', 'Transport'],
+                    ].map(([key, label]) => (
+                      <button
+                        type="button"
+                        key={key}
+                        onClick={() => setF(s => ({ ...s, [key]: typeof s[key] === 'boolean' ? !s[key] : (s[key] === 'yes' ? 'no' : 'yes') }))}
+                        className={`h-9 rounded-xl border text-xs font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1 shrink-0">
+                  <Button type="button" variant="secondary" onClick={prevStep} className="h-10 rounded-xl bg-slate-950 text-white hover:bg-slate-800">
+                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                  </Button>
+                  <Button type="submit" disabled={busy} className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                    Publish Job
+                  </Button>
+                </div>
+              </motion.form>
+            )}
+          </AnimatePresence>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
+
 
 function EmployerProfile({ token, me, onSaved, onLogout }) {
   const [f, setF] = useState({});
@@ -2971,6 +3277,9 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
       phone: me.profile?.phone || '',
       company_name: me.extra?.company_name || '',
       industry: me.extra?.industry || '',
+      company_size: me.extra?.company_size || '',
+      hr_contact: me.extra?.hr_contact || '',
+      official_email: me.extra?.official_email || '',
       location_text: me.extra?.location_text || '',
       latitude: me.extra?.latitude || '',
       longitude: me.extra?.longitude || '',
@@ -2988,6 +3297,7 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
       pan_back_url: me.extra?.pan_back_url || '',
       verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
       verification_notes: me.extra?.verification_notes || '',
+      language: me.profile?.language || 'en',
     });
   }, [me]);
 
@@ -3096,7 +3406,22 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
           <Field label="Your name"   v={f.full_name}    on={(v) => setF(s => ({ ...s, full_name: v }))} />
           <Field label="Phone"       v={f.phone}        on={(v) => setF(s => ({ ...s, phone: v }))} />
           <Field label="Company"     v={f.company_name} on={(v) => setF(s => ({ ...s, company_name: v }))} />
-          <Field label="Industry"    v={f.industry}     on={(v) => setF(s => ({ ...s, industry: v }))} />
+          <Field label="Industry type"    v={f.industry}     on={(v) => setF(s => ({ ...s, industry: v }))} />
+          <Field label="HR contact person" v={f.hr_contact} on={(v) => setF(s => ({ ...s, hr_contact: v }))} />
+          <Field label="Official email" v={f.official_email} on={(v) => setF(s => ({ ...s, official_email: v }))} type="email" />
+          <div>
+            <Label>Company size</Label>
+            <Select value={f.company_size || ''} onValueChange={(v) => setF(s => ({ ...s, company_size: v }))}>
+              <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
+              <SelectContent><SelectItem value="1-10">1-10 employees</SelectItem><SelectItem value="11-50">11-50 employees</SelectItem><SelectItem value="51-200">51-200 employees</SelectItem><SelectItem value="200+">200+ employees</SelectItem></SelectContent>
+            </Select>
+          </div>
+          <Field label="GST number" v={f.gst_number} on={(v) => setF(s => ({ ...s, gst_number: v }))} />
+          <Field label="Company PAN" v={f.pan_number} on={(v) => setF(s => ({ ...s, pan_number: v }))} />
+          <div className="sm:col-span-2">
+            <Label>Office address</Label>
+            <Textarea rows={2} value={f.company_address || ''} onChange={(e) => setF(s => ({ ...s, company_address: e.target.value }))} placeholder="Complete registered/office address" />
+          </div>
           <div className="sm:col-span-2">
             <SavedLocationEditor
               label="Company fixed location"
@@ -3112,6 +3437,19 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
           <div className="sm:col-span-2">
             <Label>About</Label>
             <Textarea rows={3} value={f.description || ''} onChange={(e) => setF(s => ({ ...s, description: e.target.value }))} />
+          </div>
+          <div>
+            <Label>Language</Label>
+            <Select value={f.language} onValueChange={(v) => setF(s => ({ ...s, language: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="hi">Hindi</SelectItem>
+                <SelectItem value="te">Telugu</SelectItem>
+                <SelectItem value="ta">Tamil</SelectItem>
+                <SelectItem value="kn">Kannada</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -3228,70 +3566,140 @@ function AvatarUploader({ token, currentUrl, kind = 'avatar', onUploaded, color 
 // ============================================================
 function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
   const [threads, setThreads] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState(peerHint || null); // {peer_id, peer_name, peer_photo}
+  const [loading, setLoading] = useState(false);
+  const [active, setActive] = useState(peerHint || null);
+  const [query, setQuery] = useState('');
+  const [authError, setAuthError] = useState('');
 
   const loadThreads = async () => {
+    if (!token) {
+      setLoading(false);
+      setAuthError('Session is not ready. Please logout and login again.');
+      return;
+    }
     setLoading(true);
-    try { const d = await api('chat/threads', { token }); setThreads(d.threads); }
-    catch (e) { toast.error(e.message); }
-    finally { setLoading(false); }
+    setAuthError('');
+    try {
+      const d = await api('chat/threads', { token });
+      const list = d.threads || [];
+      setThreads(list);
+      if (!active && !peerHint && list.length > 0) setActive(list[0]);
+    } catch (e) {
+      if (String(e.message || '').toLowerCase().includes('unauthorized')) {
+        setAuthError('Chat session expired. Please logout and login again.');
+      } else {
+        toast.error(e.message || 'Unable to load chats');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(() => { loadThreads(); }, []);
 
-  // Auto-open hinted peer once
-  useEffect(() => { if (peerHint) setActive(peerHint); }, [peerHint?.peer_id]);
+  useEffect(() => { loadThreads(); }, [token]);
+  useEffect(() => { if (peerHint?.peer_id) setActive(peerHint); }, [peerHint?.peer_id]);
 
-  // Subscribe to new incoming messages globally → refresh threads
   useEffect(() => {
-    if (!me?.id) return;
-    const supa = getSupabase();
-    // hand the JWT over to realtime so RLS policy passes
-    supa.realtime.setAuth(token);
-    const ch = supa.channel(`thread-list-${me.id}`)
-      .on('postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${me.id}` },
-          () => loadThreads())
-      .subscribe();
-    return () => { supa.removeChannel(ch); };
+    if (!me?.id || !token) return;
+    try {
+      const supa = getSupabase();
+      supa.realtime.setAuth(token);
+      const ch = supa.channel(`thread-list-${me.id}`)
+        .on('postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${me.id}` },
+            () => loadThreads())
+        .subscribe();
+      return () => { supa.removeChannel(ch); };
+    } catch { return undefined; }
   }, [me?.id, token]);
 
-  if (active) {
-    return (
-      <ChatThread token={token} me={me} peer={active}
-                  onBack={() => { setActive(null); loadThreads(); }} color={color} />
-    );
-  }
+  const filteredThreads = threads.filter((t) =>
+    `${t.peer_name || ''} ${t.last_message?.content || ''}`.toLowerCase().includes(query.toLowerCase())
+  );
 
   return (
-    <div className="space-y-3">
-      <h2 className="font-bold text-lg">Chats</h2>
-      {loading && <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}
-      {!loading && threads.length === 0 && (
-        <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">
-          No conversations yet. {me?.profile?.role === 'worker' ? 'Apply to a job to start chatting.' : 'Once workers apply to your jobs, you can chat with them here.'}
-        </p>
-      )}
-      <div className="space-y-2">
-        {threads.map(t => (
-          <button key={t.peer_id} onClick={() => setActive(t)}
-                  className="w-full text-left bg-white rounded-xl border hover:shadow transition p-3 flex items-center gap-3">
-            <Avatar><AvatarImage src={t.peer_photo} /><AvatarFallback>{initials(t.peer_name)}</AvatarFallback></Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold truncate">{t.peer_name}</p>
-                {t.last_message && <span className="text-[11px] text-muted-foreground shrink-0">
-                  {new Date(t.last_message.created_at).toLocaleDateString()}
-                </span>}
+    <div className="h-full min-h-0 overflow-hidden bg-white p-0">
+      <Card className="h-full max-w-7xl mx-auto overflow-hidden rounded-none md:rounded-2xl border-slate-200 shadow-none md:shadow-sm bg-white">
+        <CardContent className="h-full p-0">
+          <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[340px_1fr] bg-white">
+            <aside className={`${active ? 'hidden md:flex' : 'flex'} h-full min-h-0 border-r bg-white flex-col`}>
+              <div className="shrink-0 p-4 border-b bg-white">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">Chats</h2>
+                    <p className="text-[11px] text-slate-500">Select a conversation to continue.</p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={loadThreads} className="rounded-full">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search or start a new chat" className="pl-9 rounded-full bg-slate-100 border-slate-100" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground truncate">{t.last_message?.content || 'Start a conversation'}</p>
-            </div>
-            {t.unread_count > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center text-[10px] font-bold rounded-full bg-red-500 text-white w-5 h-5">{t.unread_count}</span>
-            )}
-          </button>
-        ))}
-      </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+                {authError && (
+                  <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    {authError}
+                  </div>
+                )}
+                {loading && <div className="py-12 grid place-items-center"><Loader2 className="w-8 h-8 animate-spin text-emerald-600" /></div>}
+                {!loading && !authError && filteredThreads.length === 0 && !peerHint && (
+                  <div className="m-4 rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-3 text-slate-400" />
+                    <p className="font-semibold">No conversations yet</p>
+                    <p className="text-sm text-slate-500 mt-1">Chats will appear here after workers apply or after you open an applicant chat.</p>
+                  </div>
+                )}
+
+                {filteredThreads.map(t => {
+                  const selected = active?.peer_id === t.peer_id;
+                  return (
+                    <button
+                      key={t.peer_id}
+                      type="button"
+                      onClick={() => setActive(t)}
+                      className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors border-b border-slate-100 ${selected ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                    >
+                      <Avatar className="w-11 h-11 shrink-0">
+                        <AvatarImage src={t.peer_photo} />
+                        <AvatarFallback className="bg-emerald-100 text-emerald-700">{initials(t.peer_name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold truncate text-slate-900">{t.peer_name || 'Unknown user'}</p>
+                          {t.last_message && <span className="text-[11px] text-slate-500 shrink-0">{new Date(t.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                        </div>
+                        <p className="text-sm text-slate-500 truncate mt-0.5">{t.last_message?.content || 'Start a conversation'}</p>
+                      </div>
+                      {t.unread_count > 0 && <span className="inline-flex min-w-[22px] h-[22px] items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-bold text-white">{t.unread_count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </aside>
+
+            <section className="hidden md:flex h-full min-h-0 min-w-0 bg-white">
+              {active ? (
+                <ChatThread token={token} me={me} peer={active} onBack={() => setActive(null)} color={color} />
+              ) : (
+                <div className="flex-1 grid place-items-center text-center p-8 bg-white">
+                  <div>
+                    <div className="w-24 h-24 rounded-3xl bg-slate-50 mx-auto grid place-items-center shadow-sm"><MessageSquare className="w-10 h-10 text-slate-500" /></div>
+                    <h3 className="text-xl font-bold mt-5">Work2Wish Chat</h3>
+                    <p className="text-sm text-slate-500 mt-2">Choose a chat from the left panel.</p>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className={`${active ? 'flex' : 'hidden'} md:hidden h-full min-h-0 bg-white`}>
+              {active && <ChatThread token={token} me={me} peer={active} onBack={() => setActive(null)} color={color} />}
+            </section>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -3300,101 +3708,174 @@ function ChatThread({ token, me, peer, onBack, color }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [error, setError] = useState('');
   const scrollRef = useRef(null);
 
   const load = async () => {
+    if (!token || !peer?.peer_id) return;
+    setError('');
     try {
       const d = await api(`messages?peer=${peer.peer_id}`, { token });
       setMessages(d.messages || []);
-      // mark as read
       api('messages/mark-read', { method: 'POST', token, body: { peer_id: peer.peer_id } }).catch(() => {});
-    } catch (e) { toast.error(e.message); }
+    } catch (e) {
+      if (String(e.message || '').toLowerCase().includes('unauthorized')) {
+        setError('Chat session expired. Please logout and login again.');
+      } else {
+        setError(e.message || 'Unable to load messages');
+      }
+    }
   };
 
-  useEffect(() => { load(); }, [peer.peer_id]);
+  useEffect(() => { load(); }, [peer?.peer_id, token]);
 
-  // realtime subscription for this thread
   useEffect(() => {
-    if (!me?.id) return;
-    const supa = getSupabase();
-    supa.realtime.setAuth(token);
-    const ch = supa.channel(`thread-${me.id}-${peer.peer_id}`)
-      .on('postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages',
-            filter: `receiver_id=eq.${me.id}` },
-          (payload) => {
-            const m = payload.new;
-            if (m.sender_id === peer.peer_id) {
-              setMessages(prev => [...prev, m]);
-              api('messages/mark-read', { method: 'POST', token, body: { peer_id: peer.peer_id } }).catch(() => {});
-            }
-          })
-      .subscribe();
-    return () => { supa.removeChannel(ch); };
-  }, [me?.id, peer.peer_id, token]);
+    if (!me?.id || !peer?.peer_id || !token) return;
+    try {
+      const supa = getSupabase();
+      supa.realtime.setAuth(token);
+      const ch = supa.channel(`thread-${me.id}-${peer.peer_id}`)
+        .on('postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${me.id}` },
+            (payload) => {
+              const m = payload.new;
+              if (m.sender_id === peer.peer_id) {
+                setMessages(prev => [...prev, m]);
+                api('messages/mark-read', { method: 'POST', token, body: { peer_id: peer.peer_id } }).catch(() => {});
+              }
+            })
+        .subscribe();
+      return () => { supa.removeChannel(ch); };
+    } catch { return undefined; }
+  }, [me?.id, peer?.peer_id, token]);
 
-  // autoscroll
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
   const send = async () => {
-    if (!text.trim()) return;
+    if (!text.trim() || sending) return;
+    if (!token || !me?.id || !peer?.peer_id) { setError('Session not ready. Please logout and login again.'); return; }
     const content = text.trim();
-    setText(''); setSending(true);
-    // optimistic
+    setText('');
+    setSending(true);
+    setError('');
+    if (editingId) {
+      try {
+        const d = await api(`messages/${editingId}`, { method: 'PATCH', token, body: { content } });
+        setMessages(prev => prev.map(m => m.id === editingId ? d.message : m));
+        setEditingId(null);
+      } catch (e) {
+        setError(e.message || 'Message not edited');
+      } finally { setSending(false); }
+      return;
+    }
     const optimistic = { id: 'tmp-' + Date.now(), sender_id: me.id, receiver_id: peer.peer_id, content, created_at: new Date().toISOString() };
     setMessages(prev => [...prev, optimistic]);
     try {
       const d = await api('messages', { method: 'POST', token, body: { receiver_id: peer.peer_id, content } });
       setMessages(prev => prev.map(m => m.id === optimistic.id ? d.message : m));
     } catch (e) {
-      toast.error(e.message);
+      setError(e.message || 'Message not sent');
       setMessages(prev => prev.filter(m => m.id !== optimistic.id));
     } finally { setSending(false); }
   };
 
-  const accent = color === 'emerald' ? 'bg-emerald-600' : 'bg-indigo-600';
-  const accentText = color === 'emerald' ? 'text-emerald-50' : 'text-indigo-50';
+  const startEdit = (m) => {
+    setEditingId(m.id);
+    setText(m.content || '');
+  };
+
+  const deleteMessage = async (m, mode) => {
+    try {
+      const d = await api(`messages/${m.id}?mode=${mode}`, { method: 'DELETE', token });
+      if (mode === 'me' && d.local_only) {
+        setMessages(prev => prev.filter(x => x.id !== m.id));
+      } else if (d.message) {
+        setMessages(prev => mode === 'me' ? prev.filter(x => x.id !== m.id) : prev.map(x => x.id === m.id ? d.message : x));
+      }
+      toast.success(mode === 'everyone' ? 'Deleted for everyone' : 'Deleted for you');
+    } catch (e) {
+      toast.error(e.message || 'Delete failed');
+    }
+  };
 
   return (
-    <div className="bg-white rounded-xl border overflow-hidden flex flex-col h-[75vh]">
-      {/* header */}
-      <div className="flex items-center gap-3 p-3 border-b bg-slate-50">
-        <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="w-4 h-4" /></Button>
-        <Avatar className="w-9 h-9"><AvatarImage src={peer.peer_photo} /><AvatarFallback>{initials(peer.peer_name)}</AvatarFallback></Avatar>
-        <div className="leading-tight min-w-0">
-          <p className="font-semibold truncate">{peer.peer_name}</p>
-          <p className="text-[10px] text-muted-foreground capitalize">{peer.peer_role || 'user'} · live</p>
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-white">
+      <div className="shrink-0 h-14 px-4 border-b bg-white flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Button type="button" variant="ghost" size="icon" onClick={onBack} className="md:hidden rounded-full shrink-0">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <Avatar className="w-9 h-9 shrink-0">
+            <AvatarImage src={peer.peer_photo} />
+            <AvatarFallback className="bg-emerald-100 text-emerald-700">{initials(peer.peer_name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="font-semibold truncate text-slate-900">{peer.peer_name || 'Chat'}</p>
+            <p className="text-[11px] text-slate-500">Active conversation</p>
+          </div>
         </div>
+        <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Online</Badge>
       </div>
-      {/* messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50">
-        {messages.length === 0 && <p className="text-center text-xs text-muted-foreground mt-8">Say hi 👋</p>}
-        {messages.map(m => {
-          const mine = m.sender_id === me.id;
-          return (
-            <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
-                mine ? `${accent} ${accentText} rounded-br-sm` : 'bg-white border rounded-bl-sm'
-              }`}>
-                <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                <p className={`text-[9px] mt-1 ${mine ? 'opacity-80' : 'text-muted-foreground'}`}>
-                  {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
+
+      {error && <div className="shrink-0 mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{error}</div>}
+
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto bg-white px-4 py-4 md:px-8 space-y-3">
+        {messages.length === 0 && !error && (
+          <div className="h-full grid place-items-center text-center">
+            <div className="rounded-2xl bg-slate-50 px-6 py-5 shadow-sm">
+              <MessageSquare className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+              <p className="font-semibold text-slate-700">Start a conversation</p>
+              <p className="text-sm text-slate-500">Say hi to begin chatting 👋</p>
             </div>
+          </div>
+        )}
+        {messages.filter(m => !(Array.isArray(m.deleted_for) && m.deleted_for.includes(me.id))).map(m => {
+          const mine = m.sender_id === me.id;
+          const deleted = m.deleted_for_everyone || m.content === 'This message was deleted';
+          return (
+            <motion.div key={m.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
+              {!mine && (
+                <Avatar className="w-7 h-7 shrink-0 mb-1">
+                  <AvatarImage src={peer.peer_photo} />
+                  <AvatarFallback className="bg-emerald-100 text-emerald-700 text-[10px]">{initials(peer.peer_name)}</AvatarFallback>
+                </Avatar>
+              )}
+              <div className={`group relative max-w-[78%] md:max-w-[62%] rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${mine ? 'bg-emerald-50 border-emerald-100 text-slate-900 rounded-br-md' : 'bg-white border-slate-200 text-slate-900 rounded-bl-md'}`}>
+                <p className={`whitespace-pre-wrap break-words leading-relaxed ${deleted ? 'italic text-slate-500' : ''}`}>{m.content}</p>
+                <div className="flex items-center justify-end gap-2 mt-1.5">
+                  {m.edited_at && !deleted && <span className="text-[10px] text-slate-400">edited</span>}
+                  <span className="text-[10px] text-slate-500">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                {!String(m.id).startsWith('tmp-') && !deleted && (
+                  <div className={`mt-2 hidden group-hover:flex gap-1 ${mine ? 'justify-end' : 'justify-start'}`}>
+                    {mine && <button type="button" onClick={() => startEdit(m)} className="text-[10px] rounded-full bg-white border px-2 py-1 hover:bg-slate-50">Edit</button>}
+                    <button type="button" onClick={() => deleteMessage(m, 'me')} className="text-[10px] rounded-full bg-white border px-2 py-1 hover:bg-slate-50">Delete me</button>
+                    {mine && <button type="button" onClick={() => deleteMessage(m, 'everyone')} className="text-[10px] rounded-full bg-red-50 border border-red-100 text-red-600 px-2 py-1 hover:bg-red-100">Delete all</button>}
+                  </div>
+                )}
+              </div>
+              {mine && (
+                <Avatar className="w-7 h-7 shrink-0 mb-1">
+                  <AvatarImage src={me.profile?.photo_url} />
+                  <AvatarFallback className="bg-indigo-100 text-indigo-700 text-[10px]">{initials(me.profile?.full_name || 'Me')}</AvatarFallback>
+                </Avatar>
+              )}
+            </motion.div>
           );
         })}
       </div>
-      {/* input */}
-      <div className="p-2 border-t flex items-center gap-2 bg-white">
-        <Input value={text} onChange={e => setText(e.target.value)}
-               onKeyDown={e => e.key === 'Enter' && !sending && send()}
-               placeholder="Type a message..." />
-        <Button onClick={send} disabled={sending || !text.trim()} className={accent + ' hover:opacity-90'}>
-          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-        </Button>
+
+      <div className="shrink-0 p-3 border-t bg-white">
+        <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
+          {editingId && <button type="button" onClick={() => { setEditingId(null); setText(''); }} className="text-xs text-slate-500 px-2">Cancel edit</button>}
+          <Input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && send()} placeholder={editingId ? 'Edit message' : 'Type a message'} className="h-10 flex-1 rounded-full bg-white border-0 px-4 shadow-none focus-visible:ring-0" />
+          <Button onClick={send} disabled={sending || !text.trim()} className="h-10 w-10 rounded-full bg-emerald-600 hover:bg-emerald-700 p-0">
+            {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          </Button>
+        </div>
       </div>
     </div>
   );

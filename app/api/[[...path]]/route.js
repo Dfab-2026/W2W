@@ -665,7 +665,7 @@ async function route(request, { params }) {
 
     if (path === 'me/profile' && method === 'PATCH') {
       const body = await request.json();
-      const profileFields = ['full_name', 'phone', 'photo_url'];
+      const profileFields = ['full_name', 'phone', 'photo_url', 'language'];
       const profileUpdate = {};
       for (const k of profileFields) if (k in body) profileUpdate[k] = body[k];
       if (Object.keys(profileUpdate).length) {
@@ -678,7 +678,8 @@ async function route(request, { params }) {
       let updatedExtra = null;
 
       if (role === 'worker') {
-        const wf = ['age', 'skills', 'experience_years', 'expected_daily_wage',
+        const wf = ['age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known',
+                    'bank_account', 'upi_id', 'selfie_url', 'certificate_url', 'previous_employer_reference',
                     'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'bio', 'available', 'address',
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url',
                     'verification_status', 'verification_notes'];
@@ -699,11 +700,18 @@ async function route(request, { params }) {
           } else {
             result = await admin.from('workers').insert({ user_id: me.id, ...wu }).select().maybeSingle();
           }
+          if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
+            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','verification_status','verification_notes','verified','verification_submitted_at'];
+            const safe = {}; for (const k of safeKeys) if (k in wu) safe[k] = wu[k];
+            result = existingWorker
+              ? await admin.from('workers').update(safe).eq('user_id', me.id).select().maybeSingle()
+              : await admin.from('workers').insert({ user_id: me.id, ...safe }).select().maybeSingle();
+          }
           if (result.error) return err(result.error.message, 400);
           updatedExtra = result.data;
         }
       } else if (role === 'employer') {
-        const ef = ['company_name', 'company_logo', 'industry', 'location_text',
+        const ef = ['company_name', 'company_logo', 'industry', 'company_size', 'hr_contact', 'official_email', 'location_text',
                     'latitude', 'longitude', 'place_id', 'place_name', 'description', 'company_address', 'gst_number',
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'gst_certificate_url',
                     'verification_status', 'verification_notes'];
@@ -723,6 +731,13 @@ async function route(request, { params }) {
             result = await admin.from('employers').update(eu).eq('user_id', me.id).select().maybeSingle();
           } else {
             result = await admin.from('employers').insert({ user_id: me.id, ...eu }).select().maybeSingle();
+          }
+          if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
+            const safeKeys = ['company_name','company_logo','industry','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','verification_status','verification_notes','verified','verification_submitted_at'];
+            const safe = {}; for (const k of safeKeys) if (k in eu) safe[k] = eu[k];
+            result = existingEmployer
+              ? await admin.from('employers').update(safe).eq('user_id', me.id).select().maybeSingle()
+              : await admin.from('employers').insert({ user_id: me.id, ...safe }).select().maybeSingle();
           }
           if (result.error) return err(result.error.message, 400);
           updatedExtra = result.data;
@@ -775,7 +790,7 @@ async function route(request, { params }) {
         ? Number(body.longitude)
         : (employer?.longitude !== undefined && employer?.longitude !== null ? Number(employer.longitude) : null);
 
-      const payload = {
+      const basePayload = {
         employer_id: me.id,
         title: body.title,
         category: body.category,
@@ -788,7 +803,27 @@ async function route(request, { params }) {
         start_date: body.start_date || null,
         status: 'open',
       };
-      const { data, error } = await admin.from('jobs').insert(payload).select().single();
+
+      // Extra job-form fields. These will be saved if your Supabase jobs table has these columns.
+      // If the columns are not added yet, the API retries with the base payload so posting still works.
+      const extendedPayload = {
+        ...basePayload,
+        workers_needed: Number(body.workers_needed) || 1,
+        skill_needed: body.skill_needed || null,
+        shift_timing: body.shift_timing || null,
+        experience: body.experience || null,
+        contact_number: body.contact_number || null,
+        accommodation_available: body.accommodation_available === true || body.accommodation_available === 'yes',
+        food_included: body.food_included === true || body.food_included === 'yes',
+        urgent_hiring: !!body.urgent_hiring,
+        overtime_available: !!body.overtime_available,
+        transportation_provided: !!body.transportation_provided,
+      };
+
+      let { data, error } = await admin.from('jobs').insert(extendedPayload).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        ({ data, error } = await admin.from('jobs').insert(basePayload).select().single());
+      }
       if (error) return err(error.message, 400);
       return json({ job: data });
     }
@@ -845,9 +880,38 @@ async function route(request, { params }) {
     if (path.match(/^employer\/jobs\/[^/]+\/applicants$/) && method === 'GET') {
       const jobId = path.split('/')[2];
       const { data, error } = await admin.from('applications')
-        .select('*, workers!inner(*, user_profiles!workers_user_id_fkey(full_name,email,phone,photo_url))')
+        .select('*, workers!inner(*, user_profiles!workers_user_id_fkey(full_name,email,phone,photo_url)), jobs!inner(start_date,duration_days)')
         .eq('job_id', jobId).order('applied_at', { ascending: false });
       if (error) return err(error.message, 400);
+
+      // Auto-update status based on dates
+      const now = new Date();
+      for (const app of data || []) {
+        if (app.status === 'accepted' && app.jobs.start_date) {
+          const startDate = new Date(app.jobs.start_date);
+          if (now >= startDate) {
+            await admin.from('applications').update({
+              status: 'ongoing',
+              started_at: startDate.toISOString()
+            }).eq('id', app.id);
+            app.status = 'ongoing';
+            app.started_at = startDate.toISOString();
+          }
+        } else if (app.status === 'ongoing' && app.started_at && app.jobs.duration_days) {
+          const startedAt = new Date(app.started_at);
+          const endDate = new Date(startedAt);
+          endDate.setDate(endDate.getDate() + app.jobs.duration_days);
+          if (now >= endDate) {
+            await admin.from('applications').update({
+              status: 'completed',
+              completed_at: endDate.toISOString()
+            }).eq('id', app.id);
+            app.status = 'completed';
+            app.completed_at = endDate.toISOString();
+          }
+        }
+      }
+
       return json({ applicants: data });
     }
 
@@ -857,10 +921,20 @@ async function route(request, { params }) {
       const status = body.status;
       if (!['accepted','rejected','ongoing','completed'].includes(status))
         return err('Invalid status', 400);
-      const { data: appRow } = await admin.from('applications').select('*, jobs!inner(employer_id,title)').eq('id', appId).maybeSingle();
+      const { data: appRow } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id,title,start_date,duration_days)')
+        .eq('id', appId).maybeSingle();
       if (!appRow) return err('Application not found', 404);
       if (appRow.jobs.employer_id !== me.id) return err('Forbidden', 403);
-      const { data, error } = await admin.from('applications').update({ status }).eq('id', appId).select().single();
+
+      const updateData = { status };
+      if (status === 'ongoing') {
+        updateData.started_at = new Date().toISOString();
+      } else if (status === 'completed') {
+        updateData.completed_at = new Date().toISOString();
+      }
+
+      const { data, error } = await admin.from('applications').update(updateData).eq('id', appId).select().single();
       if (error) return err(error.message, 400);
       await notify(admin, appRow.worker_id,
         `Application ${status}`,
@@ -875,12 +949,115 @@ async function route(request, { params }) {
       return json({ application: data });
     }
 
+    // ---------- Feedback routes ----------
+    if (path === 'feedback/company' && method === 'POST') {
+      const body = await request.json();
+      const { application_id, rating, feedback_text } = body;
+      if (!application_id || !rating || rating < 1 || rating > 5) return err('Invalid data', 400);
+
+      const { data: app } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id)')
+        .eq('id', application_id).eq('worker_id', me.id).maybeSingle();
+      if (!app) return err('Application not found or not yours', 404);
+      if (app.status !== 'completed') return err('Can only feedback completed jobs', 400);
+
+      const { data, error } = await admin.from('company_feedbacks').insert({
+        worker_id: me.id,
+        company_id: app.jobs.employer_id,
+        application_id,
+        rating,
+        feedback_text,
+      }).select().single();
+      if (error) return err(error.message, 400);
+      return json({ feedback: data });
+    }
+
+    if (path === 'feedback/worker' && method === 'POST') {
+      const body = await request.json();
+      const { application_id, rating, feedback_text } = body;
+      if (!application_id || !rating || rating < 1 || rating > 5) return err('Invalid data', 400);
+
+      const { data: app } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id)')
+        .eq('id', application_id).eq('jobs.employer_id', me.id).maybeSingle();
+      if (!app) return err('Application not found or not yours', 404);
+      if (app.status !== 'completed') return err('Can only feedback completed jobs', 400);
+
+      const { data, error } = await admin.from('worker_feedbacks').insert({
+        employer_id: me.id,
+        worker_id: app.worker_id,
+        application_id,
+        rating,
+        feedback_text,
+      }).select().single();
+      if (error) return err(error.message, 400);
+
+      // Update worker average rating
+      const { data: ratings } = await admin.from('worker_feedbacks')
+        .select('rating').eq('worker_id', app.worker_id);
+      const avg = ratings.length > 0 ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length : 0;
+      await admin.from('workers').update({ average_rating: avg }).eq('user_id', app.worker_id);
+
+      return json({ feedback: data });
+    }
+
+    if (path === 'feedback/employer' && method === 'POST') {
+      const body = await request.json();
+      const { application_id, rating, feedback_text } = body;
+      if (!application_id || !rating || rating < 1 || rating > 5) return err('Invalid data', 400);
+
+      const { data: app } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id)')
+        .eq('id', application_id).eq('jobs.employer_id', me.id).maybeSingle();
+      if (!app) return err('Application not found or not yours', 404);
+      if (app.status !== 'completed') return err('Can only feedback completed jobs', 400);
+
+      const { data, error } = await admin.from('employer_feedbacks').insert({
+        employer_id: me.id,
+        worker_id: app.worker_id,
+        application_id,
+        rating,
+        feedback_text,
+      }).select().single();
+      if (error) return err(error.message, 400);
+      return json({ feedback: data });
+    }
+
     // ---------- Worker routes ----------
     if (path === 'worker/applications' && method === 'GET') {
       const { data, error } = await admin.from('applications')
         .select('*, jobs!inner(*, employers!inner(company_name,company_logo,location_text))')
         .eq('worker_id', me.id).order('applied_at', { ascending: false });
       if (error) return err(error.message, 400);
+
+      // Auto-update status based on dates
+      const now = new Date();
+      for (const app of data || []) {
+        if (app.status === 'accepted' && app.jobs.start_date) {
+          const startDate = new Date(app.jobs.start_date);
+          if (now >= startDate) {
+            await admin.from('applications').update({
+              status: 'ongoing',
+              started_at: startDate.toISOString()
+            }).eq('id', app.id);
+            app.status = 'ongoing';
+            app.started_at = startDate.toISOString();
+          }
+        } else if (app.status === 'ongoing' && app.started_at && app.jobs.duration_days) {
+          const startedAt = new Date(app.started_at);
+          const endDate = new Date(startedAt);
+          endDate.setDate(endDate.getDate() + app.jobs.duration_days);
+          if (now >= endDate) {
+            await admin.from('applications').update({
+              status: 'completed',
+              completed_at: endDate.toISOString()
+            }).eq('id', app.id);
+            app.status = 'completed';
+            app.completed_at = endDate.toISOString();
+          }
+        }
+      }
+
       return json({ applications: data });
     }
 
@@ -978,6 +1155,48 @@ async function route(request, { params }) {
     }
 
     // ---------- Messages ----------
+
+    if (path.match(/^messages\/[^/]+$/) && method === 'PATCH') {
+      const id = path.split('/')[1];
+      const body = await request.json();
+      const content = (body.content || '').trim();
+      if (!content) return err('content required', 400);
+      const { data: current } = await admin.from('messages').select('*').eq('id', id).maybeSingle();
+      if (!current) return err('Message not found', 404);
+      if (current.sender_id !== me.id) return err('You can edit only your messages', 403);
+      let { data, error } = await admin.from('messages').update({ content, edited_at: new Date().toISOString() }).eq('id', id).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        ({ data, error } = await admin.from('messages').update({ content }).eq('id', id).select().single());
+      }
+      if (error) return err(error.message, 400);
+      return json({ message: data });
+    }
+
+    if (path.match(/^messages\/[^/]+$/) && method === 'DELETE') {
+      const id = path.split('/')[1];
+      const url = new URL(request.url);
+      const mode = url.searchParams.get('mode') || 'me';
+      const { data: current } = await admin.from('messages').select('*').eq('id', id).maybeSingle();
+      if (!current) return err('Message not found', 404);
+      if (current.sender_id !== me.id && current.receiver_id !== me.id) return err('Forbidden', 403);
+      if (mode === 'everyone') {
+        if (current.sender_id !== me.id) return err('Only sender can delete for everyone', 403);
+        let { data, error } = await admin.from('messages').update({ content: 'This message was deleted', deleted_for_everyone: true }).eq('id', id).select().single();
+        if (error && String(error.message || '').toLowerCase().includes('column')) {
+          ({ data, error } = await admin.from('messages').update({ content: 'This message was deleted' }).eq('id', id).select().single());
+        }
+        if (error) return err(error.message, 400);
+        return json({ message: data });
+      }
+      const deletedFor = Array.isArray(current.deleted_for) ? Array.from(new Set([...current.deleted_for, me.id])) : [me.id];
+      const { data, error } = await admin.from('messages').update({ deleted_for: deletedFor }).eq('id', id).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        return json({ ok: true, local_only: true });
+      }
+      if (error) return err(error.message, 400);
+      return json({ message: data });
+    }
+
     if (path === 'messages' && method === 'GET') {
       const url = new URL(request.url);
       const peer = url.searchParams.get('peer');
