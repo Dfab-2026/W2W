@@ -1,0 +1,9 @@
+name: Emergent Config
+version: 1.0.0
+schema: v1
+
+models:
+  - title: Emergent
+    provider: openai
+    model: gpt-4o
+    apiKey: sk-emergent-64d6c47E7B5E3C8956
