@@ -65,8 +65,8 @@ code {
         --card-foreground: 222.2 84% 4.9%;
         --popover: 0 0% 100%;
         --popover-foreground: 222.2 84% 4.9%;
-        --primary: 222.2 47.4% 11.2%;
-        --primary-foreground: 210 40% 98%;
+        --primary: 142 71% 45%;
+        --primary-foreground: 0 0% 100%;
         --secondary: 210 40% 96.1%;
         --secondary-foreground: 222.2 47.4% 11.2%;
         --muted: 210 40% 96.1%;
@@ -239,3 +239,15 @@ html,body,#__next{width:100%;min-height:100vh;overflow-x:hidden;}
 [class*="chat"],[class*="Chat"]{width:100%!important;max-width:100%!important;min-height:calc(100vh - 80px)!important;}
 [class*="profile"],[class*="Profile"]{width:100%!important;}
 .card,.Card{width:100%!important;}
+
+html,body{width:100%;min-height:100vh;overflow-x:hidden}.container,.max-w-4xl,.max-w-5xl,.max-w-6xl,.max-w-7xl{max-width:100%!important;width:100%!important}.card{width:100%}
+
+html,body{overflow-x:hidden}.premium-card{border-radius:24px;min-height:calc(100vh - 40px)} button{transition:all .2s}.premium-card{width:100%}
+
+/* Responsive/full-screen improvements */
+html,body{overflow-x:hidden;}
+button[class*="bg-black"]{background:#22c55e !important;}
+.card,.Card{width:100%;max-width:100%;border-radius:18px;}
+@media(max-width:768px){
+  *{max-width:100%;}
+}
