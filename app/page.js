@@ -668,11 +668,20 @@ function AdminApp({ auth, onLogout }) {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#eef2ff,transparent_34%),linear-gradient(180deg,#f8fafc,#eef2f7)]">
-      <header className="bg-white/85 backdrop-blur-xl border-b sticky top-0 z-20 shadow-sm">
+      <header className="bg-white/95 backdrop-blur-xl border-b sticky top-0 z-20 shadow-sm">
         <div className="container py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Work2Wish</p>
-            <h1 className="text-2xl font-extrabold flex items-center gap-2"><ShieldCheck className="w-6 h-6 text-indigo-600" /> Admin Dashboard</h1>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.15em]">Work2Wish</p>
+            <h1 className="text-2xl font-extrabold flex items-center gap-2 mt-0.5">
+              <motion.div
+                className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 grid place-items-center text-white shadow-lg shadow-amber-500/25"
+                animate={{ rotate: [0, 5, 0, -5, 0] }}
+                transition={{ duration: 6, repeat: Infinity }}
+              >
+                <ShieldCheck className="w-5 h-5" />
+              </motion.div>
+              Admin Dashboard
+            </h1>
             <p className="text-sm text-muted-foreground">Users, documents, jobs, chats, history.</p>
           </div>
           <div className="flex gap-2 items-center">
@@ -1880,23 +1889,34 @@ function WorkerApp({ auth, onLogout }) {
 
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
-      {/* top bar */}
-      <header className="bg-white border-b shrink-0 z-10">
-        <div className="container py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-blue-500 grid place-items-center text-white"><Hammer className="w-4 h-4" /></div>
+      {/* top bar — premium */}
+      <header className="bg-white/95 backdrop-blur-xl border-b border-slate-100 shrink-0 z-10 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
+        <div className="container py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <motion.div
+              className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 grid place-items-center text-white shadow-lg shadow-indigo-500/25"
+              whileHover={{ rotate: [0, -8, 8, 0], scale: 1.05 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Hammer className="w-4 h-4" />
+            </motion.div>
             <div className="leading-tight">
-              <p className="font-bold">Work2Wish</p>
-              <p className="text-[10px] text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{me?.extra?.location_text || 'Set your location'}</p>
+              <p className="font-extrabold text-slate-900 tracking-tight">Work2Wish</p>
+              <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-indigo-500" />
+                {me?.extra?.location_text || 'Set your location'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
             <NotificationCenter token={token} userId={me?.profile?.id} channelKey="worker" accent="indigo" />
             <GlobalLanguageSelect />
             <ThemeToggle />
-            <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setTab('profile')} title="Profile">
-              <UserCircle className="w-5 h-5" />
-            </Button>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setTab('profile')} title="Profile">
+                <UserCircle className="w-5 h-5" />
+              </Button>
+            </motion.div>
           </div>
         </div>
       </header>
@@ -1908,19 +1928,38 @@ function WorkerApp({ auth, onLogout }) {
         {tab === 'profile' && <WorkerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
       </main>
 
-      {/* bottom nav */}
-      <nav className="shrink-0 bg-white border-t shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+      {/* bottom nav — premium */}
+      <nav className="shrink-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]">
         <div className="container grid grid-cols-3">
           {[
             { k: 'home',    i: Search,         l: 'Find' },
             { k: 'myjobs',  i: ClipboardList,  l: 'My jobs' },
             { k: 'chats',   i: MessageSquare,  l: 'Chats' },
-          ].map(t => (
-            <button key={t.k} onClick={() => { if (t.k === 'post') setEditingJob(null); setTab(t.k); if (t.k !== 'chats') setChatPeer(null); }}
-              className={`py-3 flex flex-col items-center gap-1 text-xs ${tab === t.k ? 'text-indigo-600' : 'text-muted-foreground'}`}>
-              <t.i className="w-5 h-5" />{t.l}
-            </button>
-          ))}
+          ].map(t => {
+            const active = tab === t.k;
+            return (
+              <button key={t.k}
+                onClick={() => { setTab(t.k); if (t.k !== 'chats') setChatPeer(null); }}
+                className={`py-2.5 flex flex-col items-center gap-1 text-xs font-medium transition-all duration-200 relative ${active ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                {active && (
+                  <motion.span
+                    layoutId="worker-tab-indicator"
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-indigo-600"
+                    initial={false}
+                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                  />
+                )}
+                <motion.span
+                  animate={{ scale: active ? 1.12 : 1, y: active ? -1 : 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-indigo-50' : ''}`}
+                >
+                  <t.i className="w-5 h-5" />
+                </motion.span>
+                <span>{t.l}</span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>
@@ -2898,7 +2937,13 @@ function JobCard({ job, onClick, onProfile }) {
   const benefits = jobBenefits(job);
   const daysLeft = jobDaysLeft(job);
   return (
-    <button onClick={onClick} className="text-left bg-white rounded-3xl border border-indigo-100 hover:border-indigo-300 hover:shadow-2xl transition p-4 group premium-job-card worker-job-card">
+    <motion.button
+      onClick={onClick}
+      whileHover={{ y: -4, scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+      className="text-left w-full bg-white rounded-3xl border border-indigo-100 hover:border-indigo-300 hover:shadow-2xl transition-colors p-4 group premium-job-card worker-job-card"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-700 grid place-items-center border border-indigo-100 shrink-0">
@@ -2926,7 +2971,7 @@ function JobCard({ job, onClick, onProfile }) {
         <span>{job.skill_needed || job.experience || 'Open requirement'}</span>
         {daysLeft !== null && <span className={daysLeft <= 1 ? 'text-red-600 font-semibold' : 'text-slate-500'}>{daysLeft > 0 ? `${daysLeft} day(s) left` : 'Closing today'}</span>}
       </div>
-    </button>
+    </motion.button>
   );
 }
 
@@ -4309,22 +4354,30 @@ function EmployerApp({ auth, onLogout }) {
 
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
-      <header className="bg-white border-b shrink-0 z-10">
-        <div className="container py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-500 grid place-items-center text-white"><Briefcase className="w-4 h-4" /></div>
+      <header className="bg-white/95 backdrop-blur-xl border-b border-slate-100 shrink-0 z-10 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
+        <div className="container py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <motion.div
+              className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-500 grid place-items-center text-white shadow-lg shadow-emerald-500/25"
+              whileHover={{ rotate: [0, -8, 8, 0], scale: 1.05 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Briefcase className="w-4 h-4" />
+            </motion.div>
             <div className="leading-tight">
-              <p className="font-bold">{me?.extra?.company_name || 'Work2Wish'}</p>
-              <p className="text-[10px] text-muted-foreground">Employer portal</p>
+              <p className="font-extrabold text-slate-900 tracking-tight">{me?.extra?.company_name || 'Work2Wish'}</p>
+              <p className="text-[10px] text-slate-500">Employer portal</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
             <NotificationCenter token={token} userId={me?.profile?.id} channelKey="employer" accent="emerald" />
             <GlobalLanguageSelect />
             <ThemeToggle />
-            <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setTab('profile')} title="Profile">
-              <UserCircle className="w-5 h-5" />
-            </Button>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setTab('profile')} title="Profile">
+                <UserCircle className="w-5 h-5" />
+              </Button>
+            </motion.div>
           </div>
         </div>
       </header>
@@ -4336,18 +4389,37 @@ function EmployerApp({ auth, onLogout }) {
         {tab === 'profile'   && <EmployerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
       </main>
 
-      <nav className="shrink-0 bg-white border-t">
+      <nav className="shrink-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]">
         <div className="container grid grid-cols-3">
           {[
             { k: 'dashboard', i: ClipboardList, l: 'Jobs' },
             { k: 'post',      i: Plus,          l: 'Post job' },
             { k: 'chats',     i: MessageSquare, l: 'Chats' },
-          ].map(t => (
-            <button key={t.k} onClick={() => { setTab(t.k); if (t.k !== 'chats') setChatPeer(null); }}
-              className={`py-3 flex flex-col items-center gap-1 text-xs ${tab === t.k ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-              <t.i className="w-5 h-5" />{t.l}
-            </button>
-          ))}
+          ].map(t => {
+            const active = tab === t.k;
+            return (
+              <button key={t.k}
+                onClick={() => { setTab(t.k); if (t.k !== 'chats') setChatPeer(null); }}
+                className={`py-2.5 flex flex-col items-center gap-1 text-xs font-medium transition-all duration-200 relative ${active ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                {active && (
+                  <motion.span
+                    layoutId="employer-tab-indicator"
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-emerald-600"
+                    initial={false}
+                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                  />
+                )}
+                <motion.span
+                  animate={{ scale: active ? 1.12 : 1, y: active ? -1 : 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-emerald-50' : ''}`}
+                >
+                  <t.i className="w-5 h-5" />
+                </motion.span>
+                <span>{t.l}</span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>
@@ -4513,15 +4585,23 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
 }
 
 function StatCard({ label, value, icon: Icon, color }) {
-  const map = { emerald: 'bg-emerald-50 text-emerald-700', indigo: 'bg-indigo-50 text-indigo-700', amber: 'bg-amber-50 text-amber-700' };
+  const map = { emerald: 'bg-emerald-50 text-emerald-700 shadow-emerald-100', indigo: 'bg-indigo-50 text-indigo-700 shadow-indigo-100', amber: 'bg-amber-50 text-amber-700 shadow-amber-100' };
+  const border = { emerald: 'hover:border-emerald-200', indigo: 'hover:border-indigo-200', amber: 'hover:border-amber-200' };
   return (
-    <Card className="premium-card">
-      <CardContent className="p-4">
-        <div className={`w-9 h-9 rounded-lg grid place-items-center ${map[color]}`}><Icon className="w-5 h-5" /></div>
-        <p className="text-2xl font-extrabold mt-2">{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
-      </CardContent>
-    </Card>
+    <motion.div whileHover={{ y: -3, scale: 1.01 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
+      <Card className={`premium-card cursor-default ${border[color]}`}>
+        <CardContent className="p-4">
+          <div className={`w-10 h-10 rounded-xl grid place-items-center shadow-sm ${map[color]}`}><Icon className="w-5 h-5" /></div>
+          <motion.p
+            className="text-3xl font-extrabold mt-3 tracking-tight"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >{value}</motion.p>
+          <p className="text-xs text-muted-foreground mt-1 font-medium">{label}</p>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }
 
@@ -5394,12 +5474,14 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
       </div>
 
       <div className="shrink-0 p-3 border-t bg-white">
-        <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
-          {editingId && <button type="button" onClick={() => { setEditingId(null); setText(''); }} className="text-xs text-slate-500 px-2">Cancel edit</button>}
-          <Input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && send()} placeholder={editingId ? 'Edit message' : 'Type a message'} className="h-10 flex-1 rounded-full bg-white border-0 px-4 shadow-none focus-visible:ring-0" />
-          <Button onClick={send} disabled={sending || !text.trim()} className="h-10 w-10 rounded-full bg-emerald-600 hover:bg-emerald-700 p-0">
-            {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-          </Button>
+        <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-md transition-shadow focus-within:shadow-lg focus-within:border-emerald-300">
+          {editingId && <button type="button" onClick={() => { setEditingId(null); setText(''); }} className="text-xs text-slate-500 px-2 hover:text-red-500 transition-colors">✕ Cancel</button>}
+          <Input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && send()} placeholder={editingId ? 'Edit message…' : 'Type a message…'} className="h-10 flex-1 rounded-full bg-transparent border-0 px-4 shadow-none focus-visible:ring-0 text-sm" />
+          <motion.div whileTap={{ scale: 0.9 }} whileHover={{ scale: 1.05 }}>
+            <Button onClick={send} disabled={sending || !text.trim()} className="h-10 w-10 rounded-full bg-emerald-600 hover:bg-emerald-700 p-0 shadow-lg shadow-emerald-500/30">
+              {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </motion.div>
         </div>
       </div>
       <PhotoPreviewDialog photo={photoPreview?.photo} title={photoPreview?.title} onClose={() => setPhotoPreview(null)} />
