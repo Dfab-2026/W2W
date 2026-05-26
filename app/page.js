@@ -970,7 +970,9 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
     emerald: 'border-emerald-200 bg-emerald-50/60 text-emerald-800',
     amber: 'border-amber-200 bg-amber-50/60 text-amber-800',
   };
-  const button = verified ? 'bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100' : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50';
+  const button = verified
+    ? 'border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:opacity-100 disabled:bg-emerald-600 disabled:text-white'
+    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50';
   return (
     <div className={`rounded-3xl border ${styles[tone] || styles.indigo} p-4 shadow-sm`}>
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -1679,16 +1681,16 @@ function NotificationCenter({ token, userId, channelKey = 'app', accent = 'indig
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" title="Notifications">
+        <Button variant="ghost" size="icon" className="relative rounded-full" title="Notifications">
           <Bell className="w-5 h-5" />
           {unreadCount > 0 && <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] grid place-items-center ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
         </Button>
       </SheetTrigger>
-      <SheetContent className="p-0 overflow-hidden w-full sm:max-w-md premium-panel">
+      <SheetContent side="right" className="p-0 overflow-hidden w-full sm:max-w-md premium-panel border-l border-slate-200 shadow-2xl">
         <SheetHeader className={`px-5 py-4 border-b bg-gradient-to-r ${headerClass} text-white`}>
           <SheetTitle className="text-white flex items-center gap-2"><Bell className="w-5 h-5" /> Notifications</SheetTitle>
           <p className="text-xs text-white/85">Account, job, chat and admin updates.</p>
-          <div className="flex gap-2 pt-2">
+          <div className="flex flex-wrap items-center gap-2 pt-2">
             <Button size="sm" variant="secondary" className="h-8 rounded-full" onClick={markAllRead} disabled={!unreadCount}><CheckCheck className="w-4 h-4 mr-1" /> Mark all read</Button>
             <Button size="sm" variant="secondary" className="h-8 rounded-full" onClick={clearRead} disabled={!notifs.some(n => n.read)}><Trash2 className="w-4 h-4 mr-1" /> Clear read</Button>
           </div>
