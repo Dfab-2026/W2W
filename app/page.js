@@ -262,7 +262,9 @@ function ThemeToggle() {
 }
 
 function GlobalLanguageSelect() {
-  const [lang, setLang] = useState('en');
+  
+useEffect(()=>{const h=(e)=>{e.preventDefault();e.returnValue='Changes may not be saved';};window.addEventListener('beforeunload',h);return ()=>window.removeEventListener('beforeunload',h);},[]);
+const [lang, setLang] = useState('en');
   useEffect(() => {
     const saved = localStorage.getItem('w2w-language') || 'en';
     setLang(saved);
@@ -1111,8 +1113,13 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
     try {
       const supa = getSupabase();
       const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
-      const { error } = await supa.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
+      const { data, error } = await supa.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, queryParams: { prompt: 'select_account' } },
+        skipBrowserRedirect: true,
+      });
       if (error) throw error;
+      if (data?.url && typeof window !== 'undefined') window.location.replace(data.url);
     } catch (e) {
       toast.error(`Google sign-in failed: ${e.message}. Make sure Google is enabled in Supabase Auth → Providers.`);
     }
@@ -1488,7 +1495,7 @@ function SignupForm({ data, onChange, onSent, onBack }) {
                 {data.password && (
                   <div className="mt-2">
                     <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full transition-all duration-300 ${strength.color}`} style={{ width: strength.width }} />
+                      <div className={`h-full transition-all duration-[1000ms] ${strength.color}`} style={{ width: strength.width }} />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Strength: <b>{strength.label}</b></p>
                   </div>
@@ -1681,12 +1688,12 @@ function NotificationCenter({ token, userId, channelKey = 'app', accent = 'indig
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative rounded-full" title="Notifications">
+        <Button variant="ghost" size="icon" className="relative rounded-full hover:bg-slate-100 transition-all" title="Notifications">
           <Bell className="w-5 h-5" />
           {unreadCount > 0 && <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] grid place-items-center ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="p-0 overflow-hidden w-full sm:max-w-md premium-panel border-l border-slate-200 shadow-2xl">
+      <SheetContent side="right" className="p-0 overflow-hidden w-[380px] sm:w-[420px] max-w-[92vw] right-0 premium-panel border-l border-slate-200 shadow-2xl">
         <SheetHeader className={`px-5 py-4 border-b bg-gradient-to-r ${headerClass} text-white`}>
           <SheetTitle className="text-white flex items-center gap-2"><Bell className="w-5 h-5" /> Notifications</SheetTitle>
           <p className="text-xs text-white/85">Account, job, chat and admin updates.</p>
@@ -2377,13 +2384,13 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
         <Map className="w-4 h-4" /><span className="hidden sm:inline ml-1">Pin</span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden">
+        <DialogContent className="w-[92vw] max-w-5xl rounded-3xl p-0 overflow-hidden">
           <DialogHeader className={`p-5 text-white ${isEmerald ? 'bg-gradient-to-r from-emerald-700 to-teal-500' : 'bg-gradient-to-r from-indigo-700 to-sky-500'}`}>
             <DialogTitle>Pin exact location</DialogTitle>
             <DialogDescription className="text-white/80">Use current GPS or enter latitude and longitude. The map preview updates before saving.</DialogDescription>
           </DialogHeader>
           <div className="p-4 space-y-3">
-            <div className="rounded-3xl overflow-hidden border bg-slate-100 h-[280px]">
+            <div className="rounded-3xl overflow-hidden border bg-slate-100 h-[48vh] min-h-[320px] max-h-[560px]">
               <iframe title="Location map preview" src={mapSrc} className="w-full h-full border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
             </div>
             <div className="grid sm:grid-cols-3 gap-2">
@@ -3193,26 +3200,17 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
 function SavedLocationEditor({ label, value, latitude, longitude, color = 'indigo', placeholder, helper, onChange, onSave }) {
   const hasSaved = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && !!value;
   const locationKey = `${value || ''}|${latitude || ''}|${longitude || ''}`;
-  const [editing, setEditing] = useState(!hasSaved);
   const [savingLocation, setSavingLocation] = useState(false);
   const [savedKey, setSavedKey] = useState(locationKey);
 
   useEffect(() => {
-    const freshSaved = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && !!value;
-    if (!freshSaved) setEditing(true);
-  }, [value, latitude, longitude]);
-
-  useEffect(() => {
-    if (hasSaved && !editing) setSavedKey(locationKey);
-  }, [hasSaved, editing, locationKey]);
+    if (hasSaved) setSavedKey(locationKey);
+  }, [hasSaved, locationKey]);
 
   const isEmerald = color === 'emerald';
   const wrapClass = isEmerald
     ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50 shadow-emerald-100/70'
     : 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 shadow-indigo-100/70';
-  const btnClass = isEmerald
-    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-    : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100';
   const iconBox = isEmerald ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700';
   const changedAfterSave = locationKey !== savedKey;
   const canSaveLocation = !!value && (Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)));
@@ -3224,7 +3222,6 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
     }
     if (!onSave) {
       setSavedKey(locationKey);
-      setEditing(false);
       toast.success('Location ready. Press Save profile to store it.');
       return;
     }
@@ -3238,7 +3235,6 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
         place_name: '',
       });
       setSavedKey(locationKey);
-      setEditing(false);
       toast.success('Location saved');
     } catch (e) {
       toast.error(e.message || 'Location save failed');
@@ -3254,14 +3250,9 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
           <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${iconBox}`}><MapPin className="w-5 h-5" /></div>
           <div className="min-w-0">
             <Label>{label}</Label>
-            {hasSaved ? (
-              <>
-                <p className="text-sm font-semibold text-slate-900 mt-1 break-words">{value}</p>
-                <p className="text-xs text-muted-foreground mt-1">Saved GPS: {formatCoordinates(latitude, longitude)}</p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground mt-1">Select by current GPS or search and choose a place.</p>
-            )}
+            <p className="text-sm text-muted-foreground mt-1">
+              {hasSaved ? 'Search, pin, or use current GPS anytime.' : 'Search, pin, or use current GPS to save your exact location.'}
+            </p>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 shrink-0">
@@ -3270,35 +3261,29 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
               <CheckCircle2 className="w-4 h-4 mr-2" /> Saved
             </Button>
           ) : null}
-          {(changedAfterSave || (editing && canSaveLocation)) ? (
+          {(!hasSaved || changedAfterSave) ? (
             <Button type="button" className={`${isEmerald ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'} text-white`} onClick={saveOnlyLocation} disabled={savingLocation || !canSaveLocation}>
               {savingLocation ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Save location
             </Button>
           ) : null}
-          <Button type="button" variant="outline" className={btnClass} onClick={() => setEditing((v) => !v)}>
-            <Search className="w-4 h-4 mr-2" /> {editing ? 'Hide search' : 'Change location'}
-          </Button>
         </div>
       </div>
 
-      {editing && (
-        <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-2">
-          <p className="text-xs text-muted-foreground">Search like Google Maps and select the exact address suggestion, or press Current to use GPS.</p>
-          <LocationSearchBox
-            label=""
-            value={value || ''}
-            latitude={latitude}
-            longitude={longitude}
-            color={color}
-            placeholder={placeholder}
-            helper={helper}
-            onChange={onChange}
-          />
-          <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-            {changedAfterSave ? 'New location selected. Press Save location to keep it until you change again.' : 'Saved location will stay until you select another place.'}
-          </div>
+      <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-2">
+        <LocationSearchBox
+          label=""
+          value={value || ''}
+          latitude={latitude}
+          longitude={longitude}
+          color={color}
+          placeholder={placeholder}
+          helper={helper}
+          onChange={onChange}
+        />
+        <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+          {changedAfterSave ? 'New location selected. Press Save location once to update it.' : hasSaved ? 'Saved location is active.' : 'Select a searched place, pin, or current GPS, then save once.'}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -3324,10 +3309,10 @@ function VerificationDocumentsCard({ token, role, verified, form, setForm, onSav
     setBusy(true);
     try {
       const { url } = await uploadFile(file, kind, token);
-      const patch = { [field]: url, verification_status: 'submitted' };
+      const patch = { [field]: url, verification_status: verified ? 'verified' : 'saved' };
       await api('me/profile', { method: 'PATCH', token, body: patch });
       setForm((s) => ({ ...s, ...patch }));
-      toast.success(field === 'certificate_url' ? 'Skill certificate sent to admin review' : 'Document sent to admin review');
+      toast.success(field === 'certificate_url' ? 'Skill certificate saved' : 'Document saved');
     } catch (e) {
       toast.error(e.message || 'Upload failed');
     } finally {
@@ -3366,7 +3351,7 @@ function VerificationDocumentsCard({ token, role, verified, form, setForm, onSav
             pan_image_url: form.pan_image_url,
             pan_back_url: form.pan_back_url,
             gst_certificate_url: form.gst_certificate_url,
-            verification_status: 'submitted',
+            verification_status: 'pending',
           }
         : {
             address: form.address,
@@ -3377,7 +3362,7 @@ function VerificationDocumentsCard({ token, role, verified, form, setForm, onSav
             pan_image_url: form.pan_image_url,
             pan_back_url: form.pan_back_url,
             certificate_url: form.certificate_url,
-            verification_status: 'submitted',
+            verification_status: 'pending',
           };
 
       await api('me/profile', { method: 'PATCH', token, body });
@@ -3410,8 +3395,10 @@ function VerificationDocumentsCard({ token, role, verified, form, setForm, onSav
           </div>
           {lockedVerified ? (
             <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
-          ) : status === 'submitted' ? (
+          ) : status === 'submitted' || status === 'pending' ? (
             <Badge className="bg-amber-100 text-amber-700">Pending review</Badge>
+          ) : status === 'saved' ? (
+            <Badge className="bg-sky-100 text-sky-700">Saved</Badge>
           ) : status === 'rejected' ? (
             <Badge className="bg-red-100 text-red-700">Rejected</Badge>
           ) : (
@@ -3639,6 +3626,9 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   const save = async () => {
     setBusy(true);
     try {
+      const nextStatus = verified
+        ? 'verified'
+        : (form.verification_status === 'pending' || form.verification_status === 'submitted' ? 'pending' : 'saved');
       const body = {
         ...form,
         age: form.age ? Number(form.age) : null,
@@ -3648,6 +3638,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
         expected_daily_wage: Number(form.expected_daily_wage) || 0,
         languages_known: typeof form.languages_known === 'string' ? form.languages_known.split(',').map(s => s.trim()).filter(Boolean) : form.languages_known,
         badge_immediate_joiner: !!form.available,
+        verification_status: nextStatus,
       };
       await api('me/profile', { method: 'PATCH', token, body });
       toast.success('Profile saved');
@@ -3656,12 +3647,16 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   };
 
   const saveWorkerLocation = async (loc) => {
+    const nextStatus = verified
+      ? 'verified'
+      : (form.verification_status === 'pending' || form.verification_status === 'submitted' ? 'pending' : 'saved');
     const body = {
       location_text: loc.location_text || '',
       latitude: loc.latitude,
       longitude: loc.longitude,
       place_id: form.place_id || '',
       place_name: form.place_name || '',
+      verification_status: nextStatus,
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setForm((s) => ({ ...s, ...body }));
@@ -3808,10 +3803,10 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               longitude={form.longitude}
               color="indigo"
               placeholder="Search home area, landmark, city"
-              helper="Workers can use this saved location or current GPS to find jobs within 10 km."
-              onChange={(loc) => setForm(f => ({ ...f, ...loc }))}
-              onSave={saveWorkerLocation}
-            />
+                helper="Workers can search, pin, or use current GPS to save the exact work location."
+                onChange={(loc) => setForm(f => ({ ...f, ...loc }))}
+                onSave={saveWorkerLocation}
+              />
           </div>
           <div className="sm:col-span-2">
             <Label>Skills (comma-separated)</Label>
@@ -3830,7 +3825,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               <CardContent className="p-4 space-y-4">
                 <div className="grid lg:grid-cols-2 gap-4 items-stretch">
                   <MobileOtpVerificationBox token={token} phone={form.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setForm(f => ({ ...f, phone: phone || f.phone, mobile_verified: true })); onSaved?.(); }} />
-                  <SelfieVerificationBox token={token} url={form.selfie_url} frontUrl={form.selfie_front_url} leftUrl={form.selfie_left_url} rightUrl={form.selfie_right_url} verified={!!me.extra?.selfie_verified} disabled={busy} onUploaded={(payload) => setForm(f => ({ ...f, ...(typeof payload === 'string' ? { selfie_url: payload } : payload), selfie_verified: false, verification_status: 'submitted' }))} />
+                  <SelfieVerificationBox token={token} url={form.selfie_url} frontUrl={form.selfie_front_url} leftUrl={form.selfie_left_url} rightUrl={form.selfie_right_url} verified={!!me.extra?.selfie_verified} disabled={busy} onUploaded={(payload) => setForm(f => ({ ...f, ...(typeof payload === 'string' ? { selfie_url: payload } : payload), selfie_verified: false, verification_status: me.extra?.verified ? 'verified' : 'saved' }))} />
                 </div>
                 <div className="grid lg:grid-cols-1 gap-4 items-stretch">
                   <div className="rounded-2xl border bg-white p-4 min-h-[132px]">
@@ -4872,17 +4867,28 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
 
   const save = async () => {
     setBusy(true);
-    try { await api('me/profile', { method: 'PATCH', token, body: f }); toast.success('Saved'); onSaved(); }
+    try {
+      const nextStatus = verified
+        ? 'verified'
+        : (f.verification_status === 'pending' || f.verification_status === 'submitted' ? 'pending' : 'saved');
+      await api('me/profile', { method: 'PATCH', token, body: { ...f, verification_status: nextStatus } });
+      toast.success('Saved');
+      onSaved();
+    }
     catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
   const saveCompanyLocation = async (loc) => {
+    const nextStatus = verified
+      ? 'verified'
+      : (f.verification_status === 'pending' || f.verification_status === 'submitted' ? 'pending' : 'saved');
     const body = {
       location_text: loc.location_text || '',
       latitude: loc.latitude,
       longitude: loc.longitude,
       place_id: f.place_id || '',
       place_name: f.place_name || '',
+      verification_status: nextStatus,
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setF((s) => ({ ...s, ...body }));
@@ -5013,7 +5019,7 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
               longitude={f.longitude}
               color="emerald"
               placeholder="Search and choose company area, landmark, or current location"
-              helper="Use the GPS button for current location, or search an area/landmark and select it from suggestions. This is used for nearby worker matching."
+              helper="Search, pin, or use current GPS to save the exact company location for nearby worker matching."
               onChange={(loc) => setF(s => ({ ...s, ...loc }))}
               onSave={saveCompanyLocation}
             />

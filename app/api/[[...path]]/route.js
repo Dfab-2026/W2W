@@ -877,9 +877,9 @@ async function route(request, { params }) {
         const wu = {}; for (const k of wf) if (k in body) wu[k] = body[k];
         if ('available' in body) wu.badge_immediate_joiner = !!body.available;
 
-        if (body.verification_status === 'submitted') {
+        if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
           wu.verified = false;
-          wu.verification_status = 'submitted';
+          wu.verification_status = 'pending';
           wu.verification_notes = null;
           wu.verification_submitted_at = new Date().toISOString();
         }
@@ -909,9 +909,9 @@ async function route(request, { params }) {
                     'verification_status', 'verification_notes'];
         const eu = {}; for (const k of ef) if (k in body) eu[k] = body[k];
 
-        if (body.verification_status === 'submitted') {
+        if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
           eu.verified = false;
-          eu.verification_status = 'submitted';
+          eu.verification_status = 'pending';
           eu.verification_notes = null;
           eu.verification_submitted_at = new Date().toISOString();
         }
@@ -936,7 +936,7 @@ async function route(request, { params }) {
         }
       }
 
-      if (body.verification_status === 'submitted') {
+      if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
         const { data: admins } = await admin.from('user_profiles').select('id').eq('role', 'admin').eq('blocked', false);
         const displayName = profile?.full_name || profile?.company_name || profile?.email || 'A user';
         const changedFields = Object.keys(body).filter(k => !['verification_status','verification_notes'].includes(k));
@@ -950,7 +950,7 @@ async function route(request, { params }) {
         }
       }
 
-      await logActivity(admin, me.id, body.verification_status === 'submitted' ? 'submitted_verification' : 'updated_profile', { fields: Object.keys(body).filter(k => k !== 'password') }, me.id);
+      await logActivity(admin, me.id, (body.verification_status === 'submitted' || body.verification_status === 'pending') ? 'submitted_verification' : 'updated_profile', { fields: Object.keys(body).filter(k => k !== 'password') }, me.id);
       return json({ ok: true, profile, extra: updatedExtra });
     }
 
