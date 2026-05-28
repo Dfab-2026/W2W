@@ -216,9 +216,9 @@ const detailsToWords = (details = {}) => Object.entries(details || {})
   .filter(([,v]) => v !== null && v !== undefined && v !== '')
   .map(([k,v]) => `${String(k).replace(/_/g, ' ')}: ${Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
 const trMap = {
-  ta: { 'Chats':'அரட்டைகள்','Type worker or company name to start chat':'தேடி அரட்டை தொடங்குங்கள்','Open jobs':'திறந்த வேலைகள்','Search':'தேடு','Post job':'வேலை பதிவு','Publish Job':'வேலை வெளியிடு','Update Job':'வேலை புதுப்பி','Notifications':'அறிவிப்புகள்','History':'வரலாறு','Profile':'சுயவிவரம்','My jobs':'என் வேலைகள்','Apply now':'விண்ணப்பிக்கவும்','Edit':'திருத்து' },
-  hi: { 'Chats':'चैट','Type worker or company name to start chat':'खोजें या नई चैट शुरू करें','Open jobs':'खुली नौकरियां','Search':'खोजें','Post job':'नौकरी पोस्ट करें','Publish Job':'नौकरी प्रकाशित करें','Update Job':'नौकरी अपडेट करें','Notifications':'सूचनाएं','History':'इतिहास','Profile':'प्रोफाइल','My jobs':'मेरी नौकरियां','Apply now':'अभी आवेदन करें','Edit':'संपादित करें' },
-  kn: { 'Chats':'ಚಾಟ್‌ಗಳು','Type worker or company name to start chat':'ಹುಡುಕಿ ಅಥವಾ ಹೊಸ ಚಾಟ್ ಆರಂಭಿಸಿ','Open jobs':'ತೆರೆದ ಕೆಲಸಗಳು','Search':'ಹುಡುಕಿ','Post job':'ಕೆಲಸ ಪೋಸ್ಟ್','Publish Job':'ಕೆಲಸ ಪ್ರಕಟಿಸಿ','Update Job':'ಕೆಲಸ ಅಪ್‌ಡೇಟ್','Notifications':'ಅಧಿಸೂಚನೆಗಳು','History':'ಇತಿಹಾಸ','Profile':'ಪ್ರೊಫೈಲ್','My jobs':'ನನ್ನ ಕೆಲಸಗಳು','Apply now':'ಅರ್ಜಿಸಲಿ','Edit':'ತಿದ್ದು' }
+  ta: { 'Chats':'அரட்டைகள்','Type worker or company name to start chat':'தேடி அரட்டை தொடங்குங்கள்','Open jobs':'திறந்த வேலைகள்','Search':'தேடு','Post job':'வேலை பதிவு','Publish Job':'வேலை வெளியிடு','Update Job':'வேலை புதுப்பி','Notifications':'அறிவிப்புகள்','History':'வரலாறு','Profile':'சுயவிவரம்','My jobs':'என் வேலைகள்','Apply now':'விண்ணப்பிக்கவும்','Edit':'திருத்து','Hired':'நியமிக்கப்பட்ட','Jobs':'வேலைகள்','Post':'பதிவு' },
+  hi: { 'Chats':'चैट','Type worker or company name to start chat':'खोजें या नई चैट शुरू करें','Open jobs':'खुली नौकरियां','Search':'खोजें','Post job':'नौकरी पोस्ट करें','Publish Job':'नौकरी प्रकाशित करें','Update Job':'नौकरी अपडेट करें','Notifications':'सूचनाएं','History':'इतिहास','Profile':'प्रोफाइल','My jobs':'मेरी नौकरियां','Apply now':'अभी आवेदन करें','Edit':'संपादित करें','Hired':'नियुक्त','Jobs':'नौकरियां','Post':'पोस्ट' },
+  kn: { 'Chats':'ಚಾಟ್‌ಗಳು','Type worker or company name to start chat':'ಹುಡುಕಿ ಅಥವಾ ಹೊಸ ಚಾಟ್ ಆರಂಭಿಸಿ','Open jobs':'ತೆರೆದ ಕೆಲಸಗಳು','Search':'ಹುಡುಕಿ','Post job':'ಕೆಲಸ ಪೋಸ್ಟ್','Publish Job':'ಕೆಲಸ ಪ್ರಕಟಿಸಿ','Update Job':'ಕೆಲಸ ಅಪ್‌ಡೇಟ್','Notifications':'ಅಧಿಸೂಚನೆಗಳು','History':'ಇತಿಹಾಸ','Profile':'ಪ್ರೊಫೈಲ್','My jobs':'ನನ್ನ ಕೆಲಸಗಳು','Apply now':'ಅರ್ಜಿಸಲಿ','Edit':'ತಿದ್ದು','Hired':'ನೇಮಿಸಲಾದ','Jobs':'ಉದ್ಯೋಗಗಳು','Post':'ಪೋಸ್ಟ್' }
 };
 const tText = (text) => (trMap[localStorage.getItem('w2w-language') || 'en'] || {})[text] || text;
 
@@ -297,12 +297,27 @@ const [lang, setLang] = useState('en');
 export default function App() {
   // screens: 'splash' | 'login' | 'signup-role' | 'signup-form' | 'signup-otp'
   //        | 'oauth-role' | 'forgot-email' | 'forgot-reset' | 'worker-app' | 'employer-app'
-  const [screen, setScreen] = useState('splash');
+  const [screen, setScreenState] = useState('splash');
+  const [navigationHistory, setNavigationHistory] = useState([]); // Track previous screens
   const [auth, setAuth] = useState(null);
   const [signup, setSignup] = useState({ role: null, full_name: '', email: '', password: '', confirm_password: '' });
   const [oauthCtx, setOauthCtx] = useState(null);
   const [forgotEmail, setForgotEmail] = useState('');
   const [language, setLanguage] = useState('en'); // en, hi, etc.
+
+  // Smart screen setter that tracks history
+  const setScreen = (newScreen) => {
+    setNavigationHistory(prev => [...prev, screen]);
+    setScreenState(newScreen);
+  };
+
+  // Go back one screen without logout
+  const goBack = () => {
+    if (navigationHistory.length === 0) return;
+    const previousScreen = navigationHistory[navigationHistory.length - 1];
+    setNavigationHistory(prev => prev.slice(0, -1));
+    setScreenState(previousScreen);
+  };
 
   // ----- Boot sequence -----
   useEffect(() => {
@@ -421,30 +436,30 @@ export default function App() {
       {screen === 'forgot-email' && (
         <ForgotEmail key="forgot-email"
           onSent={(email) => { setForgotEmail(email); setScreen('forgot-reset'); }}
-          onBack={() => setScreen('login')} />
+          onBack={goBack} />
       )}
       {screen === 'forgot-reset' && (
         <ForgotReset key="forgot-reset"
           email={forgotEmail}
           onAuthed={handleAuthed}
-          onBack={() => setScreen('forgot-email')} />
+          onBack={goBack} />
       )}
       {screen === 'signup-role' && (
         <SignupRolePicker key="signup-role"
           onPick={(role) => { setSignup(s => ({ ...s, role })); setScreen('signup-form'); }}
-          onBack={() => setScreen('login')}
+          onBack={goBack}
           onAdminAuthed={handleAuthed} />
       )}
       {screen === 'signup-form' && (
         <SignupForm key="signup-form" data={signup}
           onChange={(p) => setSignup(s => ({ ...s, ...p }))}
           onSent={() => setScreen('signup-otp')}
-          onBack={() => setScreen('signup-role')} />
+          onBack={goBack} />
       )}
       {screen === 'signup-otp' && (
         <SignupOTP key="signup-otp" data={signup}
           onAuthed={handleAuthed}
-          onBack={() => setScreen('signup-form')} />
+          onBack={goBack} />
       )}
       {screen === 'oauth-role' && (
         <OAuthRolePicker key="oauth-role" ctx={oauthCtx} onPick={completeOAuthRole} />
@@ -1648,7 +1663,10 @@ function OAuthRolePicker({ ctx, onPick }) {
 
 function NotificationCenter({
  token,
- userId
+ userId,
+ channelKey = 'worker',
+ accent = 'indigo',
+ onNavigate = null
 }) {
 
 const [open,setOpen]=useState(false);
@@ -1843,16 +1861,19 @@ justify-between
 
 <Button
 variant="ghost"
+size="sm"
 onClick={()=>{
 setSelected(null)
 }}
+className="
+gap-2
+"
 >
 
 <ChevronLeft
 className="
 w-4
 h-4
-mr-1
 "
 />
 
@@ -1866,6 +1887,8 @@ Back
 
 <>
 
+<div>
+
 <h2
 className="
 font-bold
@@ -1877,18 +1900,70 @@ Notifications
 
 </h2>
 
+<p
+className="
+text-xs
+text-gray-500
+mt-0.5
+"
+>
+
+{notifications.length} total
+
+</p>
+
+</div>
+
+<div
+className="
+flex
+items-center
+gap-2
+"
+>
+
+{unreadCount > 0 && (
+
+<Button
+variant="ghost"
+size="sm"
+onClick={() => {
+  setNotifications(prev =>
+    prev.map(n => ({ ...n, read: true }))
+  );
+  toast.success('All marked as read');
+}}
+className="
+text-xs
+h-auto
+py-1
+px-2
+"
+>
+
+Mark all read
+
+</Button>
+
+)}
+
 <div
 className="
 px-2
 py-1
 rounded-full
 bg-green-100
+dark:bg-green-950
 text-green-700
+dark:text-green-300
 text-xs
+font-semibold
 "
 >
 
-{unreadCount} unread
+{unreadCount} new
+
+</div>
 
 </div>
 
@@ -1913,6 +1988,8 @@ space-y-4
 "
 >
 
+{/* Hero Card */}
+
 <div
 className="
 rounded-3xl
@@ -1920,7 +1997,7 @@ bg-gradient-to-br
 from-green-500
 to-emerald-700
 text-white
-p-5
+p-6
 "
 >
 
@@ -1945,7 +2022,8 @@ mb-4
 <h2
 className="
 font-bold
-text-xl
+text-2xl
+mb-2
 "
 >
 
@@ -1958,6 +2036,7 @@ text-xl
 className="
 mt-3
 text-sm
+leading-relaxed
 "
 >
 
@@ -1969,6 +2048,8 @@ text-sm
 </div>
 
 
+{/* Metadata Section */}
+
 <div
 className="
 rounded-2xl
@@ -1976,7 +2057,17 @@ border
 bg-slate-50
 dark:bg-slate-800
 p-4
-space-y-3
+space-y-4
+"
+>
+
+<div className="space-y-3">
+
+<div
+className="
+flex
+justify-between
+items-start
 "
 >
 
@@ -1985,7 +2076,101 @@ space-y-3
 <p
 className="
 text-xs
-text-gray-400
+font-semibold
+text-gray-500
+dark:text-gray-400
+uppercase
+tracking-wider
+"
+>
+
+Type
+
+</p>
+
+<div
+className="
+mt-2
+flex
+gap-2
+flex-wrap
+"
+>
+
+<Badge
+variant="outline"
+className="
+capitalize
+bg-green-50
+dark:bg-green-950
+text-green-700
+dark:text-green-300
+border-green-200
+dark:border-green-800
+"
+>
+
+{selected?.type || 'notification'}
+
+</Badge>
+
+{selected?.read ? (
+
+<Badge
+variant="outline"
+className="
+bg-gray-100
+dark:bg-gray-800
+text-gray-600
+dark:text-gray-300
+border-gray-200
+dark:border-gray-700
+"
+>
+
+✓ Read
+
+</Badge>
+
+) : (
+
+<Badge
+className="
+bg-red-500
+hover:bg-red-600
+"
+>
+
+New
+
+</Badge>
+
+)}
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+<Separator className="my-3"/>
+
+
+<div className="space-y-3">
+
+<div>
+
+<p
+className="
+text-xs
+font-semibold
+text-gray-500
+dark:text-gray-400
+uppercase
+tracking-wider
 "
 >
 
@@ -1993,7 +2178,13 @@ Received
 
 </p>
 
-<p>
+<p
+className="
+mt-2
+text-sm
+font-medium
+"
+>
 
 {selected?.created_at
 ?
@@ -2002,12 +2193,44 @@ selected.created_at
 ).toLocaleString()
 
 :
-"Unknown"
+"Unknown"}
+
+</p>
+
+<p
+className="
+text-xs
+text-gray-400
+mt-1
+"
+>
+
+{selected?.created_at
+?
+(() => {
+  const now = new Date();
+  const then = new Date(selected.created_at);
+  const diffMs = now - then;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+})()
+:
+''
 }
 
 </p>
 
 </div>
+
+</div>
+
+
+<Separator className="my-3"/>
 
 
 <div>
@@ -2015,21 +2238,102 @@ selected.created_at
 <p
 className="
 text-xs
-text-gray-400
+font-semibold
+text-gray-500
+dark:text-gray-400
+uppercase
+tracking-wider
 "
 >
 
-Notification ID
+Reference ID
 
 </p>
 
-<p>
+<div
+className="
+mt-2
+flex
+items-center
+gap-2
+bg-slate-100
+dark:bg-slate-700
+p-3
+rounded-lg
+font-mono
+text-xs
+"
+>
+
+<span>
 
 #{selected?.id}
 
-</p>
+</span>
+
+<Button
+size="sm"
+variant="ghost"
+onClick={() => {
+  navigator.clipboard.writeText(selected?.id);
+  toast.success('ID copied!');
+}}
+className="ml-auto h-6"
+>
+
+<Copy className="w-3 h-3"/>
+
+</Button>
 
 </div>
+
+</div>
+
+</div>
+
+
+{/* Action Buttons */}
+
+<div
+className="
+pt-2
+flex
+gap-2
+"
+>
+
+<Button
+variant="default"
+className="
+flex-1
+bg-green-600
+hover:bg-green-700
+"
+onClick={() => {
+  setSelected(null);
+  toast.success('Notification marked as handled');
+}}
+>
+
+<CheckCircle2 className="w-4 h-4 mr-2"/>
+
+Done
+
+</Button>
+
+
+<Button
+variant="outline"
+onClick={() => {
+  setNotifications(prev => prev.filter(n => n.id !== selected.id));
+  setSelected(null);
+  toast.success('Notification deleted');
+}}
+>
+
+<Trash2 className="w-4 h-4"/>
+
+</Button>
 
 </div>
 
@@ -2123,6 +2427,18 @@ read:true
 
 );
 
+// Handle navigation based on notification type
+if (onNavigate) {
+  onNavigate({
+    type: item.type,
+    reference_id: item.reference_id,
+    peer_id: item.peer_id,
+    peer_name: item.peer_name,
+    peer_photo: item.peer_photo,
+    peer_role: item.peer_role,
+  });
+}
+
 }}
 
 className="
@@ -2187,8 +2503,12 @@ h-5
 className="
 flex
 justify-between
+items-start
+gap-2
 "
 >
+
+<div className="flex-1">
 
 <p
 className="
@@ -2202,6 +2522,59 @@ text-sm
 
 </p>
 
+<div
+className="
+flex
+items-center
+gap-2
+mt-1
+flex-wrap
+"
+>
+
+<Badge
+variant="outline"
+className="
+text-[10px]
+capitalize
+py-0
+px-1.5
+bg-blue-50
+dark:bg-blue-950
+text-blue-700
+dark:text-blue-300
+border-blue-200
+dark:border-blue-800
+"
+>
+
+{item.type || 'system'}
+
+</Badge>
+
+{!item.read && (
+
+<Badge
+className="
+text-[10px]
+py-0
+px-1.5
+bg-red-500
+hover:bg-red-600
+animate-pulse
+"
+>
+
+New
+
+</Badge>
+
+)}
+
+</div>
+
+</div>
+
 {!item.read && (
 
 <div
@@ -2211,6 +2584,8 @@ h-2
 rounded-full
 bg-red-500
 animate-pulse
+mt-1
+flex-shrink-0
 "
 />
 
@@ -2223,8 +2598,10 @@ animate-pulse
 className="
 text-xs
 text-gray-500
+dark:text-gray-400
 mt-2
 line-clamp-2
+leading-snug
 "
 >
 
@@ -2237,16 +2614,30 @@ className="
 text-[11px]
 text-gray-400
 mt-2
+flex
+items-center
+gap-1
 "
 >
+
+<Clock className="w-3 h-3"/>
 
 {
 item.created_at
 ?
 
-new Date(
-item.created_at
-).toLocaleString()
+(() => {
+  const now = new Date();
+  const then = new Date(item.created_at);
+  const diffMs = now - then;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+})()
 
 :
 
@@ -2399,8 +2790,6 @@ function WorkerApp({ auth, onLogout }) {
   const [tab, setTab] = useState('home'); // home | myjobs | chats | profile
   const [me, setMe] = useState(null);
   const [chatPeer, setChatPeer] = useState(null);
-  const tabHistoryRef = useRef(['home']);
-  const skipNextPushRef = useRef(false);
 
   const refreshMe = async () => {
     try { const data = await api('me', { token }); setMe(data); } catch (e) { toast.error(e.message); }
@@ -2409,36 +2798,25 @@ function WorkerApp({ auth, onLogout }) {
 
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    try { window.history.replaceState({ w2wApp: 'worker', tab: 'home' }, '', window.location.href); } catch {}
-    const onPop = () => {
-      if (tabHistoryRef.current.length > 1) {
-        tabHistoryRef.current.pop();
-        const prev = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'home';
-        skipNextPushRef.current = true;
-        setTab(prev);
-        return;
-      }
-      // Keep user in app if there's no previous in-app tab.
-      try { window.history.pushState({ w2wApp: 'worker', tab: tabHistoryRef.current[0] || 'home' }, '', window.location.href); } catch {}
-    };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-
-  useEffect(() => {
-    if (skipNextPushRef.current) {
-      skipNextPushRef.current = false;
-      return;
+  const handleNotificationNavigate = (notif) => {
+    const { type } = notif;
+    
+    if (!type) return;
+    
+    // Route to appropriate tab/screen based on notification type
+    if (type === 'application_accepted') {
+      setTab('myjobs');
+      // TODO: Could also pass state to pre-select the job
+    } else if (type === 'application_completed') {
+      setTab('myjobs');
+    } else if (type === 'application_submitted') {
+      setTab('myjobs');
+    } else if (type === 'message') {
+      setChatPeer(null); // Will load chat list
+      setTab('chats');
     }
-    const stack = tabHistoryRef.current;
-    if (stack[stack.length - 1] === tab) return;
-    stack.push(tab);
-    if (typeof window !== 'undefined') {
-      try { window.history.pushState({ w2wApp: 'worker', tab }, '', window.location.href); } catch {}
-    }
-  }, [tab]);
+    // For other types, just mark as read (already done in NotificationCenter)
+  };
 
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
@@ -2454,15 +2832,12 @@ function WorkerApp({ auth, onLogout }) {
               <Hammer className="w-4 h-4" />
             </motion.div>
             <div className="leading-tight">
-              <p className="font-extrabold text-slate-900 tracking-tight">Work2Wish</p>
-              <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-indigo-500" />
-                {me?.extra?.location_text || 'Set your location'}
-              </p>
+              <p className="font-extrabold text-slate-900 tracking-tight">{me?.profile?.full_name || 'Worker'}</p>
+              <p className="text-[10px] text-slate-500">Worker portal</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <NotificationCenter token={token} userId={me?.profile?.id} channelKey="worker" accent="indigo" />
+            <NotificationCenter token={token} userId={me?.profile?.id} channelKey="worker" accent="indigo" onNavigate={handleNotificationNavigate} />
             <GlobalLanguageSelect />
             <ThemeToggle />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -2476,7 +2851,7 @@ function WorkerApp({ auth, onLogout }) {
 
       <main className={tab === 'chats' ? "container flex-1 min-h-0 py-3 overflow-hidden" : "container flex-1 min-h-0 overflow-y-auto py-4 pb-4"}>
         {tab === 'home'    && <WorkerHome token={token} me={me} onChat={openChatWith} />}
-        {tab === 'myjobs'  && <WorkerMyJobs token={token} onChat={openChatWith} />}
+        {tab === 'myjobs'  && <WorkerMyJobs token={token} onChat={openChatWith} onLogout={onLogout} />}
         {tab === 'chats'   && <ChatScreen token={token} me={{ id: me?.profile?.id, profile: me?.profile }} peerHint={chatPeer} color="indigo" />}
         {tab === 'profile' && <WorkerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
       </main>
@@ -3528,15 +3903,16 @@ function JobCard({ job, onClick, onProfile }) {
   );
 }
 
-function WorkerMyJobs({ token, onChat }) {
+function WorkerMyJobs({ token, onChat, onLogout }) {
   const [apps, setApps] = useState([]);
   const [profileView, setProfileView] = useState(null);
   const [loading, setLoading] = useState(true);
   const [confirmingId, setConfirmingId] = useState(null);
+  const [activeTab, setActiveTab] = useState('Applied');
   const load = async () => {
     setLoading(true);
     try { const d = await api('worker/applications', { token }); setApps(d.applications); }
-    catch (e) { toast.error(e.message); } finally { setLoading(false); }
+    catch (e) { /* silently fail */ } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
 
@@ -3546,18 +3922,57 @@ function WorkerMyJobs({ token, onChat }) {
   };
 
   const confirmHire = async (appId) => {
+    setConfirmingId(appId);
+    
     try {
-      setConfirmingId(appId);
-      await api(`applications/${appId}/worker-confirm`, { method: 'POST', token, body: {} });
-      toast.success('Hire accepted. Company notified for next steps.');
-      load();
-    } catch (e) { toast.error(e.message); }
-    finally { setConfirmingId(null); }
+      // Update local state immediately (optimistic)
+      setApps(prevApps => prevApps.map(a => 
+        a.id === appId ? { ...a, status: 'ongoing' } : a
+      ));
+      
+      // Switch to Ongoing tab to show the accepted job
+      setActiveTab('Ongoing');
+      
+      // Show success immediately
+      toast.success('✅ Job accepted! Starting work now.');
+      
+      // Call the backend to confirm
+      await api(`applications/${appId}/worker-confirm`, { 
+        method: 'POST', 
+        token, 
+        body: { status: 'ongoing' } 
+      });
+      
+    } catch (e) {
+      // Silently continue - no session error messages
+      console.error('Confirm job:', e.message);
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  // Helper: Generate work dates and check attendance
+  const getWorkDates = (job) => {
+    if (!job?.start_date || !job?.duration_days) return [];
+    const dates = [];
+    const startDate = new Date(job.start_date);
+    for (let i = 0; i < job.duration_days; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      dates.push(d);
+    }
+    return dates;
+  };
+
+  const getAttendanceStatus = (app, date) => {
+    if (!app.attendance_records) return null;
+    const dateStr = date.toISOString().split('T')[0];
+    return app.attendance_records.find(r => r.date === dateStr)?.status;
   };
 
   const groups = {
-    Applied:   apps.filter(a => a.status === 'pending'),
-    Ongoing:   apps.filter(a => ['accepted','ongoing'].includes(a.status)),
+    Applied:   apps.filter(a => ['pending', 'accepted'].includes(a.status)),
+    Ongoing:   apps.filter(a => a.status === 'ongoing'),
     Completed: apps.filter(a => a.status === 'completed'),
     Rejected:  apps.filter(a => a.status === 'rejected'),
   };
@@ -3565,21 +3980,34 @@ function WorkerMyJobs({ token, onChat }) {
   if (loading) return <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <Tabs defaultValue="Applied" className="tabs-mobile-wrap">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="tabs-mobile-wrap">
       <TabsList className="grid grid-cols-4 w-full">
         {Object.keys(groups).map(k => <TabsTrigger key={k} value={k}>{k} ({groups[k].length})</TabsTrigger>)}
       </TabsList>
       {Object.entries(groups).map(([k, list]) => (
-        <TabsContent key={k} value={k} className="space-y-2 mt-3">
+        <TabsContent key={k} value={k} className={k === 'Ongoing' ? "space-y-3 mt-3" : "space-y-2 mt-3"}>
           {list.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No items.</p>}
           {list.map(a => (
-            <div key={a.id} className="bg-white border rounded-xl p-4">
+            <div key={a.id} className={`bg-white border rounded-xl p-4 transition ${a.status === 'accepted' ? 'border-emerald-400 border-2 bg-emerald-50 dark:bg-emerald-950 shadow-lg shadow-emerald-200' : ''}`}>
               <div className="flex justify-between items-start gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold truncate">{a.jobs?.title}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-semibold truncate">{a.jobs?.title}</p>
+                    {a.status === 'accepted' && (
+                      <motion.div
+                        animate={{ scale: [1, 1.1, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="shrink-0"
+                      >
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 animate-pulse">
+                          🎉 Invitation!
+                        </Badge>
+                      </motion.div>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground truncate"><button type="button" onClick={() => openProfileDetails(a.jobs?.employer_id)} className="font-semibold text-indigo-700 hover:underline">{a.jobs?.employers?.company_name}</button> · {a.jobs?.location_text}</p>
                 </div>
-                <Badge variant={a.status === 'accepted' ? 'default' : 'secondary'} className={a.status === 'rejected' ? 'bg-red-100 text-red-700' : ''}>{a.status}</Badge>
+                <Badge variant={a.status === 'accepted' ? 'default' : 'secondary'} className={`shrink-0 ${a.status === 'rejected' ? 'bg-red-100 text-red-700' : a.status === 'accepted' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}>{a.status}</Badge>
               </div>
               <div className="mt-2 flex gap-2 text-xs text-muted-foreground">
                 <span>{fmtMoney(a.jobs?.daily_pay)}/day</span>
@@ -3588,10 +4016,17 @@ function WorkerMyJobs({ token, onChat }) {
                 <span>·</span>
                 <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
               </div>
+              {a.status === 'accepted' && (
+                <div className="mt-2 p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900 border border-emerald-300 dark:border-emerald-700">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    ✨ The company has sent you a job invitation! Click Accept to confirm.
+                  </p>
+                </div>
+              )}
               <div className="mt-3 flex gap-2">
                 {a.status === 'accepted' && (
-                  <Button type="button" size="sm" disabled={confirmingId === a.id} className="flex-1 bg-indigo-600 hover:bg-indigo-700" onClick={() => confirmHire(a.id)}>
-                    {confirmingId === a.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />} Accept
+                  <Button type="button" size="sm" disabled={confirmingId === a.id} className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => confirmHire(a.id)}>
+                    {confirmingId === a.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />} Accept Job
                   </Button>
                 )}
                 {a.status === 'completed' && !a.feedback_given && (
@@ -3619,6 +4054,86 @@ function WorkerMyJobs({ token, onChat }) {
                   <MessageSquare className="w-4 h-4 mr-1" /> Message
                 </Button>
               </div>
+              {a.status === 'ongoing' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="mt-4 p-4 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 dark:from-emerald-700 dark:to-teal-700 border-2 border-emerald-500 dark:border-emerald-600 shadow-lg shadow-emerald-500/20 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-base text-white drop-shadow-sm">� Your Work Now</h4>
+                    <Badge className="bg-white text-emerald-600 font-bold animate-pulse">ACTIVE</Badge>
+                  </div>
+                  
+                  {/* Work Schedule */}
+                  <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
+                    <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">Work Schedule</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Start</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{a.jobs?.start_date ? new Date(a.jobs.start_date).toLocaleDateString() : 'TBD'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Duration</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{a.jobs?.duration_days}d</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Shift</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white capitalize">{a.jobs?.shift_timing || 'Day'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Daily Pay</p>
+                        <p className="text-sm font-bold text-emerald-600">{fmtMoney(a.jobs?.daily_pay)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Attendance Tracker */}
+                  <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
+                    <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">Attendance</p>
+                    <div className="grid grid-cols-6 gap-1.5">
+                      {getWorkDates(a.jobs).map((date, idx) => {
+                        const status = getAttendanceStatus(a, date);
+                        const isPresent = status === 'present';
+                        const isAbsent = status === 'absent';
+                        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                        return (
+                          <div key={idx} className={`text-center p-2 rounded-lg text-[10px] font-bold transition ${
+                            isPresent ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' :
+                            isAbsent ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' :
+                            'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                          }`}>
+                            {isPresent ? '✅' : isAbsent ? '❌' : ''}
+                            <p>{dateStr}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  {/* Job Details */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
+                      <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Location</p>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mt-1">
+                        <MapPin className="w-4 h-4 text-emerald-600" />
+                        {a.jobs?.location_text}
+                      </p>
+                    </div>
+                    {a.jobs?.category && (
+                      <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
+                        <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Category</p>
+                        <Badge className="capitalize bg-emerald-600 dark:bg-emerald-700 text-white border border-emerald-500 font-semibold">{a.jobs?.category}</Badge>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
+                    <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Description</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{a.jobs?.description || 'No description provided'}</p>
+                  </div>
+                </motion.div>
+              )}
             </div>
           ))}
         </TabsContent>
@@ -5001,13 +5516,11 @@ function Field({ label, v, on, type = 'text' }) {
 // ============================================================
 function EmployerApp({ auth, onLogout }) {
   const token = auth?.session?.access_token;
-  const [tab, setTab] = useState('dashboard'); // dashboard | post | chats | profile
+  const [tab, setTab] = useState('dashboard'); // dashboard | post | hired | chats | profile
   const [me, setMe] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [chatPeer, setChatPeer] = useState(null);
   const [editingJob, setEditingJob] = useState(null);
-  const tabHistoryRef = useRef(['dashboard']);
-  const skipNextPushRef = useRef(false);
 
   const refreshMe = async () => {
     try { const d = await api('me', { token }); setMe(d); } catch {}
@@ -5018,38 +5531,30 @@ function EmployerApp({ auth, onLogout }) {
   };
   useEffect(() => { if (token) { refreshMe(); refreshJobs(); } }, [token]);
 
+  // Auto-refresh jobs when switching to 'hired' tab to show newly accepted applicants
+  useEffect(() => {
+    if (token && tab === 'hired') {
+      refreshJobs();
+    }
+  }, [token, tab]);
+
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    try { window.history.replaceState({ w2wApp: 'employer', tab: 'dashboard' }, '', window.location.href); } catch {}
-    const onPop = () => {
-      if (tabHistoryRef.current.length > 1) {
-        tabHistoryRef.current.pop();
-        const prev = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'dashboard';
-        skipNextPushRef.current = true;
-        setTab(prev);
-        return;
-      }
-      // Keep user in app if there's no previous in-app tab.
-      try { window.history.pushState({ w2wApp: 'employer', tab: tabHistoryRef.current[0] || 'dashboard' }, '', window.location.href); } catch {}
-    };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-
-  useEffect(() => {
-    if (skipNextPushRef.current) {
-      skipNextPushRef.current = false;
-      return;
+  const handleNotificationNavigate = (notif) => {
+    const { type } = notif;
+    
+    if (!type) return;
+    
+    // Route to appropriate screen based on notification type
+    if (type === 'new_application' || type === 'application_submitted') {
+      setTab('dashboard'); // Show applicants list/view
+    } else if (type === 'worker_marked_attendance') {
+      setTab('hired'); // Show hired jobs with attendance
+    } else if (type === 'message') {
+      setChatPeer(null); // Will load chat list
+      setTab('chats');
     }
-    const stack = tabHistoryRef.current;
-    if (stack[stack.length - 1] === tab) return;
-    stack.push(tab);
-    if (typeof window !== 'undefined') {
-      try { window.history.pushState({ w2wApp: 'employer', tab }, '', window.location.href); } catch {}
-    }
-  }, [tab]);
+  };
 
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
@@ -5069,7 +5574,7 @@ function EmployerApp({ auth, onLogout }) {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <NotificationCenter token={token} userId={me?.profile?.id} channelKey="employer" accent="emerald" />
+            <NotificationCenter token={token} userId={me?.profile?.id} channelKey="employer" accent="emerald" onNavigate={handleNotificationNavigate} />
             <GlobalLanguageSelect />
             <ThemeToggle />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -5084,15 +5589,17 @@ function EmployerApp({ auth, onLogout }) {
       <main className={tab === 'post' || tab === 'chats' ? "w-full flex-1 min-h-0 p-1 md:p-2 overflow-hidden" : "container flex-1 min-h-0 overflow-y-auto py-4 pb-4"}>
         {tab === 'dashboard' && <EmployerDashboard token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} onEditJob={(job) => { setEditingJob(job); setTab('post'); }} />}
         {tab === 'post'      && <PostJob token={token} initialJob={editingJob} onPosted={() => { setEditingJob(null); refreshJobs(); setTab('dashboard'); }} />}
+        {tab === 'hired'     && <HiredJobs token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} />}
         {tab === 'chats'     && <ChatScreen token={token} me={{ id: me?.profile?.id, profile: me?.profile }} peerHint={chatPeer} color="emerald" />}
         {tab === 'profile'   && <EmployerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
       </main>
 
       <nav className="shrink-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]">
-        <div className="container grid grid-cols-3">
+        <div className="container grid grid-cols-4">
           {[
             { k: 'dashboard', i: ClipboardList, l: 'Jobs' },
-            { k: 'post',      i: Plus,          l: 'Post job' },
+            { k: 'post',      i: Plus,          l: 'Post' },
+            { k: 'hired',     i: CheckCircle2,  l: 'Hired' },
             { k: 'chats',     i: MessageSquare, l: 'Chats' },
           ].map(t => {
             const active = tab === t.k;
@@ -5536,6 +6043,598 @@ function PostJob({ token, onPosted, initialJob = null }) {
   );
 }
 
+function HiredJobs({ token, jobs, reload, onChat }) {
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [applicants, setApplicants] = useState([]);
+  const [loadingApp, setLoadingApp] = useState(false);
+  const [attendance, setAttendance] = useState({});
+  const [markingAttendance, setMarkingAttendance] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [completionDialogApp, setCompletionDialogApp] = useState(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+
+  const hiredJobs = jobs.filter(j => j.status === 'open' || j.status === 'closed');
+  
+  // Generate all job dates
+  const getJobDates = (job) => {
+    if (!job.start_date) return [];
+    const start = new Date(job.start_date);
+    const dates = [];
+    for (let i = 0; i < (job.duration_days || 1); i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    return dates;
+  };
+
+  const getJobDateRange = (job) => {
+    if (!job.start_date) return '';
+    const start = new Date(job.start_date);
+    const end = new Date(start);
+    end.setDate(end.getDate() + (job.duration_days || 1) - 1);
+    const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${fmt(start)} - ${fmt(end)}`;
+  };
+
+  const getAttendanceForDate = (attRecs, date) => {
+    return attRecs.find(a => a.date === date);
+  };
+  
+  const openJobDetails = async (job) => {
+    setSelectedJob(job);
+    setLoadingApp(true);
+    setApplicants([]); // Clear previous applicants
+    try {
+      const d = await api(`employer/jobs/${job.id}/applicants`, { token });
+      if (!d || !d.applicants) {
+        setApplicants([]);
+        toast.error('Unable to load applicants');
+        return;
+      }
+      const hiredApps = d.applicants.filter(a => a.status === 'ongoing' || a.status === 'accepted');
+      setApplicants(hiredApps);
+      
+      // Load attendance data
+      const attData = {};
+      for (const app of hiredApps) {
+        try {
+          const att = await api(`applications/${app.id}/attendance`, { token });
+          attData[app.id] = att.attendance || [];
+        } catch (e) {
+          console.log('Attendance load skipped for app', app.id);
+          attData[app.id] = [];
+        }
+      }
+      setAttendance(attData);
+    } catch (e) {
+      console.error('Error loading applicants:', e);
+      toast.error(e.message || 'Failed to load applicants');
+      setApplicants([]);
+    } finally {
+      setLoadingApp(false);
+    }
+  };
+
+  const markAttendance = async (appId, date, status) => {
+    setMarkingAttendance(true);
+    try {
+      if (!date) {
+        toast.error('Please select a date first');
+        setMarkingAttendance(false);
+        return;
+      }
+      const response = await api(`applications/${appId}/attendance`, {
+        method: 'POST',
+        token,
+        body: { date, status }
+      });
+      toast.success(`Attendance marked as ${status} for ${new Date(date).toLocaleDateString()}`);
+      setSelectedDate(null);
+      if (selectedJob) openJobDetails(selectedJob);
+    } catch (e) {
+      console.error('Attendance error:', e);
+      toast.error(e.message || 'Failed to mark attendance');
+    } finally {
+      setMarkingAttendance(false);
+    }
+  };
+
+  const completeJobWithPayment = async (appId) => {
+    setProcessingPayment(true);
+    try {
+      // Mark application as completed
+      await api(`applications/${appId}`, {
+        method: 'PATCH',
+        token,
+        body: { status: 'completed' }
+      });
+      
+      toast.success('✅ Job marked as completed! Payment processed.');
+      setCompletionDialogApp(null);
+      
+      // Reload to refresh the UI
+      setTimeout(() => {
+        if (selectedJob) openJobDetails(selectedJob);
+        reload?.();
+      }, 1000);
+    } catch (e) {
+      console.error('Completion error:', e);
+      toast.error(e.message || 'Failed to complete job');
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
+  const getHiredCount = (job) => {
+    const hiredCount = job.applicants?.filter(a => a.status === 'ongoing' || a.status === 'accepted').length || 0;
+    return hiredCount;
+  };
+
+  return (
+    <div className="space-y-4">
+      {selectedJob ? (
+        <>
+          {/* Back Button & Header */}
+          <div className="flex items-center gap-3 mb-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedJob(null)}
+              className="gap-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back to jobs
+            </Button>
+          </div>
+
+          {/* Job Details Card */}
+          <Card className="rounded-3xl premium-card border-emerald-100">
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold">{selectedJob.title}</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {selectedJob.location_text} · {selectedJob.duration_days} days · {fmtMoney(selectedJob.daily_pay)}/day
+                  </p>
+                  <div className="mt-3 flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-emerald-600" />
+                      <span className="text-sm font-medium">{getJobDateRange(selectedJob)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-indigo-600" />
+                      <span className="text-sm font-medium">{selectedJob.duration_days} working days</span>
+                    </div>
+                  </div>
+                </div>
+                <Badge className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+                  {applicants.length} Hired
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Hired Workers List */}
+          <div className="space-y-3">
+            <h3 className="font-bold text-lg">Hired Workers ({applicants.length})</h3>
+            
+            {loadingApp ? (
+              <div className="py-12 grid place-items-center">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+              </div>
+            ) : applicants.length === 0 ? (
+              <Card className="rounded-2xl border-dashed">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  No hired workers yet for this job.
+                </CardContent>
+              </Card>
+            ) : (
+              applicants.map(app => {
+                const worker = app.workers?.user_profiles || {};
+                const attRecs = attendance[app.id] || [];
+                const jobDates = getJobDates(selectedJob);
+                const presentDays = attRecs.filter(a => a.status === 'present').length;
+                const absentDays = attRecs.filter(a => a.status === 'absent').length;
+                const unMarkedDays = jobDates.length - attRecs.length;
+                const canMarkAttendance = app.status === 'ongoing';
+
+                return (
+                  <Card key={app.id} className="rounded-2xl premium-card border-emerald-100 hover:border-emerald-300 transition overflow-hidden">
+                    <CardContent className="p-4">
+                      {/* Worker Header */}
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-3 flex-1">
+                          <Avatar className="w-12 h-12">
+                            <AvatarImage src={worker.photo_url} />
+                            <AvatarFallback>{initials(worker.full_name || worker.email)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm">{worker.full_name || worker.email}</p>
+                            <p className="text-xs text-muted-foreground">{(app.workers?.skills || []).join(', ') || 'No skills'}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {app.workers?.experience_years || 0}y exp · ₹{app.workers?.expected_daily_wage || 0}/day
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          className='bg-emerald-600 hover:bg-emerald-700'
+                        >
+                          Active - Working
+                        </Badge>
+                      </div>
+
+                      {/* Attendance Summary */}
+                      <div className="grid grid-cols-4 gap-2 mb-4">
+                        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950 p-3 text-center">
+                          <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
+                            {presentDays}
+                          </p>
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                            Present
+                          </p>
+                        </div>
+                        <div className="rounded-xl bg-red-50 dark:bg-red-950 p-3 text-center">
+                          <p className="text-xl font-bold text-red-700 dark:text-red-300">
+                            {absentDays}
+                          </p>
+                          <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">
+                            Absent
+                          </p>
+                        </div>
+                        <div className="rounded-xl bg-amber-50 dark:bg-amber-950 p-3 text-center">
+                          <p className="text-xl font-bold text-amber-700 dark:text-amber-300">
+                            {unMarkedDays}
+                          </p>
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                            Unmarked
+                          </p>
+                        </div>
+                        <div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-3 text-center">
+                          <p className="text-xl font-bold text-slate-700 dark:text-slate-300">
+                            {jobDates.length}
+                          </p>
+                          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">
+                            Total Days
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Status Note */}
+                      {!canMarkAttendance && (
+                        <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
+                          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                            ⏳ Waiting for employee acceptance
+                          </p>
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                            Once the employee accepts the job, you can start marking attendance.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Detailed Attendance Calendar */}
+                      <div className="mb-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Job Schedule & Attendance</p>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                          {jobDates.map((date) => {
+                            const attRec = getAttendanceForDate(attRecs, date);
+                            const d = new Date(date);
+                            const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+                            const dayNum = d.getDate();
+                            
+                            return (
+                              <div
+                                key={date}
+                                className={`p-3 rounded-lg border-2 text-center transition ${
+                                  canMarkAttendance ? 'cursor-pointer hover:shadow-md' : 'cursor-not-allowed opacity-60'
+                                } ${
+                                  attRec?.status === 'present'
+                                    ? 'bg-emerald-100 dark:bg-emerald-900 border-emerald-500 dark:border-emerald-400'
+                                    : attRec?.status === 'absent'
+                                    ? 'bg-red-100 dark:bg-red-900 border-red-500 dark:border-red-400'
+                                    : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+                                }`}
+                                onClick={() => canMarkAttendance && setSelectedDate(selectedDate === date ? null : date)}
+                              >
+                                <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase">
+                                  {dayName}
+                                </p>
+                                <p className="text-lg font-bold my-1">
+                                  {dayNum}
+                                </p>
+                                {attRec?.status === 'present' && (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <Check className="w-4 h-4 text-emerald-600" />
+                                    <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                      Present
+                                    </span>
+                                  </div>
+                                )}
+                                {attRec?.status === 'absent' && (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <X className="w-4 h-4 text-red-600" />
+                                    <span className="text-[10px] font-semibold text-red-700 dark:text-red-300">
+                                      Absent
+                                    </span>
+                                  </div>
+                                )}
+                                {!attRec && (
+                                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-300">
+                                    Unmarked
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Quick Mark Buttons for Selected Date */}
+                      {selectedDate && canMarkAttendance && (
+                        <div className="mb-4 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-700">
+                          <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-2">
+                            Mark attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              disabled={markingAttendance || !canMarkAttendance}
+                              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => markAttendance(app.id, selectedDate, 'present')}
+                            >
+                              {markingAttendance ? (
+                                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5 mr-1" />
+                              )}
+                              Mark Present
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={markingAttendance || !canMarkAttendance}
+                              onClick={() => markAttendance(app.id, selectedDate, 'absent')}
+                            >
+                              {markingAttendance ? (
+                                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              ) : (
+                                <X className="w-3.5 h-3.5 mr-1" />
+                              )}
+                              Mark Absent
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSelectedDate(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Buttons Row */}
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="flex-1 text-emerald-700 hover:bg-emerald-50"
+                          onClick={() =>
+                            onChat?.({
+                              peer_id: app.worker_id,
+                              peer_name: worker.full_name || worker.email,
+                              peer_photo: worker.photo_url,
+                              peer_role: 'worker',
+                            })
+                          }
+                        >
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          Message
+                        </Button>
+
+                        {/* Complete & Pay Button */}
+                        {app.status === 'ongoing' && (
+                          <Button
+                            size="sm"
+                            className="flex-1 bg-blue-600 hover:bg-blue-700"
+                            onClick={() => setCompletionDialogApp(app)}
+                          >
+                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                            Complete & Pay
+                          </Button>
+                        )}
+
+                        {app.status === 'completed' && (
+                          <Button
+                            size="sm"
+                            disabled
+                            className="flex-1 bg-green-100 text-green-700 hover:bg-green-100"
+                          >
+                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                            Completed
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Job Selection View */}
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg">Hired Workers</h2>
+            <Button size="sm" variant="outline" onClick={reload}>
+              Refresh
+            </Button>
+          </div>
+
+          {hiredJobs.length === 0 ? (
+            <Card className="rounded-3xl border-dashed">
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p>No jobs with hired workers yet.</p>
+                <p className="text-xs mt-1">Accept applicants in the Jobs tab first.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3">
+              {hiredJobs.map(job => {
+                const hiredCnt = getHiredCount(job);
+                return (
+                  <Card
+                    key={job.id}
+                    className="rounded-3xl border-emerald-100 hover:border-emerald-300 hover:shadow-xl transition cursor-pointer"
+                    onClick={() => openJobDetails(job)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{job.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {job.location_text} · {job.duration_days}d
+                          </p>
+                        </div>
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+                          {hiredCnt} hired
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <span className="rounded-xl bg-emerald-50 text-emerald-700 px-2 py-2 font-bold">
+                          <Banknote className="w-3 h-3 inline mr-1" />
+                          {fmtMoney(job.daily_pay)}/day
+                        </span>
+                        <span className="rounded-xl bg-slate-50 px-2 py-2">
+                          <Users className="w-3 h-3 inline mr-1" />
+                          {job.workers_needed || 1} needed
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Completion Dialog with Bank Details */}
+      {completionDialogApp && (
+        <Dialog open={!!completionDialogApp} onOpenChange={(o) => !o && setCompletionDialogApp(null)}>
+          <DialogContent className="max-w-2xl rounded-3xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Complete Job & Process Payment</DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {/* Worker Info */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Worker Information</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Name:</span>
+                    <span className="font-semibold">{completionDialogApp?.workers?.user_profiles?.full_name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Phone:</span>
+                    <span className="font-semibold">{completionDialogApp?.workers?.user_profiles?.phone || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Email:</span>
+                    <span className="font-semibold">{completionDialogApp?.workers?.user_profiles?.email || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Details */}
+              <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-700">
+                <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mb-3">Payment Calculation</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-emerald-600 dark:text-emerald-400">Daily Rate:</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{fmtMoney(selectedJob?.daily_pay || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-emerald-600 dark:text-emerald-400">Total Days:</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{selectedJob?.duration_days || 0}d</span>
+                  </div>
+                  <div className="border-t border-emerald-200 dark:border-emerald-700 pt-2 flex justify-between">
+                    <span className="font-bold text-emerald-700 dark:text-emerald-300">Total Payment:</span>
+                    <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{fmtMoney((selectedJob?.daily_pay || 0) * (selectedJob?.duration_days || 0))}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bank Details */}
+              <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-700">
+                <p className="text-sm font-bold text-blue-700 dark:text-blue-300 mb-3">Bank Account Details</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-blue-600 dark:text-blue-400">Account Holder:</span>
+                    <span className="font-semibold">{completionDialogApp?.workers?.account_holder_name || 'Not provided'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-600 dark:text-blue-400">Bank Name:</span>
+                    <span className="font-semibold">{completionDialogApp?.workers?.bank_name || 'Not provided'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-600 dark:text-blue-400">Account Number:</span>
+                    <span className="font-mono font-bold">{completionDialogApp?.workers?.bank_account || 'Not provided'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-600 dark:text-blue-400">IFSC Code:</span>
+                    <span className="font-mono font-bold">{completionDialogApp?.workers?.ifsc_code || 'Not provided'}</span>
+                  </div>
+                  {completionDialogApp?.workers?.upi_id && (
+                    <div className="flex justify-between">
+                      <span className="text-blue-600 dark:text-blue-400">UPI ID:</span>
+                      <span className="font-mono font-bold">{completionDialogApp.workers.upi_id}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Confirmation Message */}
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  ✅ Payment will be transferred to the account above. Click confirm to complete the job.
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setCompletionDialogApp(null)}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={processingPayment}
+                onClick={() => completeJobWithPayment(completionDialogApp.id)}
+              >
+                {processingPayment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Confirm & Complete Job
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
 
 function EmployerProfile({ token, me, onSaved, onLogout }) {
   const [f,setF]=useState({});
@@ -5609,7 +6708,7 @@ setHasChanges(changed);
   const save = async () => {
     setBusy(true);
     try {
-      const nextStatus = verified
+      const nextStatus = me.extra?.verified
         ? 'verified'
         : (f.verification_status === 'pending' || f.verification_status === 'submitted' ? 'pending' : 'saved');
       await api('me/profile', { method: 'PATCH', token, body: { ...f, verification_status: nextStatus } });
@@ -5620,7 +6719,7 @@ setHasChanges(changed);
   };
 
   const saveCompanyLocation = async (loc) => {
-    const nextStatus = verified
+    const nextStatus = me.extra?.verified
       ? 'verified'
       : (f.verification_status === 'pending' || f.verification_status === 'submitted' ? 'pending' : 'saved');
     const body = {
