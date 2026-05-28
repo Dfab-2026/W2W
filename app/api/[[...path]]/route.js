@@ -969,7 +969,7 @@ async function route(request, { params }) {
         completedWorks = count || 0;
         const { data: wf } = await admin.from('worker_feedbacks').select('rating,feedback_text,created_at,company_id').eq('worker_id', profileId).order('created_at', { ascending: false }).limit(10);
         feedbacks = wf || [];
-        const { data: ah } = await admin.from('applications').select('id,status,applied_at,accepted_at,started_at,completed_at,jobs(title,location_text,daily_pay,start_date,duration_days,employer_id,employers(company_name,company_logo))').eq('worker_id', profileId).in('status', ['accepted','ongoing','completed']).order('applied_at', { ascending: false }).limit(8);
+        const { data: ah } = await admin.from('applications').select('id,status,applied_at,started_at,completed_at,jobs(title,location_text,daily_pay,start_date,duration_days,employer_id,employers(company_name,company_logo))').eq('worker_id', profileId).in('status', ['accepted','ongoing','completed']).order('applied_at', { ascending: false }).limit(8);
         activeHires = ah || [];
       } else if (user.role === 'employer') {
         const { data: employer } = await admin.from('employers').select('*').eq('user_id', profileId).maybeSingle();
@@ -1179,6 +1179,61 @@ async function route(request, { params }) {
         pending_count: (j.applications || []).filter(a => a.status === 'pending').length,
       }));
       return json({ jobs: enriched });
+    }
+
+    if (path === 'employer/attendance' && method === 'GET') {
+      const { data, error } = await admin.from('applications')
+        .select('id,status,applied_at,started_at,completed_at,worker_id,workers!inner(skills,experience_years,expected_daily_wage,user_profiles!workers_user_id_fkey(full_name,email,phone,photo_url)),jobs!inner(title,location_text,start_date,duration_days,daily_pay,employer_id)')
+        .eq('jobs.employer_id', me.id)
+        .in('status', ['accepted', 'ongoing', 'completed'])
+        .order('applied_at', { ascending: false });
+      if (error) return err(error.message, 400);
+
+      const today = new Date();
+      const items = (data || []).map((app) => {
+        const startValue = app.started_at || app.jobs?.start_date || app.applied_at || new Date().toISOString();
+        const start = new Date(startValue);
+        const duration = Math.max(1, Math.min(Number(app.jobs?.duration_days || 1), 60));
+        const attendance_days = [];
+        for (let i = 0; i < duration; i++) {
+          const dayDate = new Date(start);
+          dayDate.setDate(dayDate.getDate() + i);
+          let status = 'upcoming';
+          if (dayDate <= today) status = 'present';
+          if (app.status === 'ongoing') {
+            const dayStart = new Date(dayDate); dayStart.setHours(0, 0, 0, 0);
+            const nowStart = new Date(today); nowStart.setHours(0, 0, 0, 0);
+            if (dayStart.getTime() === nowStart.getTime()) status = 'today';
+          }
+          attendance_days.push({
+            day: i + 1,
+            date: dayDate.toISOString(),
+            status,
+          });
+        }
+        return {
+          application_id: app.id,
+          status: app.status,
+          start_date: startValue,
+          duration_days: duration,
+          job_title: app.jobs?.title || '',
+          location_text: app.jobs?.location_text || '',
+          daily_pay: app.jobs?.daily_pay || 0,
+          worker: {
+            id: app.worker_id,
+            full_name: app.workers?.user_profiles?.full_name || '',
+            email: app.workers?.user_profiles?.email || '',
+            phone: app.workers?.user_profiles?.phone || '',
+            photo_url: app.workers?.user_profiles?.photo_url || '',
+            skills: app.workers?.skills || [],
+            experience_years: app.workers?.experience_years || 0,
+            expected_daily_wage: app.workers?.expected_daily_wage || 0,
+          },
+          attendance_days,
+        };
+      });
+
+      return json({ items });
     }
 
     if (path.match(/^employer\/jobs\/[^/]+\/applicants$/) && method === 'GET') {

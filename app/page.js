@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -262,8 +262,6 @@ function ThemeToggle() {
 }
 
 function GlobalLanguageSelect() {
-  
-useEffect(()=>{const h=(e)=>{e.preventDefault();e.returnValue='Changes may not be saved';};window.addEventListener('beforeunload',h);return ()=>window.removeEventListener('beforeunload',h);},[]);
 const [lang, setLang] = useState('en');
   useEffect(() => {
     const saved = localStorage.getItem('w2w-language') || 'en';
@@ -678,7 +676,7 @@ function AdminApp({ auth, onLogout }) {
               <motion.div
                 className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 grid place-items-center text-white shadow-lg shadow-amber-500/25"
                 animate={{ rotate: [0, 5, 0, -5, 0] }}
-                transition={{ duration: 6, repeat: Infinity }}
+                transition={{ duration: 1, repeat: Infinity }}
               >
                 <ShieldCheck className="w-5 h-5" />
               </motion.div>
@@ -1648,129 +1646,642 @@ function OAuthRolePicker({ ctx, onPick }) {
 }
 
 
-function NotificationCenter({ token, userId, channelKey = 'app', accent = 'indigo' }) {
-  const [notifs, setNotifs] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(null);
+function NotificationCenter({
+ token,
+ userId
+}) {
 
-  const refresh = async () => {
-    if (!token) return;
-    try { const d = await api('notifications', { token }); setNotifs(d.notifications || []); } catch {}
-  };
+const [open,setOpen]=useState(false);
+const [notifications,setNotifications]=useState([]);
+const [selected,setSelected]=useState(null);
+const [loading,setLoading]=useState(false);
 
-  useEffect(() => { refresh(); }, [token]);
+useEffect(()=>{
 
-  useEffect(() => {
-    if (!token || !userId) return;
-    const supa = getSupabase();
-    supa.realtime.setAuth(token);
-    const ch = supa.channel(`${channelKey}-notifs-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, refresh)
-      .subscribe();
-    return () => { supa.removeChannel(ch); };
-  }, [token, userId, channelKey]);
+loadNotifications();
 
-  const unreadCount = notifs.filter(n => !n.read).length;
-  const markRead = async (id) => {
-    try { await api(`notifications/${id}/read`, { method: 'POST', token }); await refresh(); } catch (e) { toast.error(e.message || 'Unable to update notification'); }
-  };
-  const markAllRead = async () => {
-    try { await api('notifications/read-all', { method: 'POST', token }); await refresh(); toast.success('All notifications marked as read'); } catch (e) { toast.error(e.message || 'Unable to update notifications'); }
-  };
-  const clearRead = async () => {
-    try { await api('notifications/clear-read', { method: 'DELETE', token }); await refresh(); toast.success('Read notifications cleared'); } catch (e) { toast.error(e.message || 'Unable to clear notifications'); }
-  };
+},[]);
 
-  const headerClass = accent === 'emerald' ? 'from-emerald-600 to-teal-600' : accent === 'amber' ? 'from-amber-500 to-orange-500' : 'from-indigo-600 to-blue-600';
-  const notificationLabel = (type) => ({ verification: 'Verification', application: 'Application', job_post: 'Job post', admin_action: 'Admin action', account_delete: 'Account delete', account_verified: 'Account verified', account_rejected: 'Account rejected', job_selected: 'Job selected', job_rejected: 'Job rejected', message: 'Message', chat: 'Message' }[type] || 'Update');
-  const notificationAction = (type) => ({ verification: 'Open profile verification status.', application: 'Open job applicants or My Jobs to accept, reject, start or complete.', job_post: 'Open posted jobs and review applications.', admin_action: 'Open account status and history.', account_delete: 'Review deleted or blocked account action.', account_verified: 'Your account badge is active after final admin approval.', account_rejected: 'Open profile, fix the issue, and send again.', job_selected: 'Open My Jobs to confirm work details.', job_rejected: 'Open My Jobs to view rejected application.', message: 'Open chat and reply.', chat: 'Open chat and reply.' }[type] || 'Review this update.');
 
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative rounded-full hover:bg-slate-100 transition-all" title="Notifications">
-          <Bell className="w-5 h-5" />
-          {unreadCount > 0 && <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] grid place-items-center ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="right" className="p-0 overflow-hidden w-[380px] sm:w-[420px] max-w-[92vw] right-0 premium-panel border-l border-slate-200 shadow-2xl">
-        <SheetHeader className={`px-5 py-4 border-b bg-gradient-to-r ${headerClass} text-white`}>
-          <SheetTitle className="text-white flex items-center gap-2"><Bell className="w-5 h-5" /> Notifications</SheetTitle>
-          <p className="text-xs text-white/85">Account, job, chat and admin updates.</p>
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <Button size="sm" variant="secondary" className="h-8 rounded-full" onClick={markAllRead} disabled={!unreadCount}><CheckCheck className="w-4 h-4 mr-1" /> Mark all read</Button>
-            <Button size="sm" variant="secondary" className="h-8 rounded-full" onClick={clearRead} disabled={!notifs.some(n => n.read)}><Trash2 className="w-4 h-4 mr-1" /> Clear read</Button>
-          </div>
-        </SheetHeader>
-        <ScrollArea className="h-[calc(100vh-132px)] bg-slate-50">
-          {notifs.length === 0 ? (
-            <div className="m-4 p-6 rounded-2xl bg-white border text-center">
-              <Bell className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-              <p className="text-sm font-semibold">No notifications yet</p>
-              <p className="text-xs text-muted-foreground mt-1"></p>
-            </div>
-          ) : (
-            <div className="p-3 space-y-2">
-              {notifs.map(n => {
-                const isChat = n.type === 'message' || n.type === 'chat';
-                const isVerification = n.type === 'verification';
-                const isApplication = n.type === 'application';
-                const isAdminAction = ['admin_action','account_delete','account_verified','account_rejected'].includes(n.type);
-                const isJob = ['job_post','job_selected','job_rejected'].includes(n.type);
-                const tone = isChat ? 'emerald' : isVerification ? 'indigo' : isApplication || isJob ? 'amber' : isAdminAction ? 'rose' : 'slate';
-                return (
-                  <button key={n.id} type="button" onClick={async () => { await markRead(n.id); setActive(n); }}
-                    className={`w-full text-left p-3 rounded-2xl border bg-white hover:shadow-lg hover:-translate-y-0.5 transition flex gap-3 premium-notification ${!n.read ? 'ring-2 ring-indigo-100' : 'opacity-85'}`}>
-                    <div className={`w-10 h-10 rounded-full grid place-items-center shrink-0 ${tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' : tone === 'indigo' ? 'bg-indigo-100 text-indigo-700' : tone === 'amber' ? 'bg-amber-100 text-amber-700' : tone === 'rose' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
-                      {isChat ? <MessageSquare className="w-5 h-5" /> : isVerification ? <ShieldCheck className="w-5 h-5" /> : isApplication ? <ClipboardList className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-semibold text-sm leading-snug truncate">{n.title}</p>
-                        {!n.read && <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0 mt-1" />}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-3">{n.body}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.created_at).toLocaleString()}</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
-      </SheetContent>
-      <Dialog open={!!active} onOpenChange={(o) => !o && setActive(null)}>
-        <DialogContent className="max-w-md rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Bell className="w-5 h-5 text-indigo-600" /> {active?.title}</DialogTitle>
-            <DialogDescription>{active ? notificationLabel(active.type) : ''}</DialogDescription>
-          </DialogHeader>
-          {active && (
-            <div className="space-y-3">
-              <div className="rounded-2xl border bg-slate-50 p-4">
-                <p className="text-sm whitespace-pre-wrap">{active.body}</p>
-                <p className="text-xs text-muted-foreground mt-3">{new Date(active.created_at).toLocaleString()}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <InfoTile label="Type" value={notificationLabel(active.type)} />
-                <InfoTile label="Reference" value={active.related_id || '—'} />
-              </div>
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm font-semibold">Action</p>
-                <p className="text-xs text-muted-foreground mt-1">{notificationAction(active.type)}</p>
-              </div>
-              {active.meta && Object.keys(active.meta || {}).length > 0 && (
-                <div className="rounded-2xl border bg-white p-4 space-y-1">
-                  <p className="text-sm font-semibold">Details</p>
-                  {detailsToWords(active.meta).map((line, i) => <p key={i} className="text-xs text-slate-600 capitalize">{line}</p>)}
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </Sheet>
-  );
+async function loadNotifications(){
+
+if(!token) return;
+
+try{
+
+setLoading(true);
+
+const data=await api(
+`notifications?user_id=${userId}`,
+{token}
+);
+
+setNotifications(
+data.notifications || []
+);
+
+}catch(e){
+
+toast.error(
+"Unable to load notifications"
+);
+
+}
+finally{
+
+setLoading(false);
+
+}
+
+}
+
+const unreadCount=
+notifications.filter(
+n=>!n.read
+).length;
+
+
+return(
+
+<>
+
+{/* Bell Button */}
+
+<Button
+size="icon"
+variant="outline"
+className="
+relative
+rounded-full
+"
+
+onClick={()=>{
+setOpen(true)
+}}
+
+>
+
+<Bell className="w-5 h-5"/>
+
+{unreadCount>0 && (
+
+<div
+className="
+absolute
+-top-1
+-right-1
+w-5
+h-5
+rounded-full
+bg-red-500
+text-white
+text-xs
+flex
+items-center
+justify-center
+"
+>
+
+{unreadCount}
+
+</div>
+
+)}
+
+</Button>
+
+
+
+<AnimatePresence>
+
+{open && (
+
+<>
+
+{/* Overlay */}
+
+<motion.div
+
+initial={{
+opacity:0
+}}
+
+animate={{
+opacity:1
+}}
+
+exit={{
+opacity:0
+}}
+
+onClick={()=>{
+setOpen(false);
+setSelected(null);
+}}
+
+className="
+fixed
+inset-0
+bg-black/40
+z-[9998]
+"
+
+/>
+
+
+
+{/* Right Panel */}
+
+<motion.div
+
+initial={{
+x:350
+}}
+
+animate={{
+x:0
+}}
+
+exit={{
+x:350
+}}
+
+transition={{
+type:"spring",
+damping:25
+}}
+
+className="
+fixed
+top-0
+right-0
+w-[320px]
+h-screen
+bg-white
+dark:bg-slate-900
+shadow-2xl
+z-[9999]
+flex
+flex-col
+"
+
+>
+
+{/* Header */}
+
+<div
+className="
+p-4
+border-b
+flex
+items-center
+justify-between
+"
+>
+
+{selected ? (
+
+<Button
+variant="ghost"
+onClick={()=>{
+setSelected(null)
+}}
+>
+
+<ChevronLeft
+className="
+w-4
+h-4
+mr-1
+"
+/>
+
+Back
+
+</Button>
+
+)
+
+:
+
+<>
+
+<h2
+className="
+font-bold
+text-lg
+"
+>
+
+Notifications
+
+</h2>
+
+<div
+className="
+px-2
+py-1
+rounded-full
+bg-green-100
+text-green-700
+text-xs
+"
+>
+
+{unreadCount} unread
+
+</div>
+
+</>
+
+}
+
+</div>
+
+
+
+{/* Details */}
+
+{selected ? (
+
+<div
+className="
+flex-1
+overflow-y-auto
+p-4
+space-y-4
+"
+>
+
+<div
+className="
+rounded-3xl
+bg-gradient-to-br
+from-green-500
+to-emerald-700
+text-white
+p-5
+"
+>
+
+<div
+className="
+w-14
+h-14
+rounded-xl
+bg-white/20
+flex
+items-center
+justify-center
+mb-4
+"
+>
+
+<Bell className="w-7 h-7"/>
+
+</div>
+
+
+<h2
+className="
+font-bold
+text-xl
+"
+>
+
+{selected?.title ||
+"Notification"}
+
+</h2>
+
+<p
+className="
+mt-3
+text-sm
+"
+>
+
+{selected?.message ||
+"No details"}
+
+</p>
+
+</div>
+
+
+<div
+className="
+rounded-2xl
+border
+bg-slate-50
+dark:bg-slate-800
+p-4
+space-y-3
+"
+>
+
+<div>
+
+<p
+className="
+text-xs
+text-gray-400
+"
+>
+
+Received
+
+</p>
+
+<p>
+
+{selected?.created_at
+?
+new Date(
+selected.created_at
+).toLocaleString()
+
+:
+"Unknown"
+}
+
+</p>
+
+</div>
+
+
+<div>
+
+<p
+className="
+text-xs
+text-gray-400
+"
+>
+
+Notification ID
+
+</p>
+
+<p>
+
+#{selected?.id}
+
+</p>
+
+</div>
+
+</div>
+
+</div>
+
+)
+
+:
+
+<div
+className="
+flex-1
+overflow-y-auto
+p-3
+space-y-3
+"
+>
+
+{loading ? (
+
+<div
+className="
+flex
+justify-center
+p-6
+"
+>
+
+<Loader2
+className="
+animate-spin
+"
+/>
+
+</div>
+
+)
+
+:
+
+notifications.length===0
+
+?
+
+<div
+className="
+h-full
+flex
+items-center
+justify-center
+text-gray-400
+"
+>
+
+No Notifications
+
+</div>
+
+:
+
+notifications.map(item=>(
+
+<motion.div
+
+key={item.id}
+
+whileHover={{
+scale:1.02
+}}
+
+onClick={()=>{
+
+setSelected(item);
+
+setNotifications(
+prev=>
+prev.map(n=>
+
+n.id===item.id
+
+?
+
+{
+...n,
+read:true
+}
+
+:n
+
+)
+
+);
+
+}}
+
+className="
+relative
+rounded-2xl
+border
+bg-white
+dark:bg-slate-800
+shadow-md
+hover:shadow-xl
+cursor-pointer
+p-4
+overflow-hidden
+"
+
+>
+
+<div
+className="
+absolute
+left-0
+top-0
+bottom-0
+w-1
+bg-green-500
+"
+/>
+
+<div
+className="
+flex
+gap-3
+"
+>
+
+<div
+className="
+w-11
+h-11
+rounded-xl
+bg-green-600
+text-white
+flex
+items-center
+justify-center
+"
+>
+
+<Bell
+className="
+w-5
+h-5
+"
+/>
+
+</div>
+
+
+<div className="flex-1">
+
+<div
+className="
+flex
+justify-between
+"
+>
+
+<p
+className="
+font-semibold
+text-sm
+"
+>
+
+{item.title ||
+"Notification"}
+
+</p>
+
+{!item.read && (
+
+<div
+className="
+w-2
+h-2
+rounded-full
+bg-red-500
+animate-pulse
+"
+/>
+
+)}
+
+</div>
+
+
+<p
+className="
+text-xs
+text-gray-500
+mt-2
+line-clamp-2
+"
+>
+
+{item.message}
+
+</p>
+
+<p
+className="
+text-[11px]
+text-gray-400
+mt-2
+"
+>
+
+{
+item.created_at
+?
+
+new Date(
+item.created_at
+).toLocaleString()
+
+:
+
+"Recently"
+
+}
+
+</p>
+
+</div>
+
+</div>
+
+</motion.div>
+
+))
+
+}
+
+</div>
+
+}
+
+</motion.div>
+
+</>
+
+)}
+
+</AnimatePresence>
+
+</>
+
+);
+
 }
 
 
@@ -1835,48 +2346,48 @@ function AccountActivitySheet({ token, accent = 'indigo' }) {
     return map[key] || `You ${text.replace(/\b\w/g, c => c.toUpperCase()).toLowerCase()}`;
   };
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button type="button" variant="outline" className="w-full justify-start h-11 rounded-xl">
-          <Clock className="w-4 h-4 mr-2" /> Activity history
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="p-0 w-full sm:max-w-lg overflow-hidden premium-panel">
-        <SheetHeader className={`px-5 py-4 bg-gradient-to-r ${top} text-white`}>
-          <SheetTitle className="text-white flex items-center gap-2"><Clock className="w-5 h-5" /> History</SheetTitle>
-          <p className="text-xs text-white/80">Recent account activity, similar to Google history.</p>
-        </SheetHeader>
-        <ScrollArea className="h-[calc(100vh-88px)] bg-slate-50">
-          <div className="p-4 space-y-3">
-            {busy && <div className="grid place-items-center py-10"><Loader2 className="w-5 h-5 animate-spin" /></div>}
-            {!busy && activity.length === 0 && <div className="rounded-2xl border bg-white p-6 text-center text-sm text-muted-foreground">No history yet.</div>}
-            {!busy && activity.map((a) => (
-              <div key={a.id || `${a.action}-${a.created_at}`} className="rounded-2xl border bg-white p-4 shadow-sm premium-history-row">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-700 grid place-items-center shrink-0 border border-blue-100"><Clock className="w-4 h-4" /></div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-semibold text-sm">{clean(a.action)}</p>
-                      <Badge variant="outline" className="shrink-0 rounded-full">{new Date(a.created_at).toLocaleDateString()}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{new Date(a.created_at).toLocaleString()}</p>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-                      <InfoTile label="Activity" value={String(a.action || '').replace(/_/g, ' ')} />
-                      <InfoTile label="Device time" value={new Date(a.created_at).toLocaleTimeString()} />
-                    </div>
-                    {a.details && Object.keys(a.details || {}).length > 0 && (
-                      <div className="mt-3 rounded-xl border bg-slate-50 p-3 space-y-1">
-                        {detailsToWords(a.details).map((line, idx) => <p key={idx} className="text-[11px] text-slate-700 capitalize">{line}</p>)}
+    <>
+      <Button type="button" variant="outline" className="w-full justify-start h-11 rounded-xl" onClick={() => setOpen(true)}>
+        <Clock className="w-4 h-4 mr-2" /> Activity history
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="p-0 w-full sm:max-w-lg overflow-hidden premium-panel">
+          <DialogHeader className={`px-5 py-4 bg-gradient-to-r ${top} text-white`}>
+            <DialogTitle className="text-white flex items-center gap-2"><Clock className="w-5 h-5" /> History</DialogTitle>
+            <DialogDescription className="text-xs text-white/80">Recent account activity, similar to Google history.</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[70vh] bg-slate-50">
+            <div className="p-4 space-y-3">
+              {busy && <div className="grid place-items-center py-10"><Loader2 className="w-5 h-5 animate-spin" /></div>}
+              {!busy && activity.length === 0 && <div className="rounded-2xl border bg-white p-6 text-center text-sm text-muted-foreground">No history yet.</div>}
+              {!busy && activity.map((a) => (
+                <div key={a.id || `${a.action}-${a.created_at}`} className="rounded-2xl border bg-white p-4 shadow-sm premium-history-row">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-700 grid place-items-center shrink-0 border border-blue-100"><Clock className="w-4 h-4" /></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-semibold text-sm">{clean(a.action)}</p>
+                        <Badge variant="outline" className="shrink-0 rounded-full">{new Date(a.created_at).toLocaleDateString()}</Badge>
                       </div>
-                    )}
+                      <p className="text-xs text-muted-foreground mt-1">{new Date(a.created_at).toLocaleString()}</p>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                        <InfoTile label="Activity" value={String(a.action || '').replace(/_/g, ' ')} />
+                        <InfoTile label="Device time" value={new Date(a.created_at).toLocaleTimeString()} />
+                      </div>
+                      {a.details && Object.keys(a.details || {}).length > 0 && (
+                        <div className="mt-3 rounded-xl border bg-slate-50 p-3 space-y-1">
+                          {detailsToWords(a.details).map((line, idx) => <p key={idx} className="text-[11px] text-slate-700 capitalize">{line}</p>)}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+              ))}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1888,6 +2399,8 @@ function WorkerApp({ auth, onLogout }) {
   const [tab, setTab] = useState('home'); // home | myjobs | chats | profile
   const [me, setMe] = useState(null);
   const [chatPeer, setChatPeer] = useState(null);
+  const tabHistoryRef = useRef(['home']);
+  const skipNextPushRef = useRef(false);
 
   const refreshMe = async () => {
     try { const data = await api('me', { token }); setMe(data); } catch (e) { toast.error(e.message); }
@@ -1895,6 +2408,37 @@ function WorkerApp({ auth, onLogout }) {
   useEffect(() => { if (token) { refreshMe(); } }, [token]);
 
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    try { window.history.replaceState({ w2wApp: 'worker', tab: 'home' }, '', window.location.href); } catch {}
+    const onPop = () => {
+      if (tabHistoryRef.current.length > 1) {
+        tabHistoryRef.current.pop();
+        const prev = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'home';
+        skipNextPushRef.current = true;
+        setTab(prev);
+        return;
+      }
+      // Keep user in app if there's no previous in-app tab.
+      try { window.history.pushState({ w2wApp: 'worker', tab: tabHistoryRef.current[0] || 'home' }, '', window.location.href); } catch {}
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  useEffect(() => {
+    if (skipNextPushRef.current) {
+      skipNextPushRef.current = false;
+      return;
+    }
+    const stack = tabHistoryRef.current;
+    if (stack[stack.length - 1] === tab) return;
+    stack.push(tab);
+    if (typeof window !== 'undefined') {
+      try { window.history.pushState({ w2wApp: 'worker', tab }, '', window.location.href); } catch {}
+    }
+  }, [tab]);
 
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
@@ -2988,6 +3532,7 @@ function WorkerMyJobs({ token, onChat }) {
   const [apps, setApps] = useState([]);
   const [profileView, setProfileView] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [confirmingId, setConfirmingId] = useState(null);
   const load = async () => {
     setLoading(true);
     try { const d = await api('worker/applications', { token }); setApps(d.applications); }
@@ -3002,10 +3547,12 @@ function WorkerMyJobs({ token, onChat }) {
 
   const confirmHire = async (appId) => {
     try {
+      setConfirmingId(appId);
       await api(`applications/${appId}/worker-confirm`, { method: 'POST', token, body: {} });
       toast.success('Hire accepted. Company notified for next steps.');
       load();
     } catch (e) { toast.error(e.message); }
+    finally { setConfirmingId(null); }
   };
 
   const groups = {
@@ -3043,8 +3590,8 @@ function WorkerMyJobs({ token, onChat }) {
               </div>
               <div className="mt-3 flex gap-2">
                 {a.status === 'accepted' && (
-                  <Button size="sm" className="flex-1 bg-indigo-600 hover:bg-indigo-700" onClick={() => confirmHire(a.id)}>
-                    <CheckCircle2 className="w-4 h-4 mr-1" /> Accept hire & start next steps
+                  <Button type="button" size="sm" disabled={confirmingId === a.id} className="flex-1 bg-indigo-600 hover:bg-indigo-700" onClick={() => confirmHire(a.id)}>
+                    {confirmingId === a.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />} Accept
                   </Button>
                 )}
                 {a.status === 'completed' && !a.feedback_given && (
@@ -3396,7 +3943,7 @@ function VerificationDocumentsCard({ token, role, verified, form, setForm, onSav
           {lockedVerified ? (
             <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
           ) : status === 'submitted' || status === 'pending' ? (
-            <Badge className="bg-amber-100 text-amber-700">Pending review</Badge>
+            <Badge className="bg-amber-100 text-amber-700">Pending</Badge>
           ) : status === 'saved' ? (
             <Badge className="bg-sky-100 text-sky-700">Saved</Badge>
           ) : status === 'rejected' ? (
@@ -3513,13 +4060,140 @@ function VerificationDocumentsCard({ token, role, verified, form, setForm, onSav
             {form.verification_notes && <p className="text-xs text-red-600 mt-1">Note: {form.verification_notes}</p>}
           </div>
           <Button
-            type="button"
-            onClick={submitVerification}
-            disabled={busy || lockedVerified}
-            className={lockedVerified ? 'border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 shadow-sm' : (accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700')}
-          >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : lockedVerified ? 'Verified' : 'Verify your account'}
-          </Button>
+type="button"
+onClick={submitVerification}
+
+disabled={
+busy ||
+lockedVerified ||
+status==="pending" ||
+status==="submitted"
+}
+
+className={`
+
+min-w-[220px]
+h-12
+rounded-2xl
+font-semibold
+transition-all
+duration-300
+
+${
+
+lockedVerified
+
+?
+
+'bg-emerald-600 text-white hover:bg-emerald-700'
+
+:
+
+status==="pending" ||
+status==="submitted"
+
+?
+
+'bg-amber-500 text-white hover:bg-amber-600'
+
+:
+
+accent==="emerald"
+
+?
+
+'bg-emerald-600 hover:bg-emerald-700 text-white'
+
+:
+
+'bg-indigo-600 hover:bg-indigo-700 text-white'
+
+}
+
+`}
+>
+
+{
+
+busy
+
+?
+
+<>
+
+<Loader2
+className="
+w-4
+h-4
+mr-2
+animate-spin
+"
+/>
+
+Submitting...
+
+</>
+
+:
+
+lockedVerified
+
+?
+
+<>
+
+<CheckCircle2
+className="
+w-4
+h-4
+mr-2
+"
+/>
+
+Verified
+
+</>
+
+:
+
+status==="pending" ||
+status==="submitted"
+
+?
+
+<>
+
+<Clock
+className="
+w-4
+h-4
+mr-2
+"
+/>
+
+Pending Approval
+
+</>
+
+:
+
+<>
+
+<ShieldCheck
+className="
+w-4
+h-4
+mr-2
+"
+/>
+
+Verify your account
+
+</>
+
+}
+
+</Button>
         </div>
       </CardContent>
     </Card>
@@ -3572,6 +4246,7 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
 function WorkerProfile({ token, me, onSaved, onLogout }) {
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const verified = !!me?.extra?.verified;
   useEffect(() => {
     if (me) setForm({
@@ -3863,18 +4538,17 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           Save profile
         </Button>
 
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              className="h-12 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
-            >
-              <ShieldCheck className="w-4 h-4 mr-2" />
-              Account settings
-            </Button>
-          </SheetTrigger>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={() => setSettingsOpen(true)}
+          className="h-12 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+        >
+          <ShieldCheck className="w-4 h-4 mr-2" />
+          Account settings
+        </Button>
+        <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
           <SheetContent side="right" className="w-full sm:max-w-md">
             <SheetHeader>
               <SheetTitle>Account settings</SheetTitle>
@@ -3889,29 +4563,24 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                 )}
               </div>
 
-              <AccountActivitySheet token={token} accent="indigo" />
-
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm font-semibold text-slate-900">Session</p>
-                <p className="text-xs text-muted-foreground mt-1">Use logout when you only want to leave this device.</p>
+              <div className="rounded-2xl border p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-900">Quick actions</p>
+                <AccountActivitySheet token={token} accent="indigo" />
                 <Button
+                  type="button"
                   onClick={onLogout}
                   disabled={busy}
-                  className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </Button>
-              </div>
-
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                <p className="text-sm font-semibold text-red-700">Danger zone</p>
-                <p className="text-xs text-red-600/80 mt-1">Deleting your account permanently removes your profile, applications, messages, notifications, and Supabase Auth user.</p>
                 <Button
+                  type="button"
                   variant="destructive"
                   onClick={deleteAccount}
                   disabled={busy}
-                  className="w-full mt-4"
+                  className="w-full"
                 >
                   Delete Account Permanently
                 </Button>
@@ -4337,6 +5006,8 @@ function EmployerApp({ auth, onLogout }) {
   const [jobs, setJobs] = useState([]);
   const [chatPeer, setChatPeer] = useState(null);
   const [editingJob, setEditingJob] = useState(null);
+  const tabHistoryRef = useRef(['dashboard']);
+  const skipNextPushRef = useRef(false);
 
   const refreshMe = async () => {
     try { const d = await api('me', { token }); setMe(d); } catch {}
@@ -4348,6 +5019,37 @@ function EmployerApp({ auth, onLogout }) {
   useEffect(() => { if (token) { refreshMe(); refreshJobs(); } }, [token]);
 
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    try { window.history.replaceState({ w2wApp: 'employer', tab: 'dashboard' }, '', window.location.href); } catch {}
+    const onPop = () => {
+      if (tabHistoryRef.current.length > 1) {
+        tabHistoryRef.current.pop();
+        const prev = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'dashboard';
+        skipNextPushRef.current = true;
+        setTab(prev);
+        return;
+      }
+      // Keep user in app if there's no previous in-app tab.
+      try { window.history.pushState({ w2wApp: 'employer', tab: tabHistoryRef.current[0] || 'dashboard' }, '', window.location.href); } catch {}
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  useEffect(() => {
+    if (skipNextPushRef.current) {
+      skipNextPushRef.current = false;
+      return;
+    }
+    const stack = tabHistoryRef.current;
+    if (stack[stack.length - 1] === tab) return;
+    stack.push(tab);
+    if (typeof window !== 'undefined') {
+      try { window.history.pushState({ w2wApp: 'employer', tab }, '', window.location.href); } catch {}
+    }
+  }, [tab]);
 
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
@@ -4428,6 +5130,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
   const [profileView, setProfileView] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [loadingApp, setLoadingApp] = useState(false);
+  const [decidingId, setDecidingId] = useState(null);
 
   const totalApplicants = jobs.reduce((s, j) => s + (j.applicants_count || 0), 0);
   const totalPending    = jobs.reduce((s, j) => s + (j.pending_count || 0), 0);
@@ -4444,6 +5147,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
   };
   const decide = async (appId, status) => {
     try {
+      setDecidingId(appId);
       await api(`applications/${appId}`, { method: 'PATCH', token, body: { status } });
       toast.success(`Marked ${status}`);
       // refresh
@@ -4451,6 +5155,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
       setApplicants(d.applicants);
       reload();
     } catch (e) { toast.error(e.message); }
+    finally { setDecidingId(null); }
   };
 
   return (
@@ -4521,10 +5226,10 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
                       <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => openProfileDetails(a.worker_id)}>
                         <UserCircle className="w-4 h-4 mr-1" /> Profile
                       </Button>
-                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => decide(a.id, 'accepted')}>
-                        <CheckCircle2 className="w-4 h-4 mr-1" /> Accept
+                      <Button type="button" size="sm" disabled={decidingId === a.id} className="bg-emerald-600 hover:bg-emerald-700" onClick={() => decide(a.id, 'accepted')}>
+                        {decidingId === a.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />} Accept
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => decide(a.id, 'rejected')}>
+                      <Button type="button" size="sm" variant="outline" disabled={decidingId === a.id} onClick={() => decide(a.id, 'rejected')}>
                         <XCircle className="w-4 h-4 mr-1" /> Reject
                       </Button>
                     </div>
@@ -4547,7 +5252,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
                                 const feedback = prompt('Feedback for the worker:');
                                 if (rating && feedback) {
                                   api('feedback/worker', { method: 'POST', token, body: { application_id: a.id, rating: parseInt(rating), feedback_text: feedback } })
-                                    .then(() => { toast.success('Feedback submitted!'); loadApplicants(); })
+                                    .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
                                     .catch(e => toast.error(e.message));
                                 }
                               }}>
@@ -4558,7 +5263,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
                                 const feedback = prompt('Additional feedback for the worker:');
                                 if (feedback) {
                                   api('feedback/employer', { method: 'POST', token, body: { application_id: a.id, rating: 5, feedback_text: feedback } })
-                                    .then(() => { toast.success('Feedback submitted!'); loadApplicants(); })
+                                    .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
                                     .catch(e => toast.error(e.message));
                                 }
                               }}>
@@ -4833,37 +5538,73 @@ function PostJob({ token, onPosted, initialJob = null }) {
 
 
 function EmployerProfile({ token, me, onSaved, onLogout }) {
-  const [f, setF] = useState({});
-  const [busy, setBusy] = useState(false);
+  const [f,setF]=useState({});
+const [busy,setBusy]=useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+const [savedData,setSavedData]=useState({});
+const [hasChanges,setHasChanges]=useState(false);
+  const [attendanceRows, setAttendanceRows] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  useEffect(()=>{
+
+if(me){
+
+const profileData={
+
+full_name:me.profile?.full_name || '',
+phone:me.profile?.phone || '',
+company_name:me.extra?.company_name || '',
+industry:me.extra?.industry || '',
+company_size:me.extra?.company_size || '',
+hr_contact:me.extra?.hr_contact || '',
+official_email:me.extra?.official_email || '',
+location_text:me.extra?.location_text || '',
+latitude:me.extra?.latitude || '',
+longitude:me.extra?.longitude || '',
+description:me.extra?.description || '',
+company_address:me.extra?.company_address || '',
+gst_number:me.extra?.gst_number || '',
+language:me.profile?.language || 'en'
+
+};
+
+setF(profileData);
+setSavedData(profileData);
+
+}
+
+},[me]);
+
+useEffect(()=>{
+
+const changed=
+
+JSON.stringify(f)!==
+JSON.stringify(savedData);
+
+setHasChanges(changed);
+
+},[f,savedData]);
+
+  const loadAttendanceRows = async () => {
+    if (!token) return;
+    setAttendanceLoading(true);
+    try {
+      const d = await api('employer/attendance', { token });
+      setAttendanceRows(d.items || []);
+    } catch (e) {
+      toast.error(e.message || 'Unable to load attendance details');
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (me) setF({
-      full_name: me.profile?.full_name || '',
-      phone: me.profile?.phone || '',
-      company_name: me.extra?.company_name || '',
-      industry: me.extra?.industry || '',
-      company_size: me.extra?.company_size || '',
-      hr_contact: me.extra?.hr_contact || '',
-      official_email: me.extra?.official_email || '',
-      location_text: me.extra?.location_text || '',
-      latitude: me.extra?.latitude || '',
-      longitude: me.extra?.longitude || '',
-      place_id: me.extra?.place_id || '',
-      place_name: me.extra?.place_name || '',
-      description: me.extra?.description || '',
-      company_address: me.extra?.company_address || '',
-      gst_number: me.extra?.gst_number || '',
-      gst_certificate_url: me.extra?.gst_certificate_url || '',
-      aadhaar_number: me.extra?.aadhaar_number || '',
-      pan_number: me.extra?.pan_number || '',
-      aadhaar_front_url: me.extra?.aadhaar_front_url || '',
-      aadhaar_back_url: me.extra?.aadhaar_back_url || '',
-      pan_image_url: me.extra?.pan_image_url || '',
-      pan_back_url: me.extra?.pan_back_url || '',
-      verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
-      verification_notes: me.extra?.verification_notes || '',
-      language: me.profile?.language || 'en',
-    });
-  }, [me]);
+    loadAttendanceRows();
+  }, [token]);
+
+
 
   const save = async () => {
     setBusy(true);
@@ -5031,6 +5772,49 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Employee attendance details</CardTitle>
+          <Button type="button" size="sm" variant="outline" onClick={loadAttendanceRows} disabled={attendanceLoading}>
+            {attendanceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {attendanceLoading && <div className="py-6 grid place-items-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>}
+          {!attendanceLoading && attendanceRows.length === 0 && (
+            <p className="text-sm text-muted-foreground p-4 border rounded-xl bg-slate-50">No accepted employees yet.</p>
+          )}
+          {!attendanceLoading && attendanceRows.map((row) => (
+            <div key={row.application_id} className="rounded-2xl border p-3 bg-white">
+              <div className="flex items-start gap-3">
+                <Avatar><AvatarImage src={row.worker?.photo_url} /><AvatarFallback>{initials(row.worker?.full_name || row.worker?.email)}</AvatarFallback></Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold truncate">{row.worker?.full_name || row.worker?.email}</p>
+                    <Badge variant="secondary" className={row.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700' : row.status === 'completed' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}>{row.status}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{row.job_title} · {row.location_text || 'Location pending'}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Start {row.start_date ? new Date(row.start_date).toLocaleDateString() : 'N/A'} · {row.duration_days || 1} day(s) · {fmtMoney(row.daily_pay)}/day
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Phone: {row.worker?.phone || 'Not added'} · Wage ask: ₹{row.worker?.expected_daily_wage || 0}</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-xl border bg-slate-50 p-2">
+                <p className="text-xs font-medium mb-2">Daily attendance from start date</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(row.attendance_days || []).map((d) => (
+                    <span key={d.date} className={`px-2 py-1 rounded-full text-[11px] border ${d.status === 'present' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : d.status === 'today' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-white text-slate-600 border-slate-200'}`}>
+                      Day {d.day}: {new Date(d.date).toLocaleDateString()}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           onClick={save}
@@ -5041,18 +5825,17 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
           Save profile
         </Button>
 
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              className="h-12 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-            >
-              <ShieldCheck className="w-4 h-4 mr-2" />
-              Account settings
-            </Button>
-          </SheetTrigger>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={() => setSettingsOpen(true)}
+          className="h-12 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+        >
+          <ShieldCheck className="w-4 h-4 mr-2" />
+          Account settings
+        </Button>
+        <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
           <SheetContent side="right" className="w-full sm:max-w-md">
             <SheetHeader>
               <SheetTitle>Account settings</SheetTitle>
@@ -5067,29 +5850,24 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
                 )}
               </div>
 
-              <AccountActivitySheet token={token} accent="emerald" />
-
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm font-semibold text-slate-900">Session</p>
-                <p className="text-xs text-muted-foreground mt-1">Use logout when you only want to leave this device.</p>
+              <div className="rounded-2xl border p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-900">Quick actions</p>
+                <AccountActivitySheet token={token} accent="emerald" />
                 <Button
+                  type="button"
                   onClick={onLogout}
                   disabled={busy}
-                  className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </Button>
-              </div>
-
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                <p className="text-sm font-semibold text-red-700">Danger zone</p>
-                <p className="text-xs text-red-600/80 mt-1">Deleting your account permanently removes your company profile, jobs, applications, messages, notifications, and Supabase Auth user.</p>
                 <Button
+                  type="button"
                   variant="destructive"
                   onClick={deleteAccount}
                   disabled={busy}
-                  className="w-full mt-4"
+                  className="w-full"
                 >
                   Delete Account Permanently
                 </Button>
