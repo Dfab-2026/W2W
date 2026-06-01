@@ -637,39 +637,7 @@ function AdminApp({ auth, onLogout }) {
     return row.details || {};
   };
 
-  const normalizeVerificationSection = (section) => (section === 'verification' ? 'documents' : section);
-  const sectionActivityMatches = (row, wanted) => {
-    const d = activityDetails(row);
-    const rowSection = normalizeVerificationSection(d.section || d.verification_section || d.pending_verification_section);
-    return rowSection === wanted;
-  };
-  const getAdminSectionState = (section) => {
-    const wanted = normalizeVerificationSection(section);
-    const sectionStatuses = selected?.section_statuses || selected?.extra?.section_statuses || {};
-    const directStatus = sectionStatuses?.[wanted];
-    if (directStatus === 'pending' || directStatus === 'submitted' || directStatus === 'modified') return 'pending';
-    if (directStatus === 'rejected') return 'rejected';
-    if (directStatus === 'verified') return 'verified';
-
-    const rows = [...(selected?.activity || [])]
-      .filter((a) => sectionActivityMatches(a, wanted))
-      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-    const latest = rows[0];
-    const action = String(latest?.action || '').toLowerCase();
-    if (action.includes('admin_verified_section') || action.includes('verified_profile_section')) return 'verified';
-    if (action.includes('submit') || action.includes('upload') || action.includes('pending') || action.includes('verification')) return 'pending';
-
-    const pendingSection = normalizeVerificationSection(
-      selected?.verification_section ||
-      selected?.pending_verification_section ||
-      selected?.extra?.verification_section ||
-      selected?.extra?.pending_verification_section
-    );
-    const status = selected?.verification_status || selected?.extra?.verification_status;
-    if ((status === 'pending' || status === 'submitted' || status === 'modified') && pendingSection === wanted) return 'pending';
-    return 'not_submitted';
-  };
-  const isSectionVerified = (section) => getAdminSectionState(section) === 'verified';
+  const isSectionVerified = (section) => !!selected?.activity?.some((a) => a.action === 'admin_verified_section' && activityDetails(a).section === section);
 
   const verifySection = async (section) => {
     if (!selected?.id) return;
@@ -886,12 +854,9 @@ function AdminApp({ auth, onLogout }) {
                       disabled={busy || selected.role === 'admin'}
                     >
                       <InfoTile label="Account holder" value={selected.account_holder_name || selected.full_name || selected.company_name} />
-                      <InfoTile label="Bank name" value={selected.bank_name} />
                       <InfoTile label="Bank account" value={selected.bank_account || selected.bank_account_number} />
                       <InfoTile label="IFSC" value={selected.ifsc_code} />
-                      <InfoTile label="Branch name" value={selected.branch_name} />
                       <InfoTile label="UPI" value={selected.upi_id} />
-                      <AdminDocPreview title="UPI QR" url={selected.bank_qr_url} />
                     </AdminVerificationSection>
 
                     <AdminVerificationSection
@@ -1714,28 +1679,6 @@ loadNotifications();
 
 },[]);
 
-useEffect(() => {
-  if (typeof window === 'undefined') return;
-
-  const handleNotificationBack = (event) => {
-    if (!open && !selected) return;
-
-    // Close notification UI first. Do not also change dashboard tabs.
-    event?.stopImmediatePropagation?.();
-
-    if (selected) {
-      setSelected(null);
-      setOpen(true);
-      return;
-    }
-
-    setOpen(false);
-  };
-
-  window.addEventListener('popstate', handleNotificationBack);
-  return () => window.removeEventListener('popstate', handleNotificationBack);
-}, [open, selected]);
-
 
 async function loadNotifications(){
 
@@ -1790,14 +1733,7 @@ rounded-full
 "
 
 onClick={()=>{
-setOpen(true);
-if (typeof window !== 'undefined') {
-  window.history.pushState(
-    { w2wInternal: true, panel: 'notifications', channelKey },
-    '',
-    window.location.href
-  );
-}
+setOpen(true)
 }}
 
 >
@@ -1896,9 +1832,9 @@ className="
 fixed
 top-0
 right-0
-w-[min(380px,94vw)]
+w-[320px]
 h-screen
-bg-gradient-to-b from-white via-slate-50 to-indigo-50
+bg-white
 dark:bg-slate-900
 shadow-2xl
 z-[9999]
@@ -2469,6 +2405,8 @@ scale:1.02
 
 onClick={()=>{
 
+setSelected(item);
+
 setNotifications(
 prev=>
 prev.map(n=>
@@ -2487,45 +2425,29 @@ read:true
 )
 
 );
-api(`notifications/${item.id}/read`, { method: 'POST', token }).catch(() => null);
 
-const target = {
-  ...item,
-  type: item.type,
-  reference_id: item.reference_id || item.source_id || item.target_id || item.related_id,
-  target_route: item.target_route || item.target_page || item.route,
-  peer_id: item.peer_id,
-  peer_name: item.peer_name,
-  peer_photo: item.peer_photo,
-  peer_role: item.peer_role,
-};
-
+// Handle navigation based on notification type
 if (onNavigate) {
-  onNavigate(target);
-  setOpen(false);
-  setSelected(null);
-  toast.success('Opening related page');
-} else {
-  if (typeof window !== 'undefined') {
-    window.history.pushState(
-      { w2wInternal: true, panel: 'notification-detail', notificationId: item.id },
-      '',
-      window.location.href
-    );
-  }
-  setSelected(item);
+  onNavigate({
+    type: item.type,
+    reference_id: item.reference_id,
+    peer_id: item.peer_id,
+    peer_name: item.peer_name,
+    peer_photo: item.peer_photo,
+    peer_role: item.peer_role,
+  });
 }
 
 }}
 
 className="
 relative
-rounded-3xl
-border border-white/70
-bg-gradient-to-br from-white via-indigo-50/80 to-emerald-50/60
+rounded-2xl
+border
+bg-white
 dark:bg-slate-800
-shadow-lg shadow-indigo-100/70
-hover:shadow-2xl hover:-translate-y-0.5
+shadow-md
+hover:shadow-xl
 cursor-pointer
 p-4
 overflow-hidden
@@ -2553,10 +2475,10 @@ gap-3
 
 <div
 className="
-w-12
-h-12
-rounded-2xl
-bg-gradient-to-br from-indigo-600 to-emerald-500
+w-11
+h-11
+rounded-xl
+bg-green-600
 text-white
 flex
 items-center
@@ -2864,58 +2786,9 @@ function AccountActivitySheet({ token, accent = 'indigo' }) {
 // ============================================================
 function WorkerApp({ auth, onLogout }) {
   const token = auth?.session?.access_token;
-  const [tab, setTabState] = useState('home'); // home | myjobs | chats | profile
+  const [tab, setTab] = useState('home'); // home | myjobs | chats | profile
   const [me, setMe] = useState(null);
   const [chatPeer, setChatPeer] = useState(null);
-  const tabHistoryRef = useRef([]);
-
-  const setTab = (nextTab, options = {}) => {
-    setTabState((currentTab) => {
-      if (!nextTab || currentTab === nextTab) return currentTab;
-
-      if (!options.replace && typeof window !== 'undefined') {
-        tabHistoryRef.current.push(currentTab);
-        window.history.pushState(
-          { w2wInternal: true, portal: 'worker', tab: nextTab },
-          '',
-          window.location.href
-        );
-      }
-
-      return nextTab;
-    });
-  };
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    window.history.replaceState(
-      { ...(window.history.state || {}), w2wInternal: true, portal: 'worker', tab: 'home' },
-      '',
-      window.location.href
-    );
-
-    const handleBrowserBack = () => {
-      const previousTab = tabHistoryRef.current.pop();
-
-      if (previousTab) {
-        setChatPeer(null);
-        setTabState(previousTab);
-        return;
-      }
-
-      setChatPeer(null);
-      setTabState('home');
-      window.history.pushState(
-        { w2wInternal: true, portal: 'worker', tab: 'home' },
-        '',
-        window.location.href
-      );
-    };
-
-    window.addEventListener('popstate', handleBrowserBack);
-    return () => window.removeEventListener('popstate', handleBrowserBack);
-  }, []);
 
   const refreshMe = async () => {
     try { const data = await api('me', { token }); setMe(data); } catch (e) { toast.error(e.message); }
@@ -2930,14 +2803,16 @@ function WorkerApp({ auth, onLogout }) {
     if (!type) return;
     
     // Route to appropriate tab/screen based on notification type
-    const route = notif.target_route || notif.target_page || '';
-    if (route.includes('profile') || type === 'account_verified' || type === 'account_rejected' || type === 'verification_submit') {
-      setTab('profile');
-    } else if (route.includes('chat') || type === 'message') {
-      setChatPeer(null);
-      setTab('chats');
-    } else if (type === 'application_accepted' || type === 'application_completed' || type === 'application_submitted' || type === 'application_ongoing' || type === 'attendance_marked' || route.includes('ongoing') || route.includes('job')) {
+    if (type === 'application_accepted') {
       setTab('myjobs');
+      // TODO: Could also pass state to pre-select the job
+    } else if (type === 'application_completed') {
+      setTab('myjobs');
+    } else if (type === 'application_submitted') {
+      setTab('myjobs');
+    } else if (type === 'message') {
+      setChatPeer(null); // Will load chat list
+      setTab('chats');
     }
     // For other types, just mark as read (already done in NotificationCenter)
   };
@@ -2981,7 +2856,7 @@ function WorkerApp({ auth, onLogout }) {
       </main>
 
       {/* bottom nav — premium */}
-      <nav className={`shrink-0 bg-white/95 backdrop-blur-xl shadow-[0_-4px_20px_rgba(15,23,42,0.06)] ${tab === 'profile' ? 'border-t-0' : 'border-t border-slate-100'}`}>
+      <nav className="shrink-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]">
         <div className="container grid grid-cols-3">
           {[
             { k: 'home',    i: Search,         l: 'Find' },
@@ -3032,10 +2907,6 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-function getDistanceMeters(lat1, lon1, lat2, lon2) {
-  return getDistanceKm(Number(lat1), Number(lon1), Number(lat2), Number(lon2)) * 1000;
-}
-
 function getStrictRadiusKm(radiusValue, customValue) {
   const raw = radiusValue === 'custom' ? customValue : radiusValue;
   const n = Number(raw);
@@ -3076,7 +2947,7 @@ async function getServerPlacePredictions(query) {
 
 async function getServerPlaceDetails(placeId, fallbackText = '') {
   if (!placeId && fallbackText) return getServerGeocode(fallbackText);
-  const data = await fetchJsonNoAuth(`/api/places/details?place_id=${encodeURIComponent(placeId)}&fallback=${encodeURIComponent(fallbackText || '')}`);
+  const data = await fetchJsonNoAuth(`/api/places/details?place_id=${encodeURIComponent(placeId)}`);
   return data.location;
 }
 
@@ -3114,7 +2985,7 @@ function loadGoogleMapsPlaces() {
       }
 
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&v=weekly&language=en`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&v=weekly&region=IN&language=en`;
       script.async = true;
       script.defer = true;
       script.dataset.w2wGoogleMaps = 'true';
@@ -3130,7 +3001,7 @@ function loadGoogleMapsPlaces() {
 async function getOpenStreetMapPredictions(query) {
   const q = (query || '').trim();
   if (q.length < 3) return [];
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=20&q=${encodeURIComponent(q)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(q)}`;
   const res = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!res.ok) return [];
   const data = await res.json();
@@ -3183,112 +3054,67 @@ async function getPlacePredictions(query) {
   const q = (query || '').trim();
   if (q.length < 2) return [];
 
-  const seen = new Set();
-  const addUnique = (items, out) => {
-    for (const item of (items || [])) {
-      const key = item.place_id || item.description || item.structured_formatting?.main_text;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(item);
-      if (out.length >= 40) break;
-    }
-  };
-
-  const finalList = [];
-
-  // 1) Server Google route: supports Places New, legacy Autocomplete, Query Autocomplete and Text Search.
+  // First use our server API. This is more reliable than directly loading Google script in the browser.
   try {
     const serverList = await getServerPlacePredictions(q);
-    addUnique(serverList, finalList);
+    if (serverList.length) return serverList.slice(0, 10);
   } catch (error) {
-    // Browser Google fallback below.
+    // Continue to browser script fallback below.
   }
 
-  // 2) Browser Google fallback: IMPORTANT - do not stop after server results.
-  // This adds companies, shops, factories, offices, landmarks and exact addresses like Google/Rapido.
-  if (getGoogleMapsApiKey()) {
-    try {
-      const google = await loadGoogleMapsPlaces();
-      const autoService = new google.maps.places.AutocompleteService();
-      const holder = document.createElement('div');
-      const placesService = new google.maps.places.PlacesService(holder);
-      const sessionToken = new google.maps.places.AutocompleteSessionToken();
-      const requestBase = { input: q, sessionToken };
+  if (!getGoogleMapsApiKey()) return getOpenStreetMapPredictions(q);
 
-      const getPredictions = (request) => new Promise((resolve) => {
-        autoService.getPlacePredictions(request, (predictions, status) => {
-          if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) return resolve([]);
-          resolve(predictions.map((p) => ({ ...p, source: 'google-browser-autocomplete' })));
-        });
-      });
+  const google = await loadGoogleMapsPlaces();
+  const service = new google.maps.places.AutocompleteService();
+  const sessionToken = new google.maps.places.AutocompleteSessionToken();
 
-      const getQueries = () => new Promise((resolve) => {
-        autoService.getQueryPredictions(requestBase, (predictions, status) => {
-          if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) return resolve([]);
-          resolve(predictions.map((p, i) => ({
-            ...p,
-            place_id: p.place_id || `query-${i}-${btoa(unescape(encodeURIComponent(p.description || q))).replace(/=+$/,'')}`,
-            source: 'google-browser-query',
-            is_query_prediction: true,
-            structured_formatting: p.structured_formatting || { main_text: p.description || q, secondary_text: 'Search this place/company/address' },
-            types: p.types || ['query'],
-          })));
-        });
-      });
+  const requestBase = {
+    input: q,
+    componentRestrictions: { country: 'in' },
+    sessionToken,
+    location: new google.maps.LatLng(12.9716, 77.5946),
+    radius: 80000,
+  };
 
-      const textSearch = (searchText) => new Promise((resolve) => {
-        placesService.textSearch({ query: searchText }, (results, status) => {
-          if (status !== google.maps.places.PlacesServiceStatus.OK || !results) return resolve([]);
-          resolve(results.slice(0, 12).map((place) => {
-            const name = place.name || '';
-            const address = place.formatted_address || place.vicinity || '';
-            const description = name && address && !address.toLowerCase().startsWith(name.toLowerCase())
-              ? `${name} - ${address}`
-              : (address || name || searchText);
-            return {
-              place_id: place.place_id,
-              description,
-              source: 'google-browser-text-search',
-              structured_formatting: {
-                main_text: name || description.split(',')[0] || searchText,
-                secondary_text: address || description,
-              },
-              types: place.types || ['establishment'],
-            };
-          }).filter((p) => p.place_id || p.description));
-        });
-      });
+  const getPredictions = (request) => new Promise((resolve) => {
+    service.getPlacePredictions(request, (predictions, status) => {
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+        resolve([]);
+        return;
+      }
+      resolve(predictions.map(p => ({ ...p, source: 'google-browser' })));
+    });
+  });
 
-      const [textPlaces, businessAuto, allAuto, addressAuto, geocodeAuto, regionAuto, queries] = await Promise.all([
-        textSearch(q),
-        getPredictions({ ...requestBase, types: ['establishment'] }),
-        getPredictions(requestBase),
-        getPredictions({ ...requestBase, types: ['address'] }),
-        getPredictions({ ...requestBase, types: ['geocode'] }),
-        getPredictions({ ...requestBase, types: ['(regions)'] }),
-        getQueries(),
-      ]);
+  const getQueries = () => new Promise((resolve) => {
+    service.getQueryPredictions(requestBase, (predictions, status) => {
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+        resolve([]);
+        return;
+      }
+      resolve(predictions.map(p => ({ ...p, source: 'google-query' })));
+    });
+  });
 
-      // Order: exact company/shop/place results first, then normal addresses/areas.
-      addUnique(textPlaces, finalList);
-      addUnique(businessAuto, finalList);
-      addUnique(allAuto, finalList);
-      addUnique(addressAuto, finalList);
-      addUnique(geocodeAuto, finalList);
-      addUnique(regionAuto, finalList);
-      addUnique(queries, finalList);
-    } catch (error) {
-      // OSM fallback below.
-    }
-  }
+  const [businesses, allPlaces, addresses, queries] = await Promise.all([
+    getPredictions({ ...requestBase, types: ['establishment'] }),
+    getPredictions(requestBase),
+    getPredictions({ ...requestBase, types: ['geocode'] }),
+    getQueries(),
+  ]);
 
-  // 3) OSM fallback/extra. Useful when Google key restrictions are blocking browser/server.
-  try {
-    const osm = await getOpenStreetMapPredictions(q);
-    addUnique(osm, finalList);
-  } catch {}
+  const seen = new Set();
+  const list = [...businesses, ...allPlaces, ...queries, ...addresses]
+    .filter((item) => {
+      const key = item.place_id || item.description;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 10);
 
-  return finalList.slice(0, 40);
+  if (list.length) return list;
+  return getOpenStreetMapPredictions(q);
 }
 
 async function getPlaceDetails(placeId, fallbackText = '') {
@@ -3362,6 +3188,7 @@ async function findPlaceFromText(query) {
       {
         query: q,
         fields: ['name', 'formatted_address', 'geometry', 'place_id', 'types', 'business_status'],
+        locationBias: { lat: 12.9716, lng: 77.5946 },
       },
       (results, status) => {
         if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.[0]?.geometry?.location) {
@@ -3379,6 +3206,7 @@ async function findPlaceFromText(query) {
     service.textSearch(
       {
         query: q,
+        region: 'in',
       },
       (results, status) => {
         if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.[0]?.geometry?.location) {
@@ -3398,18 +3226,10 @@ async function geocodeTypedAddress(address) {
   const q = (address || '').trim();
   if (q.length < 3) throw new Error('Type at least 3 characters for location');
 
-  // Google Maps style search: try Places Text Search / Find Place first so company,
-  // shop, office and landmark names do not get reduced into only a main area.
-  try {
-    return await findPlaceFromText(q);
-  } catch {
-    // Continue to geocode fallbacks for pure addresses.
-  }
-
   try {
     return await getServerGeocode(q);
   } catch {
-    // Continue to browser geocoder fallback.
+    // Continue to browser fallbacks.
   }
 
   const google = await loadGoogleMapsPlaces();
@@ -3417,7 +3237,10 @@ async function geocodeTypedAddress(address) {
 
   const geocodeResult = await new Promise((resolve) => {
     geocoder.geocode(
-      { address: q },
+      {
+        address: q,
+        componentRestrictions: { country: 'IN' },
+      },
       (results, status) => {
         if (status !== google.maps.GeocoderStatus.OK || !results?.[0]?.geometry?.location) {
           resolve(null);
@@ -3426,7 +3249,7 @@ async function geocodeTypedAddress(address) {
         const first = results[0];
         resolve({
           location_text: first.formatted_address || q,
-          place_name: first.address_components?.[0]?.long_name || '',
+          place_name: '',
           place_id: first.place_id || '',
           latitude: first.geometry.location.lat(),
           longitude: first.geometry.location.lng(),
@@ -3436,8 +3259,14 @@ async function geocodeTypedAddress(address) {
   });
 
   if (geocodeResult) return geocodeResult;
-  throw new Error('Unable to find this company/place/address. Try full company name with area, city, state, or country.');
+
+  try {
+    return await findPlaceFromText(q);
+  } catch {
+    throw new Error('Unable to find this company/place/address. Try full company name with area, or select a Google suggestion.');
+  }
 }
+
 
 function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPick }) {
   const [open, setOpen] = useState(false);
@@ -3506,13 +3335,11 @@ function LocationSearchBox({
   onChange,
   color = 'indigo',
   placeholder = 'Search company, shop, landmark, area or full address',
-  // REAL FIX: supports Google Places New + legacy Autocomplete + Text Search + Query predictions for company/shop names.
   helper = 'Type like Google Maps. Choose a company/place suggestion to save exact latitude and longitude.',
 }) {
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
   const blurRef = useRef(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const [query, setQuery] = useState(value || '');
   const [predictions, setPredictions] = useState([]);
   const [showPredictions, setShowPredictions] = useState(false);
@@ -3522,32 +3349,9 @@ function LocationSearchBox({
   const [locationError, setLocationError] = useState('');
   const hasGoogleKey = !!getGoogleMapsApiKey();
 
-  const updateDropdownPosition = () => {
-    if (typeof window === 'undefined' || !inputRef.current) return;
-    const box = inputRef.current.closest('[data-location-search-box]') || inputRef.current;
-    const rect = box.getBoundingClientRect();
-    setDropdownPos({
-      top: Math.round(rect.bottom + 8),
-      left: Math.round(rect.left),
-      width: Math.round(rect.width),
-    });
-  };
-
   useEffect(() => {
     setQuery(value || '');
   }, [value]);
-
-  useEffect(() => {
-    if (!showPredictions) return;
-    updateDropdownPosition();
-    const handler = () => updateDropdownPosition();
-    window.addEventListener('scroll', handler, true);
-    window.addEventListener('resize', handler);
-    return () => {
-      window.removeEventListener('scroll', handler, true);
-      window.removeEventListener('resize', handler);
-    };
-  }, [showPredictions, query, predictions.length]);
 
   useEffect(() => {
     let active = true;
@@ -3582,40 +3386,22 @@ function LocationSearchBox({
       return;
     }
 
-    setShowPredictions(true);
     setLoading(true);
     try {
       let list = [];
       try {
-        // Use the full merged search, not only the server result.
-        // This keeps area/address results AND adds company/shop/office/landmark results.
         list = hasGoogleKey ? await getPlacePredictions(q) : await getOpenStreetMapPredictions(q);
       } catch {
         list = await getOpenStreetMapPredictions(q);
       }
-
-      const exactSearchOption = q.length >= 3 ? [{
-        place_id: `query-exact-${btoa(unescape(encodeURIComponent(q))).replace(/=+$/,'')}`,
-        description: q,
-        source: 'exact-company-place-search',
-        is_query_prediction: true,
-        structured_formatting: {
-          main_text: `Search exact place: ${q}`,
-          secondary_text: 'Use Google Places Text Search for company, shop, office, landmark or full address',
-        },
-        types: ['establishment', 'query'],
-      }] : [];
-      const mergedList = [...exactSearchOption, ...(list || [])].filter((item, index, arr) => {
-        const key = item.place_id || item.description;
-        return key && arr.findIndex((x) => (x.place_id || x.description) === key) === index;
-      });
-      setPredictions(mergedList.slice(0, 40));
+      setPredictions(list || []);
       setShowPredictions(true);
-      if (!mergedList?.length) setLocationError('No suggestion found yet. Type company/shop name with area, full address, landmark, city, state, or country.');
+      if (!list?.length) setLocationError('No suggestion found. Type company name with area/city, then press Search.');
     } catch (e) {
       setPredictions([]);
-      setShowPredictions(true);
+      setShowPredictions(false);
       setLocationError(e.message || 'Unable to search location now. Try current GPS or type a clearer area.');
+      toast.error('Location search failed. Check Google API key and enabled APIs.');
     } finally {
       setLoading(false);
     }
@@ -3624,7 +3410,6 @@ function LocationSearchBox({
   const handleInputChange = (e) => {
     const v = e.target.value;
     setQuery(v);
-    updateDropdownPosition();
     onChange?.({ location_text: v, latitude: null, longitude: null });
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -3632,14 +3417,12 @@ function LocationSearchBox({
   };
 
   const selectPrediction = async (prediction) => {
-    if (!prediction?.place_id && !prediction?.description) return;
+    if (!prediction?.place_id) return;
     setLoading(true);
     try {
       const loc = prediction.osm
         ? await getOpenStreetMapDetails(prediction)
-        : prediction.is_query_prediction || String(prediction.place_id || '').startsWith('query-')
-          ? await geocodeTypedAddress(prediction.description || prediction.structured_formatting?.main_text || query)
-          : await getPlaceDetails(prediction.place_id, prediction.description);
+        : await getPlaceDetails(prediction.place_id, prediction.description);
       applyLocation(loc, 'Location selected from suggestions');
     } catch (e) {
       setLocationError(e.message || 'Unable to select this location');
@@ -3713,16 +3496,17 @@ function LocationSearchBox({
       {label && <Label>{label}</Label>}
 
       <div className="relative">
-        <div data-location-search-box className={`relative rounded-xl border bg-white shadow-sm transition-all focus-within:ring-4 ${borderClass}`}>
+        <div className={`relative rounded-xl border bg-white shadow-sm transition-all focus-within:ring-4 ${borderClass}`}>
           <MapPin className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${activeColor === 'emerald' ? 'text-emerald-600' : 'text-indigo-600'}`} />
           <Input
             ref={inputRef}
             value={query}
             onChange={handleInputChange}
             onFocus={() => {
-              updateDropdownPosition();
-              setShowPredictions(true);
-              if (query.trim().length >= 2) fetchPredictions(query);
+              if (query.trim().length >= 2) {
+                fetchPredictions(query);
+                setShowPredictions(true);
+              }
             }}
             onBlur={() => {
               blurRef.current = setTimeout(() => setShowPredictions(false), 160);
@@ -3751,17 +3535,8 @@ function LocationSearchBox({
           </div>
         </div>
 
-        {showPredictions && (predictions.length > 0 || loading || locationError) && (
-          <div
-            className="fixed z-[999999] max-h-80 overflow-y-auto rounded-2xl border bg-white shadow-2xl ring-1 ring-slate-200"
-            style={{ top: dropdownPos.top || undefined, left: dropdownPos.left || undefined, width: dropdownPos.width || undefined }}
-          >
-            {loading && predictions.length === 0 && (
-              <div className="px-4 py-3 text-sm text-slate-600 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
-            )}
-            {!loading && predictions.length === 0 && locationError && (
-              <div className="px-4 py-3 text-sm text-amber-700 bg-amber-50">{locationError}</div>
-            )}
+        {showPredictions && predictions.length > 0 && (
+          <div className="absolute z-[999999] mt-2 w-full overflow-hidden rounded-2xl border bg-white shadow-2xl ring-1 ring-slate-200">
             {predictions.map((p) => (
               <button
                 key={p.place_id}
@@ -3823,12 +3598,6 @@ function WorkerHome({ token, me, onChat }) {
     } catch (e) { toast.error(e.message); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
-  // Keep applicant counts fresh so every worker sees live demand on each job card.
-  useEffect(() => {
-    if (!token) return;
-    const timer = setInterval(() => load(), 15000);
-    return () => clearInterval(timer);
-  }, [token, q, categoryFilter, payFilter, benefitFilter]);
 
   const activeRadius = getStrictRadiusKm(radiusKm, customRadius);
 
@@ -3904,15 +3673,8 @@ function WorkerHome({ token, me, onChat }) {
   const apply = async (jobId) => {
     try {
       await api(`jobs/${jobId}/apply`, { method: 'POST', token, body: {} });
-      const bumpApplicantCount = (list) => list.map(j =>
-        j.id === jobId ? { ...j, applicants_count: Number(j.applicants_count || 0) + 1, pending_count: Number(j.pending_count || 0) + 1 } : j
-      );
-      setJobs(bumpApplicantCount);
-      setNearbyJobs(bumpApplicantCount);
-      setSelected(prev => prev?.id === jobId ? { ...prev, applicants_count: Number(prev.applicants_count || 0) + 1, pending_count: Number(prev.pending_count || 0) + 1 } : prev);
       toast.success('Applied! Employer notified.');
       setSelected(null);
-      load();
     } catch (e) { toast.error(e.message); }
   };
 
@@ -3921,8 +3683,8 @@ function WorkerHome({ token, me, onChat }) {
   const visibleJobs = hasCheckedNearby ? nearbyJobs : jobs;
 
   return (
-    <div className="space-y-4">
-      <Card className="sticky top-0 z-20 rounded-3xl premium-card premium-search-card border-indigo-100 bg-gradient-to-r from-white via-indigo-50/60 to-sky-50/70 shadow-xl shadow-indigo-100/60">
+    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+      <Card className="rounded-3xl premium-card premium-search-card border-indigo-100 bg-gradient-to-r from-white via-indigo-50/60 to-sky-50/70">
         <CardContent className="p-3 md:p-4">
           <div className="flex flex-col lg:flex-row gap-2 lg:items-center">
             <div className="relative flex-1 min-w-[240px]">
@@ -3972,19 +3734,11 @@ function WorkerHome({ token, me, onChat }) {
             </div>
             {radiusKm === 'custom' && <Input type="number" min="0.1" step="0.1" value={customRadius} onChange={(e) => setCustomRadius(e.target.value)} placeholder="0.6 km" className="lg:w-24 h-11 rounded-2xl bg-white border-indigo-100" />}
             <Button onClick={load} className="rounded-2xl h-11 px-5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-lg shadow-indigo-600/20"><Filter className="w-4 h-4 mr-1" />Search</Button>
-            <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-1 shadow-sm" title="Nearby search">
-              <Button type="button" size="icon" variant="ghost" onClick={loadNearbyJobs} disabled={locationLoading} className="h-9 w-9 rounded-xl text-indigo-700 hover:bg-indigo-50" title="Search using current GPS location">
-                {locationLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-              </Button>
-              <Button type="button" size="icon" variant="ghost" onClick={loadNearbyFromSavedLocation} disabled={locationLoading} className="h-9 w-9 rounded-xl text-emerald-700 hover:bg-emerald-50" title="Search using saved profile location">
-                <Map className="w-4 h-4" />
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="hidden">
+      <Card className="premium-card border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white grid place-items-center">
@@ -4080,7 +3834,6 @@ function WorkerHome({ token, me, onChat }) {
                 <div className="p-3 rounded-2xl border bg-indigo-50 text-indigo-700"><p className="text-xs">Duration</p><p className="font-bold">{selected.duration_days} day(s)</p></div>
                 <div className="p-3 rounded-2xl border bg-slate-50 text-slate-700"><p className="text-xs">Workers</p><p className="font-bold">{selected.workers_needed || 1}</p></div>
                 <div className="p-3 rounded-2xl border bg-amber-50 text-amber-700"><p className="text-xs">Shift</p><p className="font-bold capitalize">{selected.shift_timing || 'day'}</p></div>
-                <div className="p-3 rounded-2xl border bg-rose-50 text-rose-700"><p className="text-xs">Applied</p><p className="font-bold">{Number(selected.applicants_count || 0)} worker(s)</p></div>
               </div>
               <div className="rounded-2xl border bg-white p-4 space-y-3">
                 <div><p className="text-xs font-semibold text-slate-500">Work details</p><p className="text-sm whitespace-pre-wrap text-slate-700 mt-1">{selected.description || 'No description provided.'}</p></div>
@@ -4128,21 +3881,13 @@ function JobCard({ job, onClick, onProfile }) {
             <p className="text-xs text-muted-foreground truncate"><span onClick={(e) => { e.stopPropagation(); onProfile?.(); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">{job.employers?.company_name || 'Company'}</span> · {job.category || 'General'}</p>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          {Number(job.applicants_count || 0) > 0 && (
-            <Badge className="bg-rose-50 text-rose-700 border border-rose-200 rounded-full shadow-sm">
-              <Users className="w-3.5 h-3.5 mr-1" /> {Number(job.applicants_count || 0)} applied
-            </Badge>
-          )}
-          {job.employers?.verified && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
-        </div>
+        {job.employers?.verified && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs mt-4">
         <span className="rounded-xl border bg-slate-50 px-2.5 py-2 truncate"><MapPin className="w-3 h-3 mr-1 inline" />{job.location_text || 'Location not added'}</span>
         <span className="rounded-xl border bg-slate-50 px-2.5 py-2"><Clock className="w-3 h-3 mr-1 inline" />{job.duration_days || 1} day(s)</span>
         <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 py-2 text-emerald-700 font-bold"><Banknote className="w-3 h-3 mr-1 inline" />{fmtMoney(job.daily_pay)}/day</span>
         <span className="rounded-xl border bg-slate-50 px-2.5 py-2"><Users className="w-3 h-3 mr-1 inline" />{job.workers_needed || 1} worker(s)</span>
-        <span className={`rounded-xl border px-2.5 py-2 font-semibold ${Number(job.applicants_count || 0) > 0 ? 'border-rose-100 bg-rose-50 text-rose-700' : 'bg-slate-50 text-slate-500'}`}><Users className="w-3 h-3 mr-1 inline" />{Number(job.applicants_count || 0)} applied</span>
       </div>
       {benefits.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -4163,17 +3908,9 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [confirmingId, setConfirmingId] = useState(null);
   const [activeTab, setActiveTab] = useState('Applied');
-  const [gpsAttendanceId, setGpsAttendanceId] = useState(null);
   const load = async () => {
     setLoading(true);
-    try {
-      const d = await api('worker/applications', { token });
-      const normalized = (d.applications || []).map((a) => ({
-        ...a,
-        status: String(a.status || '').toLowerCase().trim(),
-      }));
-      setApps(normalized);
-    }
+    try { const d = await api('worker/applications', { token }); setApps(d.applications); }
     catch (e) { /* silently fail */ } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -4185,75 +3922,32 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
 
   const confirmHire = async (appId) => {
     setConfirmingId(appId);
-
-    const previousApps = apps;
+    
     try {
-      // Employee accepts the employer invitation. Only now the job becomes active/ongoing.
-      setApps(prevApps => prevApps.map(a =>
-        a.id === appId ? { ...a, status: 'ongoing', worker_confirmed_at: new Date().toISOString() } : a
+      // Update local state immediately (optimistic)
+      setApps(prevApps => prevApps.map(a => 
+        a.id === appId ? { ...a, status: 'ongoing' } : a
       ));
+      
+      // Switch to Ongoing tab to show the accepted job
       setActiveTab('Ongoing');
-
-      try {
-        await api(`applications/${appId}/worker-confirm`, {
-          method: 'POST',
-          token,
-          body: { status: 'ongoing' }
-        });
-      } catch (confirmErr) {
-        // Some project versions do not have worker-confirm route. PATCH keeps the flow working.
-        await api(`applications/${appId}`, {
-          method: 'PATCH',
-          token,
-          body: { status: 'ongoing' }
-        });
-      }
-
-      await load();
-      setActiveTab('Ongoing');
-      toast.success('✅ Invitation accepted! Job moved to Ongoing.');
+      
+      // Show success immediately
+      toast.success('✅ Job accepted! Starting work now.');
+      
+      // Call the backend to confirm
+      await api(`applications/${appId}/worker-confirm`, { 
+        method: 'POST', 
+        token, 
+        body: { status: 'ongoing' } 
+      });
+      
     } catch (e) {
-      setApps(previousApps);
-      setActiveTab('Applied');
-      toast.error(e.message || 'Unable to accept invitation');
+      // Silently continue - no session error messages
+      console.error('Confirm job:', e.message);
     } finally {
       setConfirmingId(null);
     }
-  };
-
-  const markGpsAttendance = async (app) => {
-    if (!app?.id) return;
-    if (!navigator.geolocation) return toast.error('GPS is not supported on this device');
-    const jobLat = Number(app.jobs?.latitude);
-    const jobLng = Number(app.jobs?.longitude);
-    if (!Number.isFinite(jobLat) || !Number.isFinite(jobLng)) {
-      toast.error('This job does not have saved GPS. Ask employer to update job GPS.');
-      return;
-    }
-    setGpsAttendanceId(app.id);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const latitude = pos.coords.latitude;
-          const longitude = pos.coords.longitude;
-          await api(`applications/${app.id}/gps-attendance`, {
-            method: 'POST',
-            token,
-            body: { latitude, longitude, date: new Date().toISOString().slice(0, 10) }
-          });
-          const distance = getDistanceMeters(latitude, longitude, jobLat, jobLng);
-          toast.success(`Attendance marked present. Distance: ${Math.round(distance)}m`);
-          await load();
-          setActiveTab('Ongoing');
-        } catch (e) {
-          toast.error(e.message || 'Unable to mark GPS attendance');
-        } finally {
-          setGpsAttendanceId(null);
-        }
-      },
-      () => { toast.error('Allow location permission to mark attendance'); setGpsAttendanceId(null); },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
   };
 
   // Helper: Generate work dates and check attendance
@@ -4276,7 +3970,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
   };
 
   const groups = {
-    Applied:   apps.filter(a => a.status === 'pending' || a.status === 'accepted'),
+    Applied:   apps.filter(a => a.status === 'pending'),
     Ongoing:   apps.filter(a => a.status === 'ongoing'),
     Completed: apps.filter(a => a.status === 'completed'),
     Rejected:  apps.filter(a => a.status === 'rejected'),
@@ -4414,17 +4108,6 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                         );
                       })}
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={gpsAttendanceId === a.id}
-                      className="mt-3 w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold"
-                      onClick={() => markGpsAttendance(a)}
-                    >
-                      {gpsAttendanceId === a.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MapPin className="w-4 h-4 mr-2" />}
-                      Mark Today Attendance with GPS
-                    </Button>
-                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 text-center">Works only when your current GPS is within 20m of saved company/job GPS.</p>
                   </div>
                   
                   {/* Job Details */}
@@ -4580,15 +4263,10 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
   const locationKey = `${value || ''}|${latitude || ''}|${longitude || ''}`;
   const [savingLocation, setSavingLocation] = useState(false);
   const [savedKey, setSavedKey] = useState(locationKey);
-  const [editingLocation, setEditingLocation] = useState(!hasSaved);
 
   useEffect(() => {
-    if (hasSaved && !savedKey) {
-      setSavedKey(locationKey);
-      setEditingLocation(false);
-    }
-    if (!hasSaved) setEditingLocation(true);
-  }, [hasSaved]);
+    if (hasSaved) setSavedKey(locationKey);
+  }, [hasSaved, locationKey]);
 
   const isEmerald = color === 'emerald';
   const wrapClass = isEmerald
@@ -4597,21 +4275,14 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
   const iconBox = isEmerald ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700';
   const changedAfterSave = locationKey !== savedKey;
   const canSaveLocation = !!value && (Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)));
-  const savedButtonClass = isEmerald
-    ? 'border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-600 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
-    : 'border-indigo-200 bg-indigo-600 text-white hover:bg-indigo-600 disabled:bg-indigo-600 disabled:text-white disabled:opacity-100 disabled:cursor-default';
-  const changeButtonClass = isEmerald
-    ? 'border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50'
-    : 'border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50';
 
   const saveOnlyLocation = async () => {
     if (!canSaveLocation) {
-      toast.error('Search and select one exact area/location before saving');
+      toast.error('Select one Google suggestion or current GPS before saving');
       return;
     }
     if (!onSave) {
       setSavedKey(locationKey);
-      setEditingLocation(false);
       toast.success('Location ready. Press Save profile to store it.');
       return;
     }
@@ -4625,7 +4296,6 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
         place_name: '',
       });
       setSavedKey(locationKey);
-      setEditingLocation(false);
       toast.success('Location saved');
     } catch (e) {
       toast.error(e.message || 'Location save failed');
@@ -4642,70 +4312,53 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
           <div className="min-w-0">
             <Label>{label}</Label>
             <p className="text-sm text-muted-foreground mt-1">
-              {hasSaved && !editingLocation ? 'Saved location is active. Click Change to update it.' : 'Search and select an exact area, pin, or current GPS, then click Save.'}
+              {hasSaved ? 'Search, pin, or use current GPS anytime.' : 'Search, pin, or use current GPS to save your exact location.'}
             </p>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-          {hasSaved && !editingLocation ? (
-            <>
-              <Button type="button" variant="outline" disabled className={savedButtonClass}>
-                <CheckCircle2 className="w-4 h-4 mr-2" /> Saved
-              </Button>
-              <Button type="button" variant="outline" className={changeButtonClass} onClick={() => setEditingLocation(true)}>
-                Change
-              </Button>
-            </>
-          ) : (
-            <Button type="button" className={`${isEmerald ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600'} text-white disabled:text-white disabled:opacity-100`} onClick={saveOnlyLocation} disabled={savingLocation || !canSaveLocation}>
-              {savingLocation ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} {hasSaved ? 'Save change' : 'Save location'}
+          {hasSaved && !changedAfterSave ? (
+            <Button type="button" variant="outline" className={`pointer-events-none ${isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-indigo-200 bg-indigo-50 text-indigo-700'}`}>
+              <CheckCircle2 className="w-4 h-4 mr-2" /> Saved
             </Button>
-          )}
+          ) : null}
+          {(!hasSaved || changedAfterSave) ? (
+            <Button type="button" className={`${isEmerald ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'} text-white`} onClick={saveOnlyLocation} disabled={savingLocation || !canSaveLocation}>
+              {savingLocation ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Save location
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {hasSaved && !editingLocation ? (
-        <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-1">
-          <p className="text-sm font-semibold text-slate-800 truncate">{value}</p>
-          <p className="text-xs text-slate-500">{formatCoordinates(latitude, longitude)}</p>
+      <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-2">
+        <LocationSearchBox
+          label=""
+          value={value || ''}
+          latitude={latitude}
+          longitude={longitude}
+          color={color}
+          placeholder={placeholder}
+          helper={helper}
+          onChange={onChange}
+        />
+        <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+          {changedAfterSave ? 'New location selected. Press Save location once to update it.' : hasSaved ? 'Saved location is active.' : 'Select a searched place, pin, or current GPS, then save once.'}
         </div>
-      ) : (
-        <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-2">
-          <LocationSearchBox
-            label=""
-            value={value || ''}
-            latitude={latitude}
-            longitude={longitude}
-            color={color}
-            placeholder={placeholder}
-            helper={helper}
-            onChange={onChange}
-          />
-          <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-            {canSaveLocation ? 'Exact GPS selected. Click Save to store it.' : 'Search/select one exact place or use current GPS before saving.'}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
 
-function VerificationDocumentsCard({ token, me, role, verified, form, setForm, onSaved, color = 'indigo' }) {
+
+function VerificationDocumentsCard({ token, role, verified, form, setForm, onSaved, color = 'indigo' }) {
   const [busy, setBusy] = useState(false);
+  const status = form.verification_status || (verified ? 'verified' : 'not_submitted');
+  const lockedVerified = verified && status !== 'submitted' && status !== 'rejected';
   const accent = color === 'emerald' ? 'emerald' : 'indigo';
   const isEmployer = role === 'employer';
-  const documentReviewStatus = sectionReviewState(me, 'documents', form.verification_status, verified);
-  const documentChangedAfterReview = (documentReviewStatus === 'pending' || documentReviewStatus === 'verified') && hasVerifySectionChanged(
-    isEmployer ? EMPLOYER_DOCUMENT_VERIFY_FIELDS : WORKER_DOCUMENT_VERIFY_FIELDS,
-    form,
-    me?.profile || {},
-    me?.extra || {}
-  );
-  const status = documentChangedAfterReview ? 'modified' : documentReviewStatus;
-  const lockedVerified = status === 'verified' && !documentChangedAfterReview;
 
-  const cleanAadhaar = (value) => String(value || '').replace(/\D/g, '').slice(0, 20);
+  const cleanAadhaar = (value) => String(value || '').replace(/\D/g, '').slice(0, 12);
   const cleanPan = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
   const cleanGst = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
   const isValidAadhaar = (value) => /^\d{12}$/.test(String(value || ''));
@@ -4717,8 +4370,10 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
     setBusy(true);
     try {
       const { url } = await uploadFile(file, kind, token);
-      setForm((s) => ({ ...s, [field]: url }));
-      toast.success(field === 'certificate_url' ? 'Skill certificate selected. Click Verify Edited Details to send it for admin review.' : 'Document selected. Click Verify Edited Details to send it for admin review.');
+      const patch = { [field]: url, verification_status: verified ? 'verified' : 'saved' };
+      await api('me/profile', { method: 'PATCH', token, body: patch });
+      setForm((s) => ({ ...s, ...patch }));
+      toast.success(field === 'certificate_url' ? 'Skill certificate saved' : 'Document saved');
     } catch (e) {
       toast.error(e.message || 'Upload failed');
     } finally {
@@ -4758,7 +4413,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             pan_back_url: form.pan_back_url,
             gst_certificate_url: form.gst_certificate_url,
             verification_status: 'pending',
-            verification_section: 'documents',
           }
         : {
             address: form.address,
@@ -4770,7 +4424,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             pan_back_url: form.pan_back_url,
             certificate_url: form.certificate_url,
             verification_status: 'pending',
-            verification_section: 'documents',
           };
 
       await api('me/profile', { method: 'PATCH', token, body });
@@ -4792,7 +4445,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
         <div className="flex items-center justify-between gap-3">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <ShieldCheck className={`w-5 h-5 ${lockedVerified ? 'text-emerald-600' : 'text-slate-500'}`} />
+              <ShieldCheck className={`w-5 h-5 ${verified ? 'text-emerald-600' : 'text-slate-500'}`} />
               {isEmployer ? 'Company verification' : 'Worker verification'}
             </CardTitle>
             <CardDescription>
@@ -4805,14 +4458,12 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
           ) : status === 'submitted' || status === 'pending' ? (
             <Badge className="bg-amber-100 text-amber-700">Pending</Badge>
-          ) : status === 'modified' ? (
-            <Badge className="bg-amber-100 text-amber-700">Modified</Badge>
           ) : status === 'saved' ? (
             <Badge className="bg-sky-100 text-sky-700">Saved</Badge>
           ) : status === 'rejected' ? (
             <Badge className="bg-red-100 text-red-700">Rejected</Badge>
           ) : (
-            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
+            <Badge variant="outline">Unverified</Badge>
           )}
         </div>
       </CardHeader>
@@ -4859,9 +4510,9 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-              <DocumentUploadBox color="emerald" label="Company PAN front" url={form.pan_image_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_image_url', 'company-pan-front')} />
-              <DocumentUploadBox color="emerald" label="Company PAN back" url={form.pan_back_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_back_url', 'company-pan-back')} />
-              <DocumentUploadBox color="emerald" label="GST certificate" url={form.gst_certificate_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'gst_certificate_url', 'gst-certificate')} />
+              <DocumentUploadBox color="emerald" label="Company PAN front" url={form.pan_image_url} verified={lockedVerified} disabled={busy || (lockedVerified && !!form.pan_image_url)} onFile={(file) => uploadDoc(file, 'pan_image_url', 'company-pan-front')} />
+              <DocumentUploadBox color="emerald" label="Company PAN back" url={form.pan_back_url} verified={lockedVerified} disabled={busy || (lockedVerified && !!form.pan_back_url)} onFile={(file) => uploadDoc(file, 'pan_back_url', 'company-pan-back')} />
+              <DocumentUploadBox color="emerald" label="GST certificate" url={form.gst_certificate_url} verified={lockedVerified} disabled={busy || (lockedVerified && !!form.gst_certificate_url)} onFile={(file) => uploadDoc(file, 'gst_certificate_url', 'gst-certificate')} />
             </div>
           </>
         ) : (
@@ -4907,10 +4558,10 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-              <DocumentUploadBox color="indigo" label="Aadhaar front" url={form.aadhaar_front_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_front_url', 'aadhaar-front')} />
-              <DocumentUploadBox color="indigo" label="Aadhaar back" url={form.aadhaar_back_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_back_url', 'aadhaar-back')} />
-              <DocumentUploadBox color="indigo" label="PAN front" url={form.pan_image_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_image_url', 'pan-front')} />
-              <DocumentUploadBox color="indigo" label="PAN back" url={form.pan_back_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_back_url', 'pan-back')} />
+              <DocumentUploadBox color="indigo" label="Aadhaar front" url={form.aadhaar_front_url} verified={lockedVerified} disabled={busy || (lockedVerified && !!form.aadhaar_front_url)} onFile={(file) => uploadDoc(file, 'aadhaar_front_url', 'aadhaar-front')} />
+              <DocumentUploadBox color="indigo" label="Aadhaar back" url={form.aadhaar_back_url} verified={lockedVerified} disabled={busy || (lockedVerified && !!form.aadhaar_back_url)} onFile={(file) => uploadDoc(file, 'aadhaar_back_url', 'aadhaar-back')} />
+              <DocumentUploadBox color="indigo" label="PAN front" url={form.pan_image_url} verified={lockedVerified} disabled={busy || (lockedVerified && !!form.pan_image_url)} onFile={(file) => uploadDoc(file, 'pan_image_url', 'pan-front')} />
+              <DocumentUploadBox color="indigo" label="PAN back" url={form.pan_back_url} verified={lockedVerified} disabled={busy || (lockedVerified && !!form.pan_back_url)} onFile={(file) => uploadDoc(file, 'pan_back_url', 'pan-back')} />
               <DocumentUploadBox color="indigo" label="Skill certificate (optional)" url={form.certificate_url} verified={lockedVerified} disabled={busy} optional allowLater onFile={(file) => uploadDoc(file, 'certificate_url', 'skill-certificate')} />
             </div>
           </>
@@ -4941,8 +4592,6 @@ rounded-2xl
 font-semibold
 transition-all
 duration-300
-disabled:opacity-100
-disabled:cursor-default
 
 ${
 
@@ -4950,7 +4599,7 @@ lockedVerified
 
 ?
 
-'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
+'bg-emerald-600 text-white hover:bg-emerald-700'
 
 :
 
@@ -4963,7 +4612,15 @@ status==="submitted"
 
 :
 
-'bg-rose-600 hover:bg-rose-700 text-white disabled:bg-rose-600 disabled:text-white disabled:opacity-100'
+accent==="emerald"
+
+?
+
+'bg-emerald-600 hover:bg-emerald-700 text-white'
+
+:
+
+'bg-indigo-600 hover:bg-indigo-700 text-white'
 
 }
 
@@ -5007,7 +4664,7 @@ mr-2
 "
 />
 
-Done
+Verified
 
 </>
 
@@ -5029,26 +4686,6 @@ mr-2
 />
 
 Pending Approval
-
-</>
-
-:
-
-status==="modified"
-
-?
-
-<>
-
-<ShieldCheck
-className="
-w-4
-h-4
-mr-2
-"
-/>
-
-Verify Edited Details
 
 </>
 
@@ -5120,170 +4757,10 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
   );
 }
 
-
-function sectionReviewState(me, section, fallbackStatus, verified) {
-  const normalizedSection = section === 'verification' ? 'documents' : section;
-  const normalizeSection = (value) => value === 'verification' ? 'documents' : value;
-  const sectionStatuses = me?.section_statuses || me?.extra?.section_statuses || {};
-  const sectionStatus = sectionStatuses?.[normalizedSection];
-  if (sectionStatus === 'pending' || sectionStatus === 'submitted' || sectionStatus === 'modified') return 'pending';
-  if (sectionStatus === 'rejected') return 'rejected';
-  if (sectionStatus === 'verified') return 'verified';
-
-  const parseDetails = (row) => {
-    if (!row?.details) return {};
-    if (typeof row.details === 'string') {
-      try { return JSON.parse(row.details); } catch { return {}; }
-    }
-    return row.details || {};
-  };
-  const latestSectionActivity = [...(me?.activity || [])]
-    .filter((a) => {
-      const d = parseDetails(a);
-      return normalizeSection(d.section || d.verification_section || d.pending_verification_section) === normalizedSection;
-    })
-    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
-  const latestAction = String(latestSectionActivity?.action || '').toLowerCase();
-  if (latestAction.includes('admin_verified_section') || latestAction.includes('verified_profile_section')) return 'verified';
-  if (latestAction.includes('submit') || latestAction.includes('upload') || latestAction.includes('pending') || latestAction.includes('verification')) return 'pending';
-
-  // IMPORTANT: section verification must stay independent.
-  // Example: Bank verify should mark only Bank as pending, not Documents/Profile.
-  // When section-wise verification exists, do not use the old global fallback for other cards.
-  if (Object.keys(sectionStatuses).length > 0) {
-    if (verified) return 'verified';
-    return 'not_submitted';
-  }
-
-  // Legacy fallback for old rows before section-wise verification logs existed.
-  const submittedSection = normalizeSection(me?.extra?.verification_section || me?.extra?.pending_verification_section);
-  if ((fallbackStatus === 'pending' || fallbackStatus === 'submitted') && (!submittedSection || submittedSection === normalizedSection)) return 'pending';
-  if (fallbackStatus === 'rejected' && (!submittedSection || submittedSection === normalizedSection)) return 'rejected';
-  if (verified) return 'verified';
-  return 'not_submitted';
-}
-
-
-
-const BANK_VERIFY_FIELDS = ['account_holder_name', 'bank_name', 'bank_account', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url'];
-
-function normalizeBankValue(key, value) {
-  const text = String(value ?? '').trim();
-  if (key === 'ifsc_code') return text.toUpperCase().replace(/\s/g, '');
-  if (key === 'bank_account') return text.replace(/\D/g, '');
-  return text;
-}
-
-function bankPayloadFromExtra(extra = {}) {
-  return {
-    account_holder_name: extra.account_holder_name || '',
-    bank_name: extra.bank_name || '',
-    bank_account: extra.bank_account || extra.bank_account_number || '',
-    ifsc_code: extra.ifsc_code || '',
-    branch_name: extra.branch_name || '',
-    upi_id: extra.upi_id || '',
-    bank_qr_url: extra.bank_qr_url || '',
-  };
-}
-
-function hasBankDetailsChanged(current = {}, saved = {}) {
-  return BANK_VERIFY_FIELDS.some((key) => normalizeBankValue(key, current[key]) !== normalizeBankValue(key, saved[key]));
-}
-
-
-const PROFILE_VERIFY_FIELDS = ['full_name', 'phone', 'age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known', 'available', 'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'previous_employer_reference', 'bio'];
-const EMPLOYER_PROFILE_VERIFY_FIELDS = ['full_name', 'phone', 'company_name', 'industry', 'company_size', 'hr_contact', 'official_email', 'company_address', 'gst_number', 'pan_number', 'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'description'];
-const WORKER_DOCUMENT_VERIFY_FIELDS = ['address', 'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'certificate_url', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url'];
-const EMPLOYER_DOCUMENT_VERIFY_FIELDS = ['company_address', 'gst_number', 'pan_number', 'pan_image_url', 'pan_back_url', 'gst_certificate_url'];
-
-function normalizeVerifyValue(key, value) {
-  if (Array.isArray(value)) return value.map(v => String(v || '').trim()).filter(Boolean).join(',');
-  const text = String(value ?? '').trim();
-  if (['pan_number', 'gst_number', 'ifsc_code'].includes(key)) return text.toUpperCase().replace(/\s/g, '');
-  if (key === 'aadhaar_number' || key === 'phone') return text.replace(/\D/g, '');
-  if (['age', 'experience_years', 'expected_daily_wage', 'latitude', 'longitude'].includes(key)) return text === '' ? '' : String(Number(text));
-  if (key === 'available') return String(value === true || value === 'true');
-  return text;
-}
-
-function extraValueForKey(profile = {}, extra = {}, key) {
-  if (key === 'full_name' || key === 'phone') return profile?.[key] || '';
-  return extra?.[key] ?? '';
-}
-
-function hasVerifySectionChanged(fields = [], current = {}, profile = {}, extra = {}) {
-  return fields.some((key) => normalizeVerifyValue(key, current[key]) !== normalizeVerifyValue(key, extraValueForKey(profile, extra, key)));
-}
-
-function isFinalCardVerified(me, section, fallbackStatus, globalVerified, modified = false) {
-  return sectionReviewState(me, section, fallbackStatus, globalVerified) === 'verified' && !modified;
-}
-
-function finalProfileSaveKey(me, role) {
-  return `w2w-final-profile-save-${role || me?.profile?.role || 'user'}-${me?.profile?.id || me?.id || 'me'}`;
-}
-
-function SectionVerificationAction({ token, me, section, title, description, color = 'indigo', setForm, onSaved, disabled = false, payloadBuilder = null, validate = null, modified = false }) {
-  const [busy, setBusy] = useState(false);
-  const verified = !!me?.extra?.verified;
-  const rawStatus = sectionReviewState(me, section, me?.extra?.verification_status, verified);
-  const status = modified && (rawStatus === 'pending' || rawStatus === 'verified') ? 'modified' : rawStatus;
-  const label = status === 'verified' ? 'Done' : status === 'pending' ? 'Pending Approval' : status === 'modified' ? 'Verify Edited Details' : status === 'rejected' ? 'Send Again' : 'Send for Verification';
-  const Icon = status === 'verified' ? CheckCircle2 : status === 'pending' ? Clock : ShieldCheck;
-  const blocked = !!disabled || status === 'pending' || status === 'verified';
-  const actionClass = status === 'verified'
-    ? 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
-    : status === 'pending'
-      ? 'bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
-      : 'bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-600 disabled:text-white disabled:!opacity-100 disabled:cursor-pointer';
-  const sendForReview = async () => {
-    if (blocked || busy) return;
-    setBusy(true);
-    try {
-      if (validate) {
-        const validationMessage = validate();
-        if (validationMessage) {
-          toast.error(validationMessage);
-          setBusy(false);
-          return;
-        }
-      }
-      const extraPayload = payloadBuilder ? (payloadBuilder() || {}) : {};
-      const body = { ...extraPayload, verification_status: 'pending', verification_section: section };
-      await api('me/profile', { method: 'PATCH', token, body });
-      setForm?.((prev) => ({ ...prev, ...body }));
-      await onSaved?.();
-      toast.success(`${title} sent for admin verification`);
-    } catch (e) {
-      toast.error(e.message || 'Unable to send verification');
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between rounded-xl bg-slate-50 border p-3">
-      <div>
-        <p className="text-sm font-semibold">{title}</p>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      </div>
-      <Button
-        type="button"
-        disabled={busy || blocked}
-        onClick={sendForReview}
-        className={`${actionClass} min-w-[220px] h-12 rounded-2xl font-semibold transition-all duration-300 disabled:!opacity-100 disabled:cursor-not-allowed`}
-      >
-        {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Icon className="w-4 h-4 mr-2" />}
-        {label}
-      </Button>
-    </div>
-  );
-}
-
 function WorkerProfile({ token, me, onSaved, onLogout }) {
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [finalSaved, setFinalSaved] = useState(false);
   const verified = !!me?.extra?.verified;
   useEffect(() => {
     if (me) setForm({
@@ -5335,108 +4812,32 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     });
   }, [me]);
 
-  useEffect(() => {
-    if (!me) return;
-    setFinalSaved(localStorage.getItem(finalProfileSaveKey(me, 'worker')) === 'saved');
-  }, [me]);
-
-  const buildWorkerProfilePayload = () => ({
-    full_name: form.full_name || '',
-    phone: form.phone || '',
-    age: form.age ? Number(form.age) : null,
-    gender: form.gender || '',
-    skills: typeof form.skills === 'string' ? form.skills.split(',').map(s => s.trim()).filter(Boolean) : (form.skills || []),
-    experience_years: Number(form.experience_years) || 0,
-    experience_level: form.experience_level || 'beginner',
-    expected_daily_wage: Number(form.expected_daily_wage) || 0,
-    languages_known: typeof form.languages_known === 'string' ? form.languages_known.split(',').map(s => s.trim()).filter(Boolean) : (form.languages_known || []),
-    available: !!form.available,
-    badge_immediate_joiner: !!form.available,
-    location_text: form.location_text || '',
-    latitude: form.latitude || null,
-    longitude: form.longitude || null,
-    place_id: form.place_id || '',
-    place_name: form.place_name || '',
-    previous_employer_reference: form.previous_employer_reference || '',
-    bio: form.bio || '',
-  });
-
-  const buildWorkerDocumentPayload = () => ({
-    address: form.address || '',
-    aadhaar_number: form.aadhaar_number || '',
-    pan_number: form.pan_number || '',
-    aadhaar_front_url: form.aadhaar_front_url || '',
-    aadhaar_back_url: form.aadhaar_back_url || '',
-    pan_image_url: form.pan_image_url || '',
-    pan_back_url: form.pan_back_url || '',
-    certificate_url: form.certificate_url || '',
-    selfie_url: form.selfie_url || '',
-    selfie_front_url: form.selfie_front_url || '',
-    selfie_left_url: form.selfie_left_url || '',
-    selfie_right_url: form.selfie_right_url || '',
-  });
-
-  const buildWorkerBankPayload = () => ({
-    account_holder_name: form.account_holder_name || '',
-    bank_name: form.bank_name || '',
-    bank_account: form.bank_account || '',
-    ifsc_code: (form.ifsc_code || '').toUpperCase().replace(/\s/g, ''),
-    branch_name: form.branch_name || '',
-    upi_id: form.upi_id || '',
-    bank_qr_url: form.bank_qr_url || '',
-  });
-
-  const requireWorkerBank = () => {
-    if (!form.account_holder_name?.trim()) return 'Enter account holder name';
-    if (!form.bank_name?.trim()) return 'Enter bank name';
-    if (!form.bank_account?.trim()) return 'Enter account number';
-    if (!form.ifsc_code?.trim()) return 'Enter IFSC code';
-    return '';
-  };
-
-  const workerBankReviewStatus = sectionReviewState(me, 'bank', me?.extra?.verification_status, verified);
-  const workerBankChangedAfterReview = (workerBankReviewStatus === 'pending' || workerBankReviewStatus === 'verified') && hasBankDetailsChanged(buildWorkerBankPayload(), bankPayloadFromExtra(me?.extra || {}));
-  const workerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, verified);
-  const workerProfileChangedAfterReview = (workerProfileReviewStatus === 'pending' || workerProfileReviewStatus === 'verified') && hasVerifySectionChanged(PROFILE_VERIFY_FIELDS, buildWorkerProfilePayload(), me?.profile || {}, me?.extra || {});
-  const workerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, verified);
-  const workerDocumentChangedAfterReview = (workerDocumentReviewStatus === 'pending' || workerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(WORKER_DOCUMENT_VERIFY_FIELDS, buildWorkerDocumentPayload(), me?.profile || {}, me?.extra || {});
-  const workerAllProfileCardsVerified = isFinalCardVerified(me, 'profile', me?.extra?.verification_status, verified, workerProfileChangedAfterReview)
-    && isFinalCardVerified(me, 'documents', me?.extra?.verification_status, verified, workerDocumentChangedAfterReview)
-    && isFinalCardVerified(me, 'bank', me?.extra?.verification_status, verified, workerBankChangedAfterReview);
-  const workerAnyProfileCardPending = [workerProfileReviewStatus, workerDocumentReviewStatus, workerBankReviewStatus].some((s) => s === 'pending') || workerProfileChangedAfterReview || workerDocumentChangedAfterReview || workerBankChangedAfterReview;
-  const workerTopStatus = finalSaved && workerAllProfileCardsVerified ? 'verified' : workerAnyProfileCardPending ? 'pending' : 'unverified';
-
-  useEffect(() => {
-    if (!workerAllProfileCardsVerified && finalSaved) {
-      localStorage.removeItem(finalProfileSaveKey(me, 'worker'));
-      setFinalSaved(false);
-    }
-  }, [workerAllProfileCardsVerified, finalSaved, me]);
-
-  const requireWorkerDocuments = () => {
-    if (!form.aadhaar_front_url || !form.aadhaar_back_url) return 'Upload Aadhaar front and back';
-    if (!form.pan_image_url || !form.pan_back_url) return 'Upload PAN front and back';
-    return '';
-  };
-
   const save = async () => {
-    if (!workerAllProfileCardsVerified) {
-      toast.error('Verify Personal Profile, Documents and Bank Details before final save');
-      return;
-    }
     setBusy(true);
     try {
-      await api('me/profile', { method: 'PATCH', token, body: { verification_status: 'verified' } });
-      localStorage.setItem(finalProfileSaveKey(me, 'worker'), 'saved');
-      setFinalSaved(true);
+      const nextStatus = verified
+        ? 'verified'
+        : (form.verification_status === 'pending' || form.verification_status === 'submitted' ? 'pending' : 'saved');
+      const body = {
+        ...form,
+        age: form.age ? Number(form.age) : null,
+        skills: typeof form.skills === 'string' ? form.skills.split(',').map(s => s.trim()).filter(Boolean) : form.skills,
+        experience_years: Number(form.experience_years) || 0,
+        experience_level: form.experience_level || 'beginner',
+        expected_daily_wage: Number(form.expected_daily_wage) || 0,
+        languages_known: typeof form.languages_known === 'string' ? form.languages_known.split(',').map(s => s.trim()).filter(Boolean) : form.languages_known,
+        badge_immediate_joiner: !!form.available,
+        verification_status: nextStatus,
+      };
+      await api('me/profile', { method: 'PATCH', token, body });
       toast.success('Profile saved');
-      await onSaved?.();
+      onSaved();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
   const saveWorkerLocation = async (loc) => {
     const nextStatus = verified
-      ? 'pending'
+      ? 'verified'
       : (form.verification_status === 'pending' || form.verification_status === 'submitted' ? 'pending' : 'saved');
     const body = {
       location_text: loc.location_text || '',
@@ -5445,7 +4846,6 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       place_id: form.place_id || '',
       place_name: form.place_name || '',
       verification_status: nextStatus,
-      verification_section: 'location',
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setForm((s) => ({ ...s, ...body }));
@@ -5476,7 +4876,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
   return (
     <div className="space-y-4">
-      <Card className="profile-section-card overflow-hidden">
+      <Card className="profile-section-card">
         <CardContent className="p-5 flex items-center gap-4">
           <AvatarUploader
             token={token}
@@ -5491,13 +4891,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
               <span className="text-sm font-medium">{Number(me.extra?.rating || 0).toFixed(1)}</span>
-              {workerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
-              ) : workerTopStatus === 'pending' ? (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
-              ) : (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
-              )}
+              {me.extra?.verified ? <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge> : <Badge variant="outline">Unverified</Badge>}
             </div>
             {me.profile?.login_id && (
               <button
@@ -5514,7 +4908,6 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
       <VerificationDocumentsCard
         token={token}
-        me={me}
         role="worker"
         verified={!!me.extra?.verified}
         form={form}
@@ -5532,7 +4925,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             </div>
             <label className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700 cursor-pointer hover:bg-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-700/50 dark:text-emerald-300">
               <Upload className="w-4 h-4" /> QR upload <span className="text-[10px] font-normal opacity-70">optional</span>
-              <input type="file" accept="image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'bank-qr', token); setForm(f => ({ ...f, bank_qr_url: url })); toast.success('QR uploaded. Click Verify Edited Details to send it for admin review.'); } catch (err) { toast.error(err.message || 'QR upload failed'); } finally { e.target.value = ''; } }} />
+              <input type="file" accept="image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'bank-qr', token); setForm(f => ({ ...f, bank_qr_url: url })); toast.success('QR uploaded'); } catch (err) { toast.error(err.message || 'QR upload failed'); } }} />
             </label>
           </div>
         </CardHeader>
@@ -5556,51 +4949,14 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                   <p className="text-xs text-muted-foreground truncate">Optional QR code saved for payout verification.</p>
                 </div>
               </div>
-              <Button type="button" size="sm" variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={() => setForm(f => ({ ...f, bank_qr_url: '' }))}>Remove</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setForm(f => ({ ...f, bank_qr_url: '' }))}>Remove</Button>
             </div>
           )}
-          <SectionVerificationAction
-            token={token}
-            me={me}
-            section="bank"
-            title="Admin approval required"
-            description="Admin checks your bank details and marks the account verified."
-            color="emerald"
-            setForm={setForm}
-            onSaved={onSaved}
-            disabled={(() => {
-              return !(
-                String(form.account_holder_name || '').trim() &&
-                String(form.bank_name || '').trim() &&
-                String(form.bank_account || '').trim() &&
-                String(form.ifsc_code || '').trim() &&
-                String(form.branch_name || '').trim()
-              );
-            })()}
-            validate={() => {
-              if (!String(form.account_holder_name || '').trim()) return 'Enter account holder name';
-              if (!String(form.bank_name || '').trim()) return 'Enter bank name';
-              if (!String(form.bank_account || '').trim()) return 'Enter account number';
-              if (!String(form.ifsc_code || '').trim()) return 'Enter IFSC code';
-              if (!String(form.branch_name || '').trim()) return 'Enter branch name';
-              return '';
-            }}
-            payloadBuilder={() => ({
-              account_holder_name: form.account_holder_name,
-              bank_name: form.bank_name,
-              bank_account: form.bank_account,
-              ifsc_code: String(form.ifsc_code || '').toUpperCase().trim(),
-              branch_name: form.branch_name,
-              upi_id: form.upi_id,
-              bank_qr_url: form.bank_qr_url,
-            })}
-            modified={workerBankChangedAfterReview}
-          />
         </CardContent>
       </Card>
 
       <Card className="profile-section-card overflow-hidden">
-        <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Edit profile</CardTitle><CardDescription>Personal, skill and availability information.</CardDescription></div></div></CardHeader>
+        <CardHeader className="profile-section-header"><CardTitle className="text-base">Edit profile</CardTitle><CardDescription>Personal, skill and availability information.</CardDescription></CardHeader>
         <CardContent className="grid sm:grid-cols-2 gap-3">
           <Field label="Full name"  v={form.full_name}           on={(v) => setForm(f => ({ ...f, full_name: v }))} />
           <Field label="Phone"      v={form.phone}               on={(v) => setForm(f => ({ ...f, phone: v }))} />
@@ -5628,8 +4984,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               <SelectContent><SelectItem value="true">Available now</SelectItem><SelectItem value="false">Not available</SelectItem></SelectContent>
             </Select>
           </div>
-          <div className="sm:col-span-2 space-y-3">
-
+          <div className="sm:col-span-2">
             <SavedLocationEditor
               label="Home / preferred work location"
               value={form.location_text || ''}
@@ -5653,16 +5008,13 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           <div className="sm:col-span-2">
             <Card className="profile-section-card overflow-hidden">
               <CardHeader className="profile-section-header">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div><CardTitle className="text-base">Identity checks</CardTitle>
-                  <CardDescription>Mobile, selfie, certificate and admin-approved badges.</CardDescription></div>
-
-                </div>
+                <CardTitle className="text-base">Verification</CardTitle>
+                <CardDescription>Mobile, selfie, certificate and admin-approved badges.</CardDescription>
               </CardHeader>
               <CardContent className="p-4 space-y-4">
                 <div className="grid lg:grid-cols-2 gap-4 items-stretch">
                   <MobileOtpVerificationBox token={token} phone={form.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setForm(f => ({ ...f, phone: phone || f.phone, mobile_verified: true })); onSaved?.(); }} />
-                  <SelfieVerificationBox token={token} url={form.selfie_url} frontUrl={form.selfie_front_url} leftUrl={form.selfie_left_url} rightUrl={form.selfie_right_url} verified={!!(me.extra?.selfie_verified || form.selfie_verified)} disabled={busy} onUploaded={(payload) => { setForm(f => ({ ...f, ...(typeof payload === 'string' ? { selfie_url: payload, selfie_verified: true } : payload), selfie_verified: true, verification_status: 'verified' })); onSaved?.(); }} />
+                  <SelfieVerificationBox token={token} url={form.selfie_url} frontUrl={form.selfie_front_url} leftUrl={form.selfie_left_url} rightUrl={form.selfie_right_url} verified={!!me.extra?.selfie_verified} disabled={busy} onUploaded={(payload) => setForm(f => ({ ...f, ...(typeof payload === 'string' ? { selfie_url: payload } : payload), selfie_verified: false, verification_status: me.extra?.verified ? 'verified' : 'saved' }))} />
                 </div>
                 <div className="grid lg:grid-cols-1 gap-4 items-stretch">
                   <div className="rounded-2xl border bg-white p-4 min-h-[132px]">
@@ -5687,37 +5039,17 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             <Label>Bio</Label>
             <Textarea rows={3} value={form.bio || ''} onChange={(e) => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="Tell employers about yourself" />
           </div>
-          <div className="sm:col-span-2">
-            <SectionVerificationAction
-              token={token}
-              me={me}
-              section="profile"
-              title="Admin approval required"
-              description="Admin checks your personal profile details and marks the profile verified."
-              color="indigo"
-              setForm={setForm}
-              onSaved={onSaved}
-              disabled={!String(form.full_name || '').trim() || !String(form.phone || '').trim()}
-              validate={() => {
-                if (!String(form.full_name || '').trim()) return 'Enter full name';
-                if (!String(form.phone || '').trim()) return 'Enter phone number';
-                return '';
-              }}
-              payloadBuilder={buildWorkerProfilePayload}
-              modified={workerProfileChangedAfterReview}
-            />
-          </div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           onClick={save}
-          disabled={busy || !workerAllProfileCardsVerified || finalSaved}
-          className={`h-12 ${finalSaved ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white' : 'bg-emerald-600 hover:bg-emerald-700'} shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed`}
+          disabled={busy}
+          className="h-12 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20"
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
-          {finalSaved ? 'Saved' : 'Save profile'}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          Save profile
         </Button>
 
         <Button
@@ -5795,250 +5127,47 @@ function AnimatedWorkerBadge({ show, label, tone = 'emerald' }) {
 function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verified, disabled, onUploaded }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const fileRef = useRef(null);
   const streamRef = useRef(null);
-  const detectorRef = useRef(null);
-  const scanTimerRef = useRef(null);
-  const stableFaceCountRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraError, setCameraError] = useState('');
-  const [faceMessage, setFaceMessage] = useState('Open camera and keep your full front face inside the green frame. It will auto capture when the face is clear.');
-  const [capturedPreview, setCapturedPreview] = useState(frontUrl || url || '');
-  const [capturedBlob, setCapturedBlob] = useState(null);
-  const capturedBlobRef = useRef(null);
-  const autoCaptureLockRef = useRef(false);
+  const [activePose, setActivePose] = useState('front');
+  const [shots, setShots] = useState({
+    front: frontUrl || url || '',
+    left: leftUrl || '',
+    right: rightUrl || '',
+  });
 
   useEffect(() => {
-    setCapturedPreview(frontUrl || url || '');
-    if (frontUrl || url) {
-      capturedBlobRef.current = null;
-    }
-  }, [url, frontUrl]);
+    setShots({ front: frontUrl || url || '', left: leftUrl || '', right: rightUrl || '' });
+  }, [url, frontUrl, leftUrl, rightUrl]);
 
   useEffect(() => () => stopCamera(), []);
 
-  const stopFaceScan = () => {
-    if (scanTimerRef.current) clearInterval(scanTimerRef.current);
-    scanTimerRef.current = null;
-    stableFaceCountRef.current = 0;
-  };
-
-  const resetAutoCapture = () => {
-    stopFaceScan();
-    autoCaptureLockRef.current = false;
-    capturedBlobRef.current = null;
-    stableFaceCountRef.current = 0;
-    setCapturedBlob(null);
-    setCapturedPreview('');
-  };
+  const poses = [
+    { key: 'front', title: 'Front face', hint: 'Look straight at the camera' },
+    { key: 'left', title: 'Left face', hint: 'Turn your face slightly left' },
+    { key: 'right', title: 'Right face', hint: 'Turn your face slightly right' },
+  ];
 
   const stopCamera = () => {
-    stopFaceScan();
     try { streamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraOn(false);
   };
 
-  const captureFrontFace = async () => {
-    if (!videoRef.current || !canvasRef.current || verified || busy || autoCaptureLockRef.current) return;
-    autoCaptureLockRef.current = true;
-    const video = videoRef.current;
-    if (!video.videoWidth || !video.videoHeight) return;
-
-    const canvas = canvasRef.current;
-    // Capture the real camera frame without zooming/cropping so the full face stays visible.
-    // Use high JPEG quality for clearer admin review.
-    const sourceW = video.videoWidth;
-    const sourceH = video.videoHeight;
-    const maxW = 1280;
-    const scale = Math.min(1, maxW / sourceW);
-    const outputW = Math.round(sourceW * scale);
-    const outputH = Math.round(sourceH * scale);
-    canvas.width = outputW;
-    canvas.height = outputH;
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    // Mirror the saved selfie to match the live front camera preview.
-    ctx.translate(outputW, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, sourceW, sourceH, 0, 0, outputW, outputH);
-
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        autoCaptureLockRef.current = false;
-        return toast.error('Auto capture failed. Try again.');
-      }
-      const preview = URL.createObjectURL(blob);
-      capturedBlobRef.current = blob;
-      setCapturedBlob(blob);
-      setCapturedPreview(preview);
-      stopCamera();
-      setFaceMessage('Front face captured clearly. Click Submit for Review.');
-      toast.success('Front face auto captured');
-    }, 'image/jpeg', 0.98);
-  };
-
-  const startFaceScan = async () => {
-    stopFaceScan();
-    if (typeof window === 'undefined') return;
-
-    const loadDetector = async () => {
-      if (detectorRef.current) return detectorRef.current;
-      if ('FaceDetector' in window) {
-        detectorRef.current = { type: 'native', detector: new window.FaceDetector({ fastMode: false, maxDetectedFaces: 2 }) };
-        return detectorRef.current;
-      }
-      // Better fallback for Chrome/Edge builds where native FaceDetector is unavailable.
-      // Loads MediaPipe in the browser and detects real human faces before auto-capture.
-      try {
-        const mp = await import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
-        const vision = await mp.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-        const detector = await mp.FaceDetector.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite',
-            delegate: 'CPU',
-          },
-          runningMode: 'VIDEO',
-          minDetectionConfidence: 0.65,
-        });
-        detectorRef.current = { type: 'mediapipe', detector };
-        return detectorRef.current;
-      } catch {
-        detectorRef.current = { type: 'manual', detector: null };
-        return detectorRef.current;
-      }
-    };
-
-    const readFaces = async (detectorPack, video) => {
-      if (detectorPack.type === 'native') {
-        const faces = await detectorPack.detector.detect(video);
-        return (faces || []).map((f) => ({
-          x: f.boundingBox?.x || 0,
-          y: f.boundingBox?.y || 0,
-          width: f.boundingBox?.width || 0,
-          height: f.boundingBox?.height || 0,
-        }));
-      }
-      if (detectorPack.type === 'mediapipe') {
-        const result = detectorPack.detector.detectForVideo(video, performance.now());
-        return (result?.detections || []).map((d) => {
-          const b = d.boundingBox || {};
-          return { x: b.originX || 0, y: b.originY || 0, width: b.width || 0, height: b.height || 0 };
-        });
-      }
-      return [];
-    };
-
-    try {
-      setFaceMessage('Starting human face detection...');
-      const detectorPack = await loadDetector();
-      if (detectorPack.type === 'manual') {
-        setFaceMessage('Auto detection is loading slowly. Keep your full front face visible and hold still...');
-        let fallbackTicks = 0;
-        scanTimerRef.current = setInterval(async () => {
-          if (!videoRef.current || capturedBlobRef.current || busy || autoCaptureLockRef.current) return;
-          fallbackTicks += 1;
-          setFaceMessage(fallbackTicks < 4 ? 'Keep full front face visible. Auto capturing soon...' : 'Capturing automatically...');
-          if (fallbackTicks >= 5) {
-            stopFaceScan();
-            await captureFrontFace();
-          }
-        }, 600);
-        return;
-      }
-
-      setFaceMessage('Looking for one clear front human face...');
-      scanTimerRef.current = setInterval(async () => {
-        try {
-          const video = videoRef.current;
-          if (!video || !video.videoWidth || !video.videoHeight || capturedBlobRef.current || busy || autoCaptureLockRef.current) return;
-          const faces = await readFaces(detectorPack, video);
-          if (!faces || faces.length !== 1) {
-            stableFaceCountRef.current = 0;
-            setFaceMessage('Keep only one human face visible in the frame.');
-            return;
-          }
-
-          const box = faces[0] || {};
-          const vw = video.videoWidth;
-          const vh = video.videoHeight;
-          const bw = box.width || 0;
-          const bh = box.height || 0;
-          const bx = box.x || 0;
-          const by = box.y || 0;
-          const faceArea = bw * bh;
-          const frameArea = vw * vh;
-          const centerX = bx + bw / 2;
-          const centerY = by + bh / 2;
-
-          // No zoom: allow the user to sit a little back. Capture only if one real face
-          // is centered, front-like, and not cut by the camera edges.
-          const marginX = vw * 0.05;
-          const marginY = vh * 0.06;
-          const fullyVisible = bx > marginX * 0.35 && by > marginY * 0.35 && bx + bw < vw - marginX * 0.35 && by + bh < vh - marginY * 0.35;
-          const centered = Math.abs(centerX - vw / 2) < vw * 0.34 && Math.abs(centerY - vh / 2) < vh * 0.34;
-          const goodSize = faceArea > frameArea * 0.018 && faceArea < frameArea * 0.55;
-          const frontLike = bw > 0 && bh > 0 && bw / bh > 0.42 && bw / bh < 1.65;
-
-          if (!fullyVisible) {
-            stableFaceCountRef.current = 0;
-            setFaceMessage('Move back slightly. Keep full head and face inside the frame.');
-            return;
-          }
-          if (!centered) {
-            stableFaceCountRef.current = 0;
-            setFaceMessage('Center your face inside the green frame.');
-            return;
-          }
-          if (!goodSize) {
-            stableFaceCountRef.current = 0;
-            setFaceMessage(faceArea >= frameArea * 0.36 ? 'Move back slightly. Face is too close.' : 'Move closer slightly. Face is too small.');
-            return;
-          }
-          if (!frontLike) {
-            stableFaceCountRef.current = 0;
-            setFaceMessage('Face the camera straight. Front face only.');
-            return;
-          }
-
-          stableFaceCountRef.current += 1;
-          setFaceMessage(stableFaceCountRef.current >= 2 ? 'Human face matched. Auto capturing...' : 'Human face detected. Hold still...');
-          if (stableFaceCountRef.current >= 2) {
-            stopFaceScan();
-            await captureFrontFace();
-          }
-        } catch {
-          stableFaceCountRef.current = 0;
-          setFaceMessage('Unable to detect face clearly. Improve light and face the camera.');
-        }
-      }, 450);
-    } catch {
-      setFaceMessage('Auto capture will start shortly. Keep your full front face visible.');
-    }
-  };
-
   const startCamera = async () => {
-    if (verified || busy) return;
+    if (verified) return;
     setCameraError('');
-    resetAutoCapture();
     try {
       if (!navigator?.mediaDevices?.getUserMedia) {
-        setCameraError('Camera is not supported in this browser.');
+        setCameraError('Camera is not supported in this browser. Please upload a clear selfie image.');
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          aspectRatio: { ideal: 1.7777777778 },
-          frameRate: { ideal: 30 },
-        },
-        audio: false,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
       streamRef.current = stream;
       setCameraOn(true);
       setTimeout(async () => {
@@ -6047,10 +5176,9 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
         videoRef.current.muted = true;
         videoRef.current.playsInline = true;
         try { await videoRef.current.play(); } catch {}
-        startFaceScan();
-      }, 80);
+      }, 50);
     } catch (e) {
-      setCameraError('Camera permission denied or unavailable. Please allow camera access.');
+      setCameraError('Camera permission denied or unavailable. Allow camera access, or use Upload.');
       toast.error('Camera access failed');
     }
   };
@@ -6066,28 +5194,56 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
     setOpen(false);
   };
 
+  const capturePose = () => {
+    if (!videoRef.current || !canvasRef.current || verified) return;
+    const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight) return toast.error('Camera is still loading. Try again.');
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return toast.error('Capture failed. Try again.');
+      const preview = URL.createObjectURL(blob);
+      setShots((prev) => ({ ...prev, [activePose]: preview, [`${activePose}Blob`]: blob }));
+      const idx = poses.findIndex((p) => p.key === activePose);
+      const next = poses[idx + 1]?.key;
+      if (next) setActivePose(next);
+      toast.success(`${poses.find(p => p.key === activePose)?.title} captured`);
+    }, 'image/jpeg', 0.92);
+  };
+
+  const uploadBlobOrUrl = async (pose) => {
+    const blob = shots[`${pose}Blob`];
+    if (!blob) return shots[pose] || '';
+    const file = new File([blob], `selfie-${pose}-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    const uploaded = await uploadFile(file, `selfie-${pose}`, token);
+    return uploaded.url;
+  };
+
   const submitFaceCheck = async () => {
     if (verified) return;
-    if (!capturedBlob) return toast.error('Keep your front face in camera until auto capture completes.');
+    const missing = poses.filter((p) => !shots[p.key]).map((p) => p.title);
+    if (missing.length) return toast.error(`Capture missing: ${missing.join(', ')}`);
+
     setBusy(true);
     try {
-      const file = new File([capturedBlob], `selfie-front-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      const uploaded = await uploadFile(file, 'selfie-front', token);
+      const front = await uploadBlobOrUrl('front');
+      const left = await uploadBlobOrUrl('left');
+      const right = await uploadBlobOrUrl('right');
       const payload = {
-        selfie_url: uploaded.url,
-        selfie_front_url: uploaded.url,
-        selfie_left_url: '',
-        selfie_right_url: '',
-        // Selfie is front-face auto captured, so mark this card verified immediately.
-        // The image URL is still saved to the profile so admin can view it in dashboard.
-        selfie_verified: true,
-        selfie_verified_at: new Date().toISOString(),
-        verification_status: 'verified',
+        selfie_url: front,
+        selfie_front_url: front,
+        selfie_left_url: left,
+        selfie_right_url: right,
+        selfie_verified: false,
+        verification_status: 'submitted',
       };
       await api('me/profile', { method: 'PATCH', token, body: payload });
       onUploaded?.(payload);
       closeVerification();
-      toast.success('Front face submitted and verified');
+      toast.success('Face verification submitted for admin review');
     } catch (e) {
       toast.error(e.message || 'Face verification upload failed');
     } finally {
@@ -6095,68 +5251,89 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
     }
   };
 
+  const uploadFallback = async (file) => {
+    if (!file || verified) return;
+    setBusy(true);
+    try {
+      const uploaded = await uploadFile(file, 'selfie', token);
+      const payload = {
+        selfie_url: uploaded.url,
+        selfie_front_url: uploaded.url,
+        selfie_verified: false,
+        verification_status: 'submitted',
+      };
+      await api('me/profile', { method: 'PATCH', token, body: payload });
+      setShots((prev) => ({ ...prev, front: uploaded.url }));
+      onUploaded?.(payload);
+      closeVerification();
+      toast.success('Selfie uploaded for admin verification');
+    } catch (e) {
+      toast.error(e.message || 'Selfie upload failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const active = poses.find((p) => p.key === activePose) || poses[0];
+  const completedCount = poses.filter((p) => !!shots[p.key]).length;
+
   return (
     <div className={`rounded-2xl border p-4 shadow-sm min-h-[190px] flex flex-col justify-between ${verified ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}>
       <div className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-semibold flex items-center gap-2"><Camera className="w-4 h-4" /> Selfie verification</p>
-            <p className="text-xs text-muted-foreground mt-1">Front face only. Camera auto captures when your face is clear inside the frame.</p>
+            <p className="text-xs text-muted-foreground mt-1">Complete face verification using camera.</p>
           </div>
-          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending</Badge>}
+          {verified ? <Badge className="bg-emerald-600 text-white"><Check className="w-3 h-3 mr-1" /> Verified</Badge> : <Badge variant="outline">Pending</Badge>}
         </div>
 
         {verified ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-600 px-3 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 opacity-100 shadow-sm">
-            <ShieldCheck className="w-4 h-4" /> Done
+          <div className="rounded-xl border border-emerald-200 bg-white px-3 py-3 text-sm font-semibold text-emerald-700 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" /> Just verified
           </div>
         ) : (
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-            Open the camera and keep your full face inside the green frame. It will auto capture.
+            Front, left and right face check will open in a secure popup. No preview is shown after verification.
           </div>
         )}
       </div>
 
       {!verified && (
-        <Button type="button" className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={disabled || busy} onClick={openVerification}>
-          <Camera className="w-4 h-4 mr-2" /> Capture front face
+        <Button type="button" className="mt-4 bg-slate-900 hover:bg-slate-800" disabled={disabled || busy} onClick={openVerification}>
+          <Camera className="w-4 h-4 mr-2" /> Capture selfie
         </Button>
       )}
 
       <Dialog open={open} onOpenChange={(v) => v ? setOpen(true) : closeVerification()}>
-        <DialogContent className="w-[94vw] max-w-[760px] max-h-[96vh] overflow-hidden rounded-3xl p-4">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Front face auto capture</DialogTitle>
-            <DialogDescription>Keep your full front face inside the green frame. It captures automatically when your face is clear.</DialogDescription>
+            <DialogTitle>Face verification</DialogTitle>
+            <DialogDescription>Capture front, left and right face angles. Your image preview is used only inside this popup.</DialogDescription>
           </DialogHeader>
 
-          <div className="relative space-y-3 overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
-              {Array.from({ length: 14 }).map((_, i) => (
-                <span
-                  key={i}
-                  className="absolute h-1.5 w-1.5 rounded-full bg-emerald-400/40"
-                  style={{
-                    left: `${(i * 19) % 96}%`,
-                    top: `${10 + ((i * 23) % 78)}%`,
-                    animation: `selfieParticleMove ${5 + (i % 5)}s linear infinite`,
-                    animationDelay: `${i * 0.35}s`,
-                  }}
-                />
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              {poses.map((pose) => (
+                <button
+                  type="button"
+                  key={pose.key}
+                  onClick={() => setActivePose(pose.key)}
+                  className={`rounded-xl border px-3 py-2 text-left transition ${activePose === pose.key ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                >
+                  <p className="text-xs font-bold">{pose.title}</p>
+                  <p className="text-[11px] text-muted-foreground">{shots[pose.key] ? 'Captured' : pose.hint}</p>
+                </button>
               ))}
             </div>
-            <div className="relative mx-auto h-[430px] w-[680px] max-w-[88vw] rounded-[2rem] border-[5px] border-emerald-500 bg-slate-950 overflow-hidden grid place-items-center shadow-[0_0_0_4px_rgba(16,185,129,0.12),0_20px_45px_rgba(15,23,42,0.25)]">
+
+            <div className="relative h-72 rounded-2xl border bg-slate-950 overflow-hidden grid place-items-center">
               {cameraOn ? (
                 <>
-                  <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 w-full h-full object-contain bg-slate-950 scale-x-[-1]" />
-                  <div className="pointer-events-none absolute inset-0 rounded-[2rem] ring-2 ring-emerald-400/90 ring-offset-0 shadow-[inset_0_0_0_2px_rgba(255,255,255,0.22),0_0_18px_rgba(16,185,129,0.35)]" />
-                  <div className="pointer-events-none absolute inset-3 rounded-[1.5rem] border border-emerald-200/80" />
-                  <div className="pointer-events-none absolute left-4 right-4 top-6 h-[2px] rounded-full bg-emerald-300/90 shadow-[0_0_16px_rgba(52,211,153,.95)] animate-[selfieScan_2.3s_ease-in-out_infinite]" />
-                  <div className="absolute top-3 left-3 rounded-full bg-emerald-600/95 px-3 py-1 text-xs font-semibold text-white shadow">Front face only</div>
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-slate-800 max-w-[90%] text-center">{faceMessage}</div>
+                  <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute top-3 left-3 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white">{active.title}</div>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800">{active.hint}</div>
                 </>
-              ) : capturedPreview ? (
-                <img src={capturedPreview} alt="Captured front selfie" className="absolute inset-0 w-full h-full object-contain bg-slate-950" />
               ) : (
                 <div className="text-center text-slate-400 px-4">
                   <Camera className="w-10 h-10 mx-auto mb-2" />
@@ -6165,26 +5342,28 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
               )}
             </div>
 
-            {capturedPreview && !cameraOn && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Front face captured successfully.</div>
-            )}
             {cameraError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{cameraError}</div>}
+
+            <div className="rounded-xl border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Completed: <b>{completedCount}/3</b> face angles
+            </div>
           </div>
 
           <canvas ref={canvasRef} className="hidden" />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" disabled={disabled || busy || verified} onChange={(e) => uploadFallback(e.target.files?.[0])} />
 
-          <style>{`@keyframes selfieParticleMove { 0% { transform: translate3d(0, 0, 0); opacity: .18; } 50% { transform: translate3d(16px, -24px, 0); opacity: .65; } 100% { transform: translate3d(-8px, -52px, 0); opacity: .18; } } @keyframes selfieScan { 0% { transform: translateY(0); opacity:.45; } 50% { transform: translateY(370px); opacity:1; } 100% { transform: translateY(0); opacity:.45; } }`}</style>
-
-          <DialogFooter className="gap-2 sm:gap-2 shrink-0 flex-wrap">
-            <Button type="button" variant="outline" disabled={busy || disabled || verified} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop camera' : 'Start camera'}</Button>
-            <Button type="button" variant="outline" disabled={busy || disabled || verified || cameraOn} onClick={startCamera}>Retake</Button>
-            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || verified || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for review'}</Button>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" disabled={busy || disabled || verified} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop' : 'Start camera'}</Button>
+            <Button type="button" disabled={!cameraOn || busy || disabled || verified} onClick={capturePose}>Capture</Button>
+            <Button type="button" variant="outline" disabled={busy || disabled || verified} onClick={() => fileRef.current?.click()}>Upload</Button>
+            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700" disabled={busy || disabled || verified} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for review'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
 
 function normalizeIndianMobile(value) {
   const digits = String(value || '').replace(/\D/g, '');
@@ -6280,7 +5459,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
           <p className="font-semibold flex items-center gap-2"><Phone className="w-4 h-4" /> Mobile OTP</p>
           <p className="text-xs text-muted-foreground mt-0.5">Verify your active phone number.</p>
         </div>
-        {verified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>}
+        {verified && !editing ? <Badge className="bg-emerald-600 text-white"><Check className="w-3 h-3 mr-1" /> Verified</Badge> : <Badge variant="outline">Unverified</Badge>}
       </div>
 
       {verified && !editing && (
@@ -6296,7 +5475,6 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
           variant="outline"
           onClick={sendOtp}
           disabled={busy || !canEdit || countdown > 0}
-          className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Resend in ${countdown}s` : (sent ? 'Resend OTP' : 'Send OTP')}
         </Button>
@@ -6316,7 +5494,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
       {canEdit && sent && (
         <div className="grid sm:grid-cols-[1fr_auto] gap-2 mt-2">
           <Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Enter 6-digit OTP" inputMode="numeric" />
-          <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" onClick={verifyOtp} disabled={busy || otp.length !== 6}>Verify</Button>
+          <Button type="button" onClick={verifyOtp} disabled={busy || otp.length !== 6}>Verify</Button>
         </div>
       )}
     </div>
@@ -6337,63 +5515,11 @@ function Field({ label, v, on, type = 'text' }) {
 // ============================================================
 function EmployerApp({ auth, onLogout }) {
   const token = auth?.session?.access_token;
-  const [tab, setTabState] = useState('dashboard'); // dashboard | post | hired | chats | profile
+  const [tab, setTab] = useState('dashboard'); // dashboard | post | hired | chats | profile
   const [me, setMe] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [chatPeer, setChatPeer] = useState(null);
   const [editingJob, setEditingJob] = useState(null);
-  const [notificationFocusApplicationId, setNotificationFocusApplicationId] = useState(null);
-  const tabHistoryRef = useRef([]);
-
-  const setTab = (nextTab, options = {}) => {
-    setTabState((currentTab) => {
-      if (!nextTab || currentTab === nextTab) return currentTab;
-
-      if (!options.replace && typeof window !== 'undefined') {
-        tabHistoryRef.current.push(currentTab);
-        window.history.pushState(
-          { w2wInternal: true, portal: 'employer', tab: nextTab },
-          '',
-          window.location.href
-        );
-      }
-
-      return nextTab;
-    });
-  };
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    window.history.replaceState(
-      { ...(window.history.state || {}), w2wInternal: true, portal: 'employer', tab: 'dashboard' },
-      '',
-      window.location.href
-    );
-
-    const handleBrowserBack = () => {
-      const previousTab = tabHistoryRef.current.pop();
-
-      if (previousTab) {
-        setChatPeer(null);
-        setEditingJob(null);
-        setTabState(previousTab);
-        return;
-      }
-
-      setChatPeer(null);
-      setEditingJob(null);
-      setTabState('dashboard');
-      window.history.pushState(
-        { w2wInternal: true, portal: 'employer', tab: 'dashboard' },
-        '',
-        window.location.href
-      );
-    };
-
-    window.addEventListener('popstate', handleBrowserBack);
-    return () => window.removeEventListener('popstate', handleBrowserBack);
-  }, []);
 
   const refreshMe = async () => {
     try { const d = await api('me', { token }); setMe(d); } catch {}
@@ -6403,12 +5529,6 @@ function EmployerApp({ auth, onLogout }) {
     catch (e) { toast.error(e.message); }
   };
   useEffect(() => { if (token) { refreshMe(); refreshJobs(); } }, [token]);
-  // Keep posted job applicant badges/counts live for employer without manual refresh.
-  useEffect(() => {
-    if (!token) return;
-    const timer = setInterval(() => refreshJobs(), 10000);
-    return () => clearInterval(timer);
-  }, [token]);
 
   // Auto-refresh jobs when switching to 'hired' tab to show newly accepted applicants
   useEffect(() => {
@@ -6420,53 +5540,18 @@ function EmployerApp({ auth, onLogout }) {
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
   const handleNotificationNavigate = (notif) => {
-    const type = notif?.type || '';
-    const route = notif?.target_route || notif?.target_page || '';
-    const refId = notif?.reference_id || notif?.related_id || notif?.source_id || notif?.target_id;
-
-    // New applicant / application notification: open the related Applicants popup directly.
-    if (
-      type === 'application' ||
-      type === 'new_application' ||
-      type === 'application_submitted' ||
-      route.includes('application') ||
-      route.includes('applicant')
-    ) {
-      setNotificationFocusApplicationId(refId || null);
-      refreshJobs?.();
-      setTab('dashboard');
-      return;
-    }
-
-    // Worker accepted invitation / attendance / ongoing work: go to Hired tab.
-    if (
-      type === 'worker_marked_attendance' ||
-      type === 'attendance' ||
-      type === 'attendance_marked' ||
-      type === 'application_accepted' ||
-      type === 'application_ongoing' ||
-      route.includes('hired') ||
-      route.includes('ongoing')
-    ) {
-      refreshJobs?.();
-      setTab('hired');
-      return;
-    }
-
-    if (route.includes('profile') || type === 'account_verified' || type === 'account_rejected' || type === 'verification_submit' || type === 'verification' || type === 'verification_section') {
-      setTab('profile');
-      return;
-    }
-
-    if (route.includes('chat') || type === 'message' || type === 'chat') {
-      setChatPeer(null);
+    const { type } = notif;
+    
+    if (!type) return;
+    
+    // Route to appropriate screen based on notification type
+    if (type === 'new_application' || type === 'application_submitted') {
+      setTab('dashboard'); // Show applicants list/view
+    } else if (type === 'worker_marked_attendance') {
+      setTab('hired'); // Show hired jobs with attendance
+    } else if (type === 'message') {
+      setChatPeer(null); // Will load chat list
       setTab('chats');
-      return;
-    }
-
-    if (type === 'job_post' || route.includes('job')) {
-      setTab('dashboard');
-      return;
     }
   };
 
@@ -6501,7 +5586,7 @@ function EmployerApp({ auth, onLogout }) {
       </header>
 
       <main className={tab === 'post' || tab === 'chats' ? "w-full flex-1 min-h-0 p-1 md:p-2 overflow-hidden" : "container flex-1 min-h-0 overflow-y-auto py-4 pb-4"}>
-        {tab === 'dashboard' && <EmployerDashboard token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} onEditJob={(job) => { setEditingJob(job); setTab('post'); }} focusApplicationId={notificationFocusApplicationId} onFocusHandled={() => setNotificationFocusApplicationId(null)} />}
+        {tab === 'dashboard' && <EmployerDashboard token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} onEditJob={(job) => { setEditingJob(job); setTab('post'); }} />}
         {tab === 'post'      && <PostJob token={token} initialJob={editingJob} onPosted={() => { setEditingJob(null); refreshJobs(); setTab('dashboard'); }} />}
         {tab === 'hired'     && <HiredJobs token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} />}
         {tab === 'chats'     && <ChatScreen token={token} me={{ id: me?.profile?.id, profile: me?.profile }} peerHint={chatPeer} color="emerald" />}
@@ -6546,13 +5631,12 @@ function EmployerApp({ auth, onLogout }) {
   );
 }
 
-function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplicationId = null, onFocusHandled = null }) {
+function EmployerDashboard({ token, jobs, reload, onChat, onEditJob }) {
   const [openJob, setOpenJob] = useState(null);
   const [profileView, setProfileView] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [loadingApp, setLoadingApp] = useState(false);
   const [decidingId, setDecidingId] = useState(null);
-  const [deletingJobId, setDeletingJobId] = useState(null);
 
   const totalApplicants = jobs.reduce((s, j) => s + (j.applicants_count || 0), 0);
   const totalPending    = jobs.reduce((s, j) => s + (j.pending_count || 0), 0);
@@ -6567,58 +5651,17 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
     try { const d = await api(`employer/jobs/${job.id}/applicants`, { token }); setApplicants(d.applicants); }
     catch (e) { toast.error(e.message); } finally { setLoadingApp(false); }
   };
-
-  useEffect(() => {
-    if (!focusApplicationId || !token) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const d = await api(`applications/${focusApplicationId}`, { token });
-        if (cancelled) return;
-        const app = d?.application;
-        const jobId = app?.job_id || app?.jobs?.id;
-        if (!jobId) throw new Error('Related job not found for this notification');
-        const jobFromList = jobs.find(j => String(j.id) === String(jobId));
-        const job = jobFromList || app.jobs || { id: jobId, title: 'Job' };
-        await openApplicants(job);
-        onFocusHandled?.();
-        toast.success('Opened related applicants');
-      } catch (e) {
-        toast.error(e.message || 'Unable to open related notification');
-        onFocusHandled?.();
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [focusApplicationId, token, jobs]);
-
   const decide = async (appId, status) => {
     try {
       setDecidingId(appId);
       await api(`applications/${appId}`, { method: 'PATCH', token, body: { status } });
-      toast.success(status === 'accepted' ? 'Invitation sent to employee' : `Marked ${status}`);
+      toast.success(status === 'ongoing' ? 'Accepted and moved to ongoing' : `Marked ${status}`);
       // refresh
       const d = await api(`employer/jobs/${openJob.id}/applicants`, { token });
       setApplicants(d.applicants);
       reload();
     } catch (e) { toast.error(e.message); }
     finally { setDecidingId(null); }
-  };
-
-  const deletePostedJob = async (job) => {
-    if (!job?.id) return;
-    const ok = confirm(`Delete "${job.title || 'this job'}"? This also removes its applications and cannot be undone.`);
-    if (!ok) return;
-    try {
-      setDeletingJobId(job.id);
-      await api(`employer/jobs/${job.id}`, { method: 'DELETE', token });
-      toast.success('Job post deleted');
-      if (openJob?.id === job.id) setOpenJob(null);
-      reload?.();
-    } catch (e) {
-      toast.error(e.message || 'Failed to delete job');
-    } finally {
-      setDeletingJobId(null);
-    }
   };
 
   return (
@@ -6637,32 +5680,26 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
       {jobs.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No jobs yet. Tap “Post job” to start hiring.</p>}
       <div className="grid sm:grid-cols-2 gap-3">
         {jobs.map(j => (
-          <Card key={j.id} className={`rounded-3xl hover:border-emerald-300 hover:shadow-xl transition cursor-pointer premium-job-card company-job-card ${Number(j.pending_count || 0) > 0 ? 'border-amber-300 ring-2 ring-amber-100 shadow-lg shadow-amber-100/60' : 'border-emerald-100'}`} onClick={() => openApplicants(j)}>
+          <Card key={j.id} className="rounded-3xl border-emerald-100 hover:border-emerald-300 hover:shadow-xl transition cursor-pointer premium-job-card company-job-card" onClick={() => openApplicants(j)}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold truncate">{j.title}</p>
                   <p className="text-xs text-muted-foreground truncate">{j.location_text} · {j.duration_days}d</p>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  {Number(j.pending_count || 0) > 0 && <Badge className="bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">New {Number(j.pending_count || 0)}</Badge>}
-                  <Badge className={j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : ''} variant={j.status === 'open' ? 'default' : 'secondary'}>{j.status}</Badge>
-                </div>
+                <Badge className={j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : ''} variant={j.status === 'open' ? 'default' : 'secondary'}>{j.status}</Badge>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                 <span className="rounded-xl bg-emerald-50 text-emerald-700 px-2 py-2 font-bold"><Banknote className="w-3 h-3 inline mr-1" />{fmtMoney(j.daily_pay)}/day</span>
                 <span className="rounded-xl bg-slate-50 px-2 py-2"><Users className="w-3 h-3 inline mr-1" />{j.workers_needed || 1} needed</span>
                 <span className="rounded-xl bg-indigo-50 text-indigo-700 px-2 py-2">{j.applicants_count || 0} applicants</span>
               </div>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <Button type="button" size="sm" variant="outline" className="rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={(e) => { e.stopPropagation(); onEditJob?.(j); }}>
-                  <Edit3 className="w-3.5 h-3.5 mr-1" /> Edit
+                  <Edit3 className="w-3.5 h-3.5 mr-1" /> Edit post
                 </Button>
                 <Button type="button" size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={(e) => { e.stopPropagation(); openApplicants(j); }}>
                   <Users className="w-3.5 h-3.5 mr-1" /> Applicants
-                </Button>
-                <Button type="button" size="sm" variant="outline" disabled={deletingJobId === j.id} className="rounded-xl border-red-200 text-red-600 hover:bg-red-50" onClick={(e) => { e.stopPropagation(); deletePostedJob(j); }}>
-                  {deletingJobId === j.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 mr-1" />} Delete
                 </Button>
               </div>
             </CardContent>
@@ -6670,103 +5707,87 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
         ))}
       </div>
 
-      {openJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 py-4" onClick={() => setOpenJob(null)}>
-          <div className="w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-white px-4 py-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => setOpenJob(null)}>
-                  <ArrowLeft className="w-4 h-4 mr-1" /> Back
-                </Button>
-                <div className="min-w-0">
-                  <h3 className="font-bold text-base truncate">Applicants — {openJob?.title}</h3>
-                  <p className="text-xs text-muted-foreground">Review applicants and track invitation status</p>
-                </div>
-              </div>
-              <Button type="button" size="sm" variant="ghost" className="rounded-xl" onClick={() => setOpenJob(null)}>
-                <XCircle className="w-4 h-4 mr-1" /> Close
-              </Button>
-            </div>
-
-            <div className="max-h-[76vh] overflow-y-auto p-3 sm:p-4">
-              {loadingApp && <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin" /></div>}
-              {!loadingApp && applicants.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No applicants yet.</p>}
-              <div className="space-y-3">
-                {applicants.map(a => {
-                  const up = a.workers?.user_profiles || {};
-                  return (
-                  <div key={a.id} className="border border-slate-200 rounded-2xl p-3 bg-white shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="cursor-pointer h-12 w-12" onClick={() => openProfileDetails(a.worker_id)}><AvatarImage src={up.photo_url} /><AvatarFallback>{initials(up.full_name || up.email)}</AvatarFallback></Avatar>
-                      <div className="flex-1 min-w-0">
-                        <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-semibold truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
-                        <p className="text-xs text-muted-foreground truncate">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
-                        <p className="text-[11px] text-muted-foreground">Wage ₹{a.workers?.expected_daily_wage || 0}/day · {a.workers?.experience_years || 0}y exp</p>
-                      </div>
-                      <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
+      <Sheet open={!!openJob} onOpenChange={(o) => !o && setOpenJob(null)}>
+        <SheetContent className="w-full sm:max-w-lg premium-panel">
+          <SheetHeader className="pb-3 border-b"><SheetTitle>Applicants — {openJob?.title}</SheetTitle></SheetHeader>
+          <ScrollArea className="h-[85vh] mt-3 pr-2">
+            {loadingApp && <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin" /></div>}
+            {!loadingApp && applicants.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No applicants yet.</p>}
+            <div className="space-y-2">
+              {applicants.map(a => {
+                const up = a.workers?.user_profiles || {};
+                return (
+                <div key={a.id} className="border border-slate-200 rounded-2xl p-3 bg-white shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="cursor-pointer" onClick={() => openProfileDetails(a.worker_id)}><AvatarImage src={up.photo_url} /><AvatarFallback>{initials(up.full_name || up.email)}</AvatarFallback></Avatar>
+                    <div className="flex-1 min-w-0">
+                      <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-semibold truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
+                      <p className="text-xs text-muted-foreground truncate">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
+                      <p className="text-[11px] text-muted-foreground">Wage ₹{a.workers?.expected_daily_wage || 0}/day · {a.workers?.experience_years || 0}y exp</p>
                     </div>
-                    {a.status === 'pending' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-                        <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => openProfileDetails(a.worker_id)}>
-                          <UserCircle className="w-4 h-4 mr-1" /> Profile
-                        </Button>
-                        <Button type="button" size="sm" disabled={decidingId === a.id} className="bg-emerald-600 hover:bg-emerald-700" onClick={() => decide(a.id, 'accepted')}>
-                          {decidingId === a.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />} Send Invitation
-                        </Button>
-                        <Button type="button" size="sm" variant="outline" disabled={decidingId === a.id} onClick={() => decide(a.id, 'rejected')}>
-                          <XCircle className="w-4 h-4 mr-1" /> Reject
-                        </Button>
-                      </div>
-                    )}
-                    {a.status === 'accepted' && (
-                      <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800">
-                        Worker selected. Waiting for employee acceptance before moving to work instructions, attendance and payment steps.
-                      </div>
-                    )}
-                    {a.status === 'ongoing' && (
-                      <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
-                        Employee accepted. Continue with reporting time, site contact, attendance and completion update.
-                      </div>
-                    )}
-                    {a.status === 'completed' && (
-                      <div className="flex gap-2 mt-3">
-                        <Button size="sm" variant="outline" className="flex-1"
-                                onClick={() => {
-                                  const rating = prompt('Rate the worker (1-5):');
-                                  const feedback = prompt('Feedback for the worker:');
-                                  if (rating && feedback) {
-                                    api('feedback/worker', { method: 'POST', token, body: { application_id: a.id, rating: parseInt(rating), feedback_text: feedback } })
-                                      .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
-                                      .catch(e => toast.error(e.message));
-                                  }
-                                }}>
-                          <Star className="w-4 h-4 mr-1" /> Rate Worker
-                        </Button>
-                        <Button size="sm" variant="outline" className="flex-1"
-                                onClick={() => {
-                                  const feedback = prompt('Additional feedback for the worker:');
-                                  if (feedback) {
-                                    api('feedback/employer', { method: 'POST', token, body: { application_id: a.id, rating: 5, feedback_text: feedback } })
-                                      .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
-                                      .catch(e => toast.error(e.message));
-                                  }
-                                }}>
-                          <MessageSquare className="w-4 h-4 mr-1" /> Feedback
-                        </Button>
-                      </div>
-                    )}
-                    <Button size="sm" variant="ghost" className="w-full mt-3 text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => onChat?.({ peer_id: a.worker_id, peer_name: up.full_name || up.email, peer_photo: up.photo_url, peer_role: 'worker' })}>
-                      <MessageSquare className="w-4 h-4 mr-1" /> Message worker
-                    </Button>
+                    <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
                   </div>
-                  );
-                })}
-              </div>
+                  {a.status === 'pending' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                      <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => openProfileDetails(a.worker_id)}>
+                        <UserCircle className="w-4 h-4 mr-1" /> Profile
+                      </Button>
+                      <Button type="button" size="sm" disabled={decidingId === a.id} className="bg-emerald-600 hover:bg-emerald-700" onClick={() => decide(a.id, 'ongoing')}>
+                        {decidingId === a.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />} Accept
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" disabled={decidingId === a.id} onClick={() => decide(a.id, 'rejected')}>
+                        <XCircle className="w-4 h-4 mr-1" /> Reject
+                      </Button>
+                    </div>
+                  )}
+                  {a.status === 'accepted' && (
+                    <div className="mt-2 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800">
+                      Worker selected. Waiting for employee acceptance before moving to work instructions, attendance and payment steps.
+                    </div>
+                  )}
+                  {a.status === 'ongoing' && (
+                    <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
+                      Employee accepted. Continue with reporting time, site contact, attendance and completion update.
+                    </div>
+                  )}
+                  {a.status === 'completed' && (
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" className="flex-1"
+                              onClick={() => {
+                                const rating = prompt('Rate the worker (1-5):');
+                                const feedback = prompt('Feedback for the worker:');
+                                if (rating && feedback) {
+                                  api('feedback/worker', { method: 'POST', token, body: { application_id: a.id, rating: parseInt(rating), feedback_text: feedback } })
+                                    .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
+                                    .catch(e => toast.error(e.message));
+                                }
+                              }}>
+                        <Star className="w-4 h-4 mr-1" /> Rate Worker
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1"
+                              onClick={() => {
+                                const feedback = prompt('Additional feedback for the worker:');
+                                if (feedback) {
+                                  api('feedback/employer', { method: 'POST', token, body: { application_id: a.id, rating: 5, feedback_text: feedback } })
+                                    .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
+                                    .catch(e => toast.error(e.message));
+                                }
+                              }}>
+                        <MessageSquare className="w-4 h-4 mr-1" /> Feedback
+                      </Button>
+                    </div>
+                  )}
+                  <Button size="sm" variant="ghost" className="w-full mt-2 text-emerald-700 hover:bg-emerald-50"
+                          onClick={() => onChat?.({ peer_id: a.worker_id, peer_name: up.full_name || up.email, peer_photo: up.photo_url, peer_role: 'worker' })}>
+                    <MessageSquare className="w-4 h-4 mr-1" /> Message worker
+                  </Button>
+                </div>
+                );
+              })}
             </div>
-          </div>
-        </div>
-      )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -6799,7 +5820,7 @@ function PostJob({ token, onPosted, initialJob = null }) {
     daily_pay: 1000, duration_days: 1, start_date: '', workers_needed: 1,
     shift_timing: 'day', experience: 'beginner', contact_number: '',
     skill_needed: '', accommodation_available: 'no', food_included: 'no', urgent_hiring: false,
-    overtime_available: false, transportation_provided: false, post_valid_days: 5, attendance_radius_meters: 20,
+    overtime_available: false, transportation_provided: false, post_valid_days: 5,
   });
   const [busy, setBusy] = useState(false);
 
@@ -6822,25 +5843,6 @@ function PostJob({ token, onPosted, initialJob = null }) {
   };
 
   const prevStep = () => setStep(1);
-
-  const useCurrentJobGps = () => {
-    if (!navigator.geolocation) return toast.error('GPS is not supported on this device');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const latitude = pos.coords.latitude;
-        const longitude = pos.coords.longitude;
-        setF(s => ({
-          ...s,
-          latitude,
-          longitude,
-          location_text: s.location_text?.trim() || `Current GPS: ${formatCoordinates(latitude, longitude)}`,
-        }));
-        toast.success('Current GPS saved for this job attendance check');
-      },
-      () => toast.error('Allow location permission to save current GPS'),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -6949,28 +5951,17 @@ function PostJob({ token, onPosted, initialJob = null }) {
               >
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3">
                   <div className="md:col-span-12 space-y-1">
-                    <Label className="text-sm">Job location <span className="font-normal text-slate-500">(used for attendance)</span></Label>
+                    <Label className="text-sm">Job location override <span className="font-normal text-slate-500">(optional)</span></Label>
                     <LocationSearchBox
                       label=""
                       value={f.location_text || ''}
                       latitude={f.latitude}
                       longitude={f.longitude}
                       color="emerald"
-                      placeholder="Search factory location, company name, site address, landmark, or work area"
-                      helper="Select the exact company/site location. Employee attendance will match their current GPS with this saved location."
+                      placeholder="Search factory location, site address, landmark, or work area"
+                      helper=""
                       onChange={(loc) => setF(s => ({ ...s, ...loc }))}
                     />
-                    <div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-emerald-900 flex items-center gap-2"><MapPin className="w-4 h-4" /> Attendance GPS point</p>
-                        <p className="text-xs text-emerald-700 mt-0.5">Use current GPS only when you are at the company/site. Worker daily attendance will be marked automatically when their GPS is within the allowed distance.</p>
-                        <p className="text-[11px] text-emerald-800 mt-1 truncate">{f.latitude && f.longitude ? `Saved GPS: ${formatCoordinates(f.latitude, f.longitude)} · Radius ${f.attendance_radius_meters || 20}m` : 'No exact GPS saved yet. Search/select a place or use current GPS.'}</p>
-                      </div>
-                      <Button type="button" size="sm" className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shrink-0" onClick={useCurrentJobGps}>
-                        <MapPin className="w-4 h-4 mr-2" /> Use current GPS
-                      </Button>
-                    </div>
-                    <input type="hidden" value={f.attendance_radius_meters || 20} readOnly />
                   </div>
 
                   <div className="md:col-span-12 space-y-1">
@@ -7034,7 +6025,7 @@ function PostJob({ token, onPosted, initialJob = null }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-1 shrink-0">
-                  <Button type="button" variant="outline" onClick={prevStep} className="h-10 rounded-xl border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold">
+                  <Button type="button" variant="secondary" onClick={prevStep} className="h-10 rounded-xl bg-slate-950 text-white hover:bg-slate-800">
                     <ArrowLeft className="w-4 h-4 mr-2" /> Back
                   </Button>
                   <Button type="submit" disabled={busy} className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
@@ -7060,16 +6051,8 @@ function HiredJobs({ token, jobs, reload, onChat }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [completionDialogApp, setCompletionDialogApp] = useState(null);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [removingAppId, setRemovingAppId] = useState(null);
 
-  // Show only jobs that already have an invited or confirmed worker.
-  // The API now sends hired_count, so this tab updates correctly after employee acceptance.
-  const hiredJobs = jobs.filter(j => (j.hired_count || j.ongoing_count || j.invitation_count || 0) > 0);
-
-  useEffect(() => {
-    reload?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const hiredJobs = jobs.filter(j => j.status === 'open' || j.status === 'closed');
   
   // Generate all job dates
   const getJobDates = (job) => {
@@ -7180,26 +6163,9 @@ function HiredJobs({ token, jobs, reload, onChat }) {
     }
   };
 
-  const removeHiredWorker = async (app) => {
-    if (!app?.id) return;
-    const worker = app.workers?.user_profiles || {};
-    const ok = confirm(`Remove ${worker.full_name || worker.email || 'this employee'} from this hired job?`);
-    if (!ok) return;
-    try {
-      setRemovingAppId(app.id);
-      await api(`applications/${app.id}`, { method: 'DELETE', token });
-      toast.success('Employee removed from hired job');
-      if (selectedJob) await openJobDetails(selectedJob);
-      reload?.();
-    } catch (e) {
-      toast.error(e.message || 'Failed to remove employee');
-    } finally {
-      setRemovingAppId(null);
-    }
-  };
-
   const getHiredCount = (job) => {
-    return job.hired_count || job.applications?.filter(a => a.status === 'ongoing' || a.status === 'accepted').length || 0;
+    const hiredCount = job.applicants?.filter(a => a.status === 'ongoing' || a.status === 'accepted').length || 0;
+    return hiredCount;
   };
 
   return (
@@ -7464,21 +6430,6 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           Message
                         </Button>
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={removingAppId === app.id}
-                          className="flex-1 border-red-200 text-red-600 hover:bg-red-50"
-                          onClick={() => removeHiredWorker(app)}
-                        >
-                          {removingAppId === app.id ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4 mr-2" />
-                          )}
-                          Remove
-                        </Button>
-
                         {/* Complete & Pay Button */}
                         {app.status === 'ongoing' && (
                           <Button
@@ -7641,25 +6592,6 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       <span className="font-mono font-bold">{completionDialogApp.workers.upi_id}</span>
                     </div>
                   )}
-
-                  {completionDialogApp?.workers?.bank_qr_url && (
-                    <div className="mt-4 rounded-2xl border border-blue-200 bg-white p-3 text-center">
-                      <p className="text-xs font-bold text-blue-700 mb-2">Worker Payment QR</p>
-                      <img
-                        src={completionDialogApp.workers.bank_qr_url}
-                        alt="Worker payment QR"
-                        className="mx-auto h-48 w-48 rounded-xl object-contain border bg-white p-2 shadow-sm"
-                      />
-                      <a
-                        href={completionDialogApp.workers.bank_qr_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-block text-xs font-semibold text-blue-700 hover:underline"
-                      >
-                        Open QR full size
-                      </a>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -7705,7 +6637,6 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
   const [f,setF]=useState({});
 const [busy,setBusy]=useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [finalSaved, setFinalSaved] = useState(false);
 
 const [savedData,setSavedData]=useState({});
 const [hasChanges,setHasChanges]=useState(false);
@@ -7727,23 +6658,9 @@ official_email:me.extra?.official_email || '',
 location_text:me.extra?.location_text || '',
 latitude:me.extra?.latitude || '',
 longitude:me.extra?.longitude || '',
-place_id:me.extra?.place_id || '',
-place_name:me.extra?.place_name || '',
 description:me.extra?.description || '',
 company_address:me.extra?.company_address || '',
 gst_number:me.extra?.gst_number || '',
-pan_number:me.extra?.pan_number || '',
-account_holder_name:me.extra?.account_holder_name || '',
-bank_name:me.extra?.bank_name || '',
-bank_account:me.extra?.bank_account || '',
-ifsc_code:me.extra?.ifsc_code || '',
-branch_name:me.extra?.branch_name || '',
-upi_id:me.extra?.upi_id || '',
-bank_qr_url:me.extra?.bank_qr_url || '',
-pan_image_url:me.extra?.pan_image_url || '',
-pan_back_url:me.extra?.pan_back_url || '',
-gst_certificate_url:me.extra?.gst_certificate_url || '',
-verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
 language:me.profile?.language || 'en'
 
 };
@@ -7754,11 +6671,6 @@ setSavedData(profileData);
 }
 
 },[me]);
-
-useEffect(() => {
-  if (!me) return;
-  setFinalSaved(localStorage.getItem(finalProfileSaveKey(me, 'employer')) === 'saved');
-}, [me]);
 
 useEffect(()=>{
 
@@ -7807,92 +6719,22 @@ setHasChanges(changed);
 
 
 
-  const buildEmployerProfilePayload = () => ({
-    full_name: f.full_name || '',
-    phone: f.phone || '',
-    company_name: f.company_name || '',
-    industry: f.industry || '',
-    company_size: f.company_size || '',
-    hr_contact: f.hr_contact || '',
-    official_email: f.official_email || '',
-    company_address: f.company_address || '',
-    gst_number: f.gst_number || '',
-    pan_number: f.pan_number || '',
-    location_text: f.location_text || '',
-    latitude: f.latitude || null,
-    longitude: f.longitude || null,
-    place_id: f.place_id || '',
-    place_name: f.place_name || '',
-    description: f.description || '',
-  });
-
-  const buildEmployerDocumentPayload = () => ({
-    pan_number: f.pan_number || '',
-    gst_number: f.gst_number || '',
-    pan_image_url: f.pan_image_url || '',
-    pan_back_url: f.pan_back_url || '',
-    gst_certificate_url: f.gst_certificate_url || '',
-  });
-
-  const buildEmployerBankPayload = () => ({
-    account_holder_name: f.account_holder_name || '',
-    bank_name: f.bank_name || '',
-    bank_account: f.bank_account || '',
-    ifsc_code: (f.ifsc_code || '').toUpperCase().replace(/\s/g, ''),
-    branch_name: f.branch_name || '',
-    upi_id: f.upi_id || '',
-    bank_qr_url: f.bank_qr_url || '',
-  });
-
-  const requireEmployerBank = () => {
-    if (!f.account_holder_name?.trim()) return 'Enter account holder name';
-    if (!f.bank_name?.trim()) return 'Enter bank name';
-    if (!f.bank_account?.trim()) return 'Enter account number';
-    if (!f.ifsc_code?.trim()) return 'Enter IFSC code';
-    return '';
-  };
-
-  const requireEmployerDocuments = () => {
-    if (!f.pan_image_url || !f.pan_back_url) return 'Upload company PAN front and back';
-    if (!f.gst_certificate_url) return 'Upload GST certificate';
-    return '';
-  };
-
-  const employerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
-  const employerProfileChangedAfterReview = (employerProfileReviewStatus === 'pending' || employerProfileReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_PROFILE_VERIFY_FIELDS, buildEmployerProfilePayload(), me?.profile || {}, me?.extra || {});
-  const employerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
-  const employerDocumentChangedAfterReview = (employerDocumentReviewStatus === 'pending' || employerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_DOCUMENT_VERIFY_FIELDS, buildEmployerDocumentPayload(), me?.profile || {}, me?.extra || {});
-  const employerAllProfileCardsVerified = isFinalCardVerified(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified, employerProfileChangedAfterReview)
-    && isFinalCardVerified(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified, employerDocumentChangedAfterReview);
-  const employerAnyProfileCardPending = [employerProfileReviewStatus, employerDocumentReviewStatus].some((s) => s === 'pending') || employerProfileChangedAfterReview || employerDocumentChangedAfterReview;
-  const employerTopStatus = finalSaved && employerAllProfileCardsVerified ? 'verified' : employerAnyProfileCardPending ? 'pending' : 'unverified';
-
-  useEffect(() => {
-    if (!employerAllProfileCardsVerified && finalSaved) {
-      localStorage.removeItem(finalProfileSaveKey(me, 'employer'));
-      setFinalSaved(false);
-    }
-  }, [employerAllProfileCardsVerified, finalSaved, me]);
-
   const save = async () => {
-    if (!employerAllProfileCardsVerified) {
-      toast.error('Verify Company Profile and Documents before final save');
-      return;
-    }
     setBusy(true);
     try {
-      await api('me/profile', { method: 'PATCH', token, body: { verification_status: 'verified' } });
-      localStorage.setItem(finalProfileSaveKey(me, 'employer'), 'saved');
-      setFinalSaved(true);
+      const nextStatus = me.extra?.verified
+        ? 'verified'
+        : (f.verification_status === 'pending' || f.verification_status === 'submitted' ? 'pending' : 'saved');
+      await api('me/profile', { method: 'PATCH', token, body: { ...f, verification_status: nextStatus } });
       toast.success('Saved');
-      await onSaved?.();
+      onSaved();
     }
     catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
   const saveCompanyLocation = async (loc) => {
     const nextStatus = me.extra?.verified
-      ? 'pending'
+      ? 'verified'
       : (f.verification_status === 'pending' || f.verification_status === 'submitted' ? 'pending' : 'saved');
     const body = {
       location_text: loc.location_text || '',
@@ -7901,7 +6743,6 @@ setHasChanges(changed);
       place_id: f.place_id || '',
       place_name: f.place_name || '',
       verification_status: nextStatus,
-      verification_section: 'location',
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setF((s) => ({ ...s, ...body }));
@@ -7977,13 +6818,7 @@ setHasChanges(changed);
             <p className="font-bold text-lg">{me.extra?.company_name || 'Set company name'}</p>
             <p className="text-sm text-muted-foreground truncate">{me.profile?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {employerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
-              ) : employerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending</Badge>
-              ) : (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
-              )}
+              {me.extra?.verified ? <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge> : <Badge variant="outline">Unverified</Badge>}
             </div>
             {me.profile?.login_id && (
               <button
@@ -7999,7 +6834,6 @@ setHasChanges(changed);
 
       <VerificationDocumentsCard
         token={token}
-        me={me}
         role="employer"
         verified={!!me.extra?.verified}
         form={f}
@@ -8008,8 +6842,8 @@ setHasChanges(changed);
         color="emerald"
       />
 
-      <Card className="profile-section-card overflow-hidden">
-        <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Company profile</CardTitle><CardDescription>Company details, address and hiring information.</CardDescription></div></div></CardHeader>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Company profile</CardTitle></CardHeader>
         <CardContent className="grid sm:grid-cols-2 gap-3">
           <Field label="Your name"   v={f.full_name}    on={(v) => setF(s => ({ ...s, full_name: v }))} />
           <Field label="Phone"       v={f.phone}        on={(v) => setF(s => ({ ...s, phone: v }))} />
@@ -8031,8 +6865,7 @@ setHasChanges(changed);
             <Textarea rows={3} value={f.company_address || ''} onChange={(e) => setF(s => ({ ...s, company_address: e.target.value }))} placeholder="Manual typing only: door no, street, area, city, state, pincode" />
             <p className="text-xs text-muted-foreground mt-1">This address field is manual only. GPS is selected separately below.</p>
           </div>
-          <div className="sm:col-span-2 space-y-3">
-
+          <div className="sm:col-span-2">
             <SavedLocationEditor
               label="Company GPS location"
               value={f.location_text || ''}
@@ -8049,57 +6882,108 @@ setHasChanges(changed);
             <Label>About</Label>
             <Textarea rows={3} value={f.description || ''} onChange={(e) => setF(s => ({ ...s, description: e.target.value }))} />
           </div>
-          <div className="sm:col-span-2">
-            <Card className="profile-section-card overflow-hidden border-emerald-100">
-              <CardHeader className="profile-section-header">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-base">Identity checks</CardTitle>
-                    <CardDescription>Mobile and selfie verification, same as employee profile flow.</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-4 grid lg:grid-cols-2 gap-4 items-stretch">
-                <MobileOtpVerificationBox token={token} phone={f.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setF(s => ({ ...s, phone: phone || s.phone, mobile_verified: true })); onSaved?.(); }} />
-                <SelfieVerificationBox token={token} url={f.selfie_url} frontUrl={f.selfie_front_url} leftUrl={f.selfie_left_url} rightUrl={f.selfie_right_url} verified={!!(me.extra?.selfie_verified || f.selfie_verified)} disabled={busy} onUploaded={(payload) => { setF(s => ({ ...s, ...(typeof payload === 'string' ? { selfie_url: payload, selfie_verified: true } : payload), selfie_verified: true, verification_status: 'verified' })); onSaved?.(); }} />
-              </CardContent>
-            </Card>
-          </div>
-          <div className="sm:col-span-2">
-            <SectionVerificationAction
-              token={token}
-              me={me}
-              section="profile"
-              title="Admin approval required"
-              description="Admin checks your company profile details and marks the profile verified."
-              color="emerald"
-              setForm={setF}
-              onSaved={onSaved}
-              disabled={!String(f.full_name || '').trim() || !String(f.company_name || '').trim() || !String(f.phone || '').trim()}
-              validate={() => {
-                if (!String(f.full_name || '').trim()) return 'Enter your name';
-                if (!String(f.company_name || '').trim()) return 'Enter company name';
-                if (!String(f.phone || '').trim()) return 'Enter phone number';
-                return '';
-              }}
-              payloadBuilder={buildEmployerProfilePayload}
-              modified={employerProfileChangedAfterReview}
-            />
-          </div>
         </CardContent>
       </Card>
 
-
-      {/* Employee attendance details removed from profile. Attendance is managed from Hired/Ongoing pages only. */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Employee attendance details</CardTitle>
+          <Button type="button" size="sm" variant="outline" onClick={loadAttendanceRows} disabled={attendanceLoading}>
+            {attendanceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {attendanceLoading && <div className="py-6 grid place-items-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>}
+          {!attendanceLoading && attendanceRows.length === 0 && (
+            <p className="text-sm text-muted-foreground p-4 border rounded-xl bg-slate-50">No accepted employees yet.</p>
+          )}
+          {!attendanceLoading && attendanceRows.map((row) => (
+            <div key={row.application_id} className="rounded-2xl border p-3 bg-white">
+              <div className="flex items-start gap-3">
+                <Avatar><AvatarImage src={row.worker?.photo_url} /><AvatarFallback>{initials(row.worker?.full_name || row.worker?.email)}</AvatarFallback></Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold truncate">{row.worker?.full_name || row.worker?.email}</p>
+                    <Badge variant="secondary" className={row.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700' : row.status === 'completed' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}>{row.status}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{row.job_title} · {row.location_text || 'Location pending'}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Start {row.start_date ? new Date(row.start_date).toLocaleDateString() : 'N/A'} · {row.duration_days || 1} day(s) · {fmtMoney(row.daily_pay)}/day
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Phone: {row.worker?.phone || 'Not added'} · Wage ask: ₹{row.worker?.expected_daily_wage || 0}</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-xl border bg-slate-50 p-2">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-xs font-medium">Daily attendance from start date</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Present: {row.present_days || 0} · Absent: {row.absent_days || 0} · Marked: {row.total_marked_days || 0}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(row.attendance_days || []).map((d) => {
+                    const isMarked = d.status === 'present' || d.status === 'absent';
+                    const disabled = row.status !== 'ongoing' || d.status === 'upcoming';
+                    return (
+                      <div key={d.date} className={`rounded-xl border p-2 ${
+                        d.status === 'present' ? 'bg-emerald-50 border-emerald-200' :
+                        d.status === 'absent' ? 'bg-red-50 border-red-200' :
+                        d.status === 'today' ? 'bg-amber-50 border-amber-200' :
+                        'bg-white border-slate-200'
+                      }`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-bold">Day {d.day}</p>
+                            <p className="text-[11px] text-muted-foreground">{new Date(d.date).toLocaleDateString()}</p>
+                          </div>
+                          <Badge className={
+                            d.status === 'present' ? 'bg-emerald-600 text-white' :
+                            d.status === 'absent' ? 'bg-red-600 text-white' :
+                            d.status === 'today' ? 'bg-amber-500 text-white' :
+                            'bg-slate-100 text-slate-600'
+                          }>
+                            {isMarked ? d.status : d.status === 'today' ? 'Today' : d.status === 'upcoming' ? 'Upcoming' : 'Unmarked'}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 mt-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={attendanceLoading || disabled}
+                            className="h-8 bg-emerald-600 hover:bg-emerald-700 text-xs"
+                            onClick={() => markAttendanceFromProfile(row.application_id, d.date, 'present')}
+                          >
+                            <Check className="w-3.5 h-3.5 mr-1" /> Present
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={attendanceLoading || disabled}
+                            className="h-8 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                            onClick={() => markAttendanceFromProfile(row.application_id, d.date, 'absent')}
+                          >
+                            <X className="w-3.5 h-3.5 mr-1" /> Absent
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           onClick={save}
-          disabled={busy || !employerAllProfileCardsVerified || finalSaved}
-          className="h-12 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed disabled:bg-emerald-600 disabled:text-white"
+          disabled={busy}
+          className="h-12 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
-          {finalSaved ? 'Saved' : 'Save profile'}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          Save profile
         </Button>
 
         <Button

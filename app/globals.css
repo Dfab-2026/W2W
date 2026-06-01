@@ -282,3 +282,17 @@ code {
 .container, [class*="max-w-"] { max-width: 100% !important; width: 100% !important; }
 .card, [role="tabpanel"] { width: 100% !important; }
 main, .page-container { width: 100%; padding: 16px !important; }
+
+/* Profile verification buttons must keep natural status colors even when disabled. */
+.profile-section-card button:disabled,
+.profile-section-card [disabled] {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* Profile verification buttons must keep natural status colors even when disabled. */
+.profile-section-card button:disabled,
+.profile-section-card [disabled] {
+  opacity: 1 !important;
+  filter: none !important;
+}

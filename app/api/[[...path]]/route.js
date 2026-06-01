@@ -5,6 +5,16 @@ import { Resend } from 'resend';
 const json = (data, status = 200) => NextResponse.json(data, { status });
 const err  = (message, status = 400) => NextResponse.json({ error: message }, { status });
 
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const aLat = Number(lat1), aLon = Number(lon1), bLat = Number(lat2), bLon = Number(lon2);
+  if (![aLat, aLon, bLat, bLon].every(Number.isFinite)) return null;
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLon = ((bLon - aLon) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
 async function sendEmail({ to, subject, html }) {
   try {
     if (!process.env.RESEND_API_KEY) return;
@@ -753,13 +763,24 @@ async function route(request, { params }) {
       const userId = path.split('/')[2];
       const body = await request.json().catch(() => ({}));
       const section = body.section || 'profile';
-      const allowed = ['profile', 'bank', 'verification', 'admin_message'];
+      const allowed = ['profile', 'bank', 'verification', 'documents', 'identity', 'location', 'admin_message'];
       if (!allowed.includes(section)) return err('Invalid section', 400);
       const { data: profile } = await admin.from('user_profiles').select('role,email,full_name').eq('id', userId).maybeSingle();
       if (!profile) return err('User not found', 404);
       if (profile.role === 'admin') return err('Admin profile cannot be verified here', 400);
-      const label = section === 'bank' ? 'Bank Details' : section === 'verification' ? (profile.role === 'worker' ? 'Worker Verification' : 'Employer Verification') : section === 'admin_message' ? 'Admin Message' : 'Profile';
+      const label = section === 'bank' ? 'Bank Details' : (section === 'verification' || section === 'documents') ? (profile.role === 'worker' ? 'Worker Verification' : 'Employer Verification') : section === 'identity' ? 'Identity Checks' : section === 'location' ? 'Location Details' : section === 'admin_message' ? 'Admin Message' : 'Profile';
       if (!body.messageOnly) {
+        // Keep the section approval persisted on the profile row too.
+        // This prevents a re-submitted section from staying visually Pending after admin approval
+        // when activity log rows share close timestamps or the client reloads before logs settle.
+        const table = profile.role === 'worker' ? 'workers' : 'employers';
+        const sectionKey = section === 'verification' ? 'documents' : section;
+        await admin.from(table).update({
+          verification_status: 'verified',
+          verification_section: sectionKey,
+          verification_notes: null,
+          verified_at: new Date().toISOString(),
+        }).eq('user_id', userId);
         await notify(admin, userId, `${label} verified`, `Admin verified your ${label.toLowerCase()} section.`, 'verification_section', userId);
       }
       await logActivity(admin, userId, body.messageOnly ? 'admin_sent_message' : 'admin_verified_section', { section, label, message: body.message || null }, me.id);
@@ -823,7 +844,37 @@ async function route(request, { params }) {
         const { data } = await admin.from('employers').select('*').eq('user_id', me.id).maybeSingle();
         extra = data;
       }
-      return json({ profile, extra });
+
+      // Section-level verification state for profile / bank / documents.
+      // Latest admin verification wins; if user submits after verification, it becomes pending again.
+      let section_statuses = {};
+      try {
+        const { data: rows } = await admin
+          .from('activity_logs')
+          .select('id,action,details,created_at')
+          .eq('user_id', me.id)
+          .in('action', ['admin_verified_section', 'submitted_section_verification', 'submitted_verification'])
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(100);
+        for (const row of rows || []) {
+          const details = typeof row.details === 'string' ? JSON.parse(row.details || '{}') : (row.details || {});
+          const rawSection = details.section || (row.action === 'submitted_verification' ? 'documents' : 'profile');
+          // Keep old admin key `verification` and user-facing card key `documents` in sync.
+          // Admin verifies Worker/Employer Verification, but the profile page card reads Documents.
+          const section = rawSection === 'verification' ? 'documents' : rawSection;
+          if (!section_statuses[section]) {
+            section_statuses[section] = row.action === 'admin_verified_section' ? 'verified' : 'pending';
+          }
+        }
+        const persistedSection = extra?.verification_section === 'verification' ? 'documents' : extra?.verification_section;
+        if (extra?.verification_status === 'verified' && persistedSection) {
+          section_statuses[persistedSection] = 'verified';
+        }
+      } catch (e) {
+        section_statuses = {};
+      }
+      return json({ profile, extra, section_statuses });
     }
 
     if (path === 'me/activity' && method === 'GET') {
@@ -870,7 +921,7 @@ async function route(request, { params }) {
 
       if (role === 'worker') {
         const wf = ['age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known',
-                    'bank_account', 'account_holder_name', 'bank_name', 'ifsc_code', 'branch_name', 'upi_id', 'selfie_url', 'certificate_url', 'previous_employer_reference',
+                    'bank_account', 'account_holder_name', 'bank_name', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url', 'selfie_verified', 'selfie_verified_at', 'certificate_url', 'previous_employer_reference',
                     'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'bio', 'available', 'address',
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url',
                     'verification_status', 'verification_notes', 'badge_immediate_joiner'];
@@ -893,7 +944,7 @@ async function route(request, { params }) {
             result = await admin.from('workers').insert({ user_id: me.id, ...wu }).select().maybeSingle();
           }
           if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','selfie_front_url','selfie_left_url','selfie_right_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
             const safe = {}; for (const k of safeKeys) if (k in wu) safe[k] = wu[k];
             result = existingWorker
               ? await admin.from('workers').update(safe).eq('user_id', me.id).select().maybeSingle()
@@ -906,6 +957,7 @@ async function route(request, { params }) {
         const ef = ['company_name', 'company_logo', 'industry', 'company_size', 'hr_contact', 'official_email', 'location_text',
                     'latitude', 'longitude', 'place_id', 'place_name', 'description', 'company_address', 'gst_number',
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'gst_certificate_url',
+                    'account_holder_name', 'bank_name', 'bank_account', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url',
                     'verification_status', 'verification_notes'];
         const eu = {}; for (const k of ef) if (k in body) eu[k] = body[k];
 
@@ -925,7 +977,7 @@ async function route(request, { params }) {
             result = await admin.from('employers').insert({ user_id: me.id, ...eu }).select().maybeSingle();
           }
           if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['company_name','company_logo','industry','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safeKeys = ['company_name','company_logo','industry','company_size','hr_contact','official_email','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
             const safe = {}; for (const k of safeKeys) if (k in eu) safe[k] = eu[k];
             result = existingEmployer
               ? await admin.from('employers').update(safe).eq('user_id', me.id).select().maybeSingle()
@@ -939,18 +991,26 @@ async function route(request, { params }) {
       if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
         const { data: admins } = await admin.from('user_profiles').select('id').eq('role', 'admin').eq('blocked', false);
         const displayName = profile?.full_name || profile?.company_name || profile?.email || 'A user';
-        const changedFields = Object.keys(body).filter(k => !['verification_status','verification_notes'].includes(k));
+        const verificationSection = body.verification_section || 'documents';
+        const sectionLabel = verificationSection === 'bank' ? 'Bank details' : verificationSection === 'profile' ? 'Profile details' : 'Documents';
+        const changedFields = Object.keys(body).filter(k => !['verification_status','verification_notes','verification_section'].includes(k));
         const isSkillOnly = changedFields.length === 1 && changedFields[0] === 'certificate_url';
-        const title = isSkillOnly ? 'Skill certificate needs review' : 'Verification needs review';
+        const title = isSkillOnly ? 'Skill certificate needs review' : `${sectionLabel} needs review`;
         const bodyText = isSkillOnly
           ? `${displayName} added a skill certificate. Review it and mark the account verified again.`
-          : `${displayName} (${profile?.role || 'user'}) submitted verification details. Updated: ${changedFields.join(', ') || 'profile details'}.`;
+          : `${displayName} (${profile?.role || 'user'}) submitted ${sectionLabel.toLowerCase()} for admin verification. Updated: ${changedFields.join(', ') || sectionLabel}.`;
         for (const a of admins || []) {
           await notify(admin, a.id, title, bodyText, 'verification', me.id);
         }
       }
 
-      await logActivity(admin, me.id, (body.verification_status === 'submitted' || body.verification_status === 'pending') ? 'submitted_verification' : 'updated_profile', { fields: Object.keys(body).filter(k => k !== 'password') }, me.id);
+      await logActivity(
+        admin,
+        me.id,
+        (body.verification_status === 'submitted' || body.verification_status === 'pending') ? 'submitted_section_verification' : 'updated_profile',
+        { section: body.verification_section || 'profile', fields: Object.keys(body).filter(k => !['password','verification_section'].includes(k)) },
+        me.id
+      );
       return json({ ok: true, profile, extra: updatedExtra });
     }
 
@@ -985,21 +1045,53 @@ async function route(request, { params }) {
     }
 
     // Worker confirms an employer-selected application before job moves forward.
+
+    if (path.match(/^applications\/[^/]+$/) && method === 'GET') {
+      const appId = path.split('/')[1];
+      const { data: appRow, error } = await admin.from('applications')
+        .select('*, jobs(id,title,employer_id,location_text,duration_days,daily_pay,status)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (error || !appRow) return err('Application not found', 404);
+      const isEmployer = appRow.jobs?.employer_id === me.id;
+      const isWorker = appRow.worker_id === me.id;
+      const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
+      if (!isEmployer && !isWorker && profile?.role !== 'admin') return err('Not allowed', 403);
+      return json({ application: appRow });
+    }
+
     if (path.match(/^applications\/[^/]+\/worker-confirm$/) && method === 'POST') {
       const appId = path.split('/')[1];
-      if (me.role !== 'worker') return err('Only workers can confirm hired jobs', 403);
+
+      // Employee/worker accepts the employer invitation.
+      // Do not depend on role text here because some project copies store the role as
+      // "employee" while older code used "worker". Ownership of the application is
+      // the real permission check.
       const { data: appRow } = await admin.from('applications')
         .select('*, jobs!inner(employer_id,title,start_date,duration_days)')
         .eq('id', appId).eq('worker_id', me.id).maybeSingle();
-      if (!appRow) return err('Application not found', 404);
-      if (appRow.status !== 'accepted') return err('Only accepted jobs can be confirmed', 400);
-      const updateData = { status: 'ongoing', started_at: new Date().toISOString() };
-      let { data, error } = await admin.from('applications').update({ ...updateData, worker_confirmed_at: new Date().toISOString() }).eq('id', appId).select().single();
+      if (!appRow) return err('Application not found for this employee', 404);
+      if (!['accepted', 'ongoing'].includes(appRow.status)) return err('Only accepted jobs can be confirmed', 400);
+
+      const { data: workerProfile } = await admin.from('user_profiles')
+        .select('full_name,email')
+        .eq('id', me.id)
+        .maybeSingle();
+
+      const startedAt = appRow.started_at || new Date().toISOString();
+      const updateData = { status: 'ongoing', started_at: startedAt };
+      let { data, error } = await admin.from('applications')
+        .update({ ...updateData, worker_confirmed_at: new Date().toISOString() })
+        .eq('id', appId)
+        .select()
+        .single();
       if (error && String(error.message || '').toLowerCase().includes('column')) {
         ({ data, error } = await admin.from('applications').update(updateData).eq('id', appId).select().single());
       }
       if (error) return err(error.message, 400);
-      await notify(admin, appRow.jobs.employer_id, 'Worker accepted the hire', `${profile?.full_name || 'Worker'} accepted "${appRow.jobs.title}". Continue with work instructions, attendance and payment steps.`, 'application', appId);
+
+      await notify(admin, appRow.jobs.employer_id, 'Worker accepted the hire', `${workerProfile?.full_name || 'Worker'} accepted "${appRow.jobs.title}". The job moved to ongoing. You can now mark attendance.`, 'application', appId);
+      await notify(admin, me.id, 'Job moved to ongoing', `You accepted "${appRow.jobs.title}". Attendance tracking is now enabled.`, 'application', appId);
       await logActivity(admin, me.id, 'worker_confirmed_hire', { application_id: appId, job_title: appRow.jobs.title }, me.id);
       await logActivity(admin, appRow.jobs.employer_id, 'worker_confirmed_hire', { application_id: appId, worker_id: me.id, job_title: appRow.jobs.title }, me.id);
       return json({ application: data });
@@ -1012,7 +1104,7 @@ async function route(request, { params }) {
       const category = url.searchParams.get('category') || '';
       const minPay = Number(url.searchParams.get('min_pay') || 0);
       let qb = admin.from('jobs')
-        .select('*, employers!inner(company_name, company_logo, location_text, verified)')
+        .select('*, employers!inner(company_name, company_logo, location_text, verified), applications(id,status)')
         .eq('status', 'open')
         .order('created_at', { ascending: false })
         .limit(100);
@@ -1024,7 +1116,16 @@ async function route(request, { params }) {
         const text = `${j.title || ''} ${j.description || ''} ${j.category || ''} ${j.skill_needed || ''} ${j.location_text || ''} ${j.employers?.company_name || ''}`.toLowerCase();
         const exp = j.expires_at ? new Date(j.expires_at).getTime() : (j.post_valid_days && j.created_at ? new Date(j.created_at).getTime() + Number(j.post_valid_days) * 86400000 : null);
         return (!q || text.includes(q)) && (!minPay || Number(j.daily_pay || 0) >= minPay) && (!exp || exp >= now);
-      }).slice(0, 50);
+      }).slice(0, 50).map(j => {
+        const apps = j.applications || [];
+        return {
+          ...j,
+          applications: undefined,
+          applicants_count: apps.length,
+          pending_count: apps.filter(a => a.status === 'pending').length,
+          hired_count: apps.filter(a => ['accepted','ongoing'].includes(a.status)).length,
+        };
+      });
       return json({ jobs });
     }
 
@@ -1076,6 +1177,7 @@ async function route(request, { params }) {
         overtime_available: !!body.overtime_available,
         transportation_provided: !!body.transportation_provided,
         post_valid_days: Number(body.post_valid_days) || 5,
+        attendance_radius_meters: Math.max(10, Math.min(Number(body.attendance_radius_meters) || 20, 200)),
         expires_at: (() => { const d = new Date(); d.setDate(d.getDate() + (Number(body.post_valid_days) || 5)); return d.toISOString(); })(),
       };
 
@@ -1119,6 +1221,7 @@ async function route(request, { params }) {
         overtime_available: !!body.overtime_available,
         transportation_provided: !!body.transportation_provided,
         post_valid_days: days,
+        attendance_radius_meters: Math.max(10, Math.min(Number(body.attendance_radius_meters || current.attendance_radius_meters) || 20, 200)),
         expires_at: expires.toISOString(),
         status: body.status || current.status || 'open',
       };
@@ -1173,44 +1276,91 @@ async function route(request, { params }) {
         .select('*, applications(id,status)')
         .eq('employer_id', me.id).order('created_at', { ascending: false });
       if (error) return err(error.message, 400);
-      const enriched = (data || []).map(j => ({
-        ...j,
-        applicants_count: (j.applications || []).length,
-        pending_count: (j.applications || []).filter(a => a.status === 'pending').length,
-      }));
+      const enriched = (data || []).map(j => {
+        const apps = j.applications || [];
+        const hiredApps = apps.filter(a => ['accepted', 'ongoing'].includes(a.status));
+        return {
+          ...j,
+          applicants_count: apps.length,
+          pending_count: apps.filter(a => a.status === 'pending').length,
+          hired_count: hiredApps.length,
+          ongoing_count: apps.filter(a => a.status === 'ongoing').length,
+          invitation_count: apps.filter(a => a.status === 'accepted').length,
+        };
+      });
       return json({ jobs: enriched });
+    }
+
+    if (path.match(/^employer\/jobs\/[^/]+$/) && method === 'DELETE') {
+      const jobId = path.split('/')[2];
+      const { data: jobRow } = await admin.from('jobs')
+        .select('id,title,employer_id')
+        .eq('id', jobId)
+        .maybeSingle();
+      if (!jobRow) return err('Job not found', 404);
+      if (jobRow.employer_id !== me.id && me.role !== 'admin') return err('Forbidden', 403);
+
+      const { data: appRows } = await admin.from('applications').select('id').eq('job_id', jobId);
+      const appIds = (appRows || []).map(a => a.id);
+      if (appIds.length) await admin.from('attendance_records').delete().in('application_id', appIds);
+      await admin.from('applications').delete().eq('job_id', jobId);
+      const { error } = await admin.from('jobs').delete().eq('id', jobId);
+      if (error) return err(error.message, 400);
+
+      await logActivity(admin, me.id, 'deleted_job_post', { job_id: jobId, job_title: jobRow.title }, me.id);
+      return json({ ok: true });
     }
 
     if (path === 'employer/attendance' && method === 'GET') {
       const { data, error } = await admin.from('applications')
-        .select('id,status,applied_at,started_at,completed_at,worker_id,workers!inner(skills,experience_years,expected_daily_wage,user_profiles!workers_user_id_fkey(full_name,email,phone,photo_url)),jobs!inner(title,location_text,start_date,duration_days,daily_pay,employer_id)')
+        .select('id,status,applied_at,accepted_at,started_at,completed_at,worker_id,workers!inner(skills,experience_years,expected_daily_wage,user_profiles!workers_user_id_fkey(full_name,email,phone,photo_url)),jobs!inner(title,location_text,start_date,duration_days,daily_pay,employer_id)')
         .eq('jobs.employer_id', me.id)
         .in('status', ['accepted', 'ongoing', 'completed'])
         .order('applied_at', { ascending: false });
       if (error) return err(error.message, 400);
 
-      const today = new Date();
+      const appIds = (data || []).map((app) => app.id);
+      const attendanceByApp = {};
+      if (appIds.length) {
+        const { data: attendanceRows, error: attendanceError } = await admin.from('attendance_records')
+          .select('*')
+          .in('application_id', appIds)
+          .order('attendance_date', { ascending: true });
+        if (attendanceError) return err(attendanceError.message, 400);
+        for (const row of attendanceRows || []) {
+          if (!attendanceByApp[row.application_id]) attendanceByApp[row.application_id] = [];
+          attendanceByApp[row.application_id].push(row);
+        }
+      }
+
+      const todayKey = new Date().toISOString().slice(0, 10);
       const items = (data || []).map((app) => {
-        const startValue = app.started_at || app.jobs?.start_date || app.applied_at || new Date().toISOString();
+        const startValue = app.started_at || app.accepted_at || app.jobs?.start_date || app.applied_at || new Date().toISOString();
         const start = new Date(startValue);
         const duration = Math.max(1, Math.min(Number(app.jobs?.duration_days || 1), 60));
+        const existing = attendanceByApp[app.id] || [];
+        const existingByDate = new Map(existing.map((row) => [String(row.attendance_date).slice(0, 10), row]));
         const attendance_days = [];
+
         for (let i = 0; i < duration; i++) {
           const dayDate = new Date(start);
           dayDate.setDate(dayDate.getDate() + i);
-          let status = 'upcoming';
-          if (dayDate <= today) status = 'present';
-          if (app.status === 'ongoing') {
-            const dayStart = new Date(dayDate); dayStart.setHours(0, 0, 0, 0);
-            const nowStart = new Date(today); nowStart.setHours(0, 0, 0, 0);
-            if (dayStart.getTime() === nowStart.getTime()) status = 'today';
-          }
+          const dateKey = dayDate.toISOString().slice(0, 10);
+          const row = existingByDate.get(dateKey);
+          let status = row?.status || 'unmarked';
+          if (!row && dateKey > todayKey) status = 'upcoming';
+          if (!row && dateKey === todayKey && app.status === 'ongoing') status = 'today';
           attendance_days.push({
             day: i + 1,
-            date: dayDate.toISOString(),
+            date: dateKey,
             status,
+            marked: !!row,
+            marked_at: row?.marked_at || null,
+            marked_by: row?.marked_by || null,
+            attendance_id: row?.id || null,
           });
         }
+
         return {
           application_id: app.id,
           status: app.status,
@@ -1219,6 +1369,9 @@ async function route(request, { params }) {
           job_title: app.jobs?.title || '',
           location_text: app.jobs?.location_text || '',
           daily_pay: app.jobs?.daily_pay || 0,
+          present_days: existing.filter((row) => row.status === 'present').length,
+          absent_days: existing.filter((row) => row.status === 'absent').length,
+          total_marked_days: existing.length,
           worker: {
             id: app.worker_id,
             full_name: app.workers?.user_profiles?.full_name || '',
@@ -1243,35 +1396,131 @@ async function route(request, { params }) {
         .eq('job_id', jobId).order('applied_at', { ascending: false });
       if (error) return err(error.message, 400);
 
-      // Auto-update status based on dates
-      const now = new Date();
-      for (const app of data || []) {
-        if (app.status === 'accepted' && app.jobs.start_date) {
-          const startDate = new Date(app.jobs.start_date);
-          if (now >= startDate) {
-            await admin.from('applications').update({
-              status: 'ongoing',
-              started_at: startDate.toISOString()
-            }).eq('id', app.id);
-            app.status = 'ongoing';
-            app.started_at = startDate.toISOString();
-          }
-        } else if (app.status === 'ongoing' && app.started_at && app.jobs.duration_days) {
-          const startedAt = new Date(app.started_at);
-          const endDate = new Date(startedAt);
-          endDate.setDate(endDate.getDate() + app.jobs.duration_days);
-          if (now >= endDate) {
-            await admin.from('applications').update({
-              status: 'completed',
-              completed_at: endDate.toISOString()
-            }).eq('id', app.id);
-            app.status = 'completed';
-            app.completed_at = endDate.toISOString();
-          }
-        }
-      }
+      // IMPORTANT: Do not auto-complete ongoing jobs here.
+      // After the employee accepts the invitation, the application must stay in `ongoing`
+      // until the employer manually clicks Complete & Pay.
 
       return json({ applicants: data });
+    }
+
+
+    if (path.match(/^applications\/[^/]+\/attendance$/) && method === 'GET') {
+      const appId = path.split('/')[1];
+      const { data: appRow } = await admin.from('applications')
+        .select('id,worker_id,jobs!inner(employer_id)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      const isEmployer = appRow.jobs?.employer_id === me.id;
+      const isWorker = appRow.worker_id === me.id;
+      if (!isEmployer && !isWorker && me.role !== 'admin') return err('Forbidden', 403);
+
+      const { data, error } = await admin.from('attendance_records')
+        .select('*')
+        .eq('application_id', appId)
+        .order('attendance_date', { ascending: true });
+      if (error) return err(error.message, 400);
+      return json({ attendance: data || [] });
+    }
+
+    if (path.match(/^applications\/[^/]+\/gps-attendance$/) && method === 'POST') {
+      const appId = path.split('/')[1];
+      const body = await request.json().catch(() => ({}));
+      const date = body.date || new Date().toISOString().slice(0, 10);
+      const workerLat = Number(body.latitude);
+      const workerLng = Number(body.longitude);
+      if (!Number.isFinite(workerLat) || !Number.isFinite(workerLng)) return err('Current GPS is required to mark attendance', 400);
+
+      const { data: appRow } = await admin.from('applications')
+        .select('id,status,worker_id,job_id,jobs!inner(employer_id,title,latitude,longitude,attendance_radius_meters)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      if (appRow.worker_id !== me.id && me.role !== 'admin') return err('Only assigned employee can mark GPS attendance', 403);
+      if (appRow.status !== 'ongoing') return err('Attendance can be marked only for ongoing jobs', 400);
+
+      const jobLat = Number(appRow.jobs?.latitude);
+      const jobLng = Number(appRow.jobs?.longitude);
+      if (!Number.isFinite(jobLat) || !Number.isFinite(jobLng)) return err('Employer has not saved job GPS location', 400);
+
+      const allowedMeters = Math.max(10, Math.min(Number(appRow.jobs?.attendance_radius_meters) || 20, 200));
+      const distance = distanceMeters(workerLat, workerLng, jobLat, jobLng);
+      if (distance === null) return err('Unable to calculate GPS distance', 400);
+      if (distance > allowedMeters) return err(`You are ${Math.round(distance)}m away from job location. Attendance allowed within ${allowedMeters}m only.`, 400);
+
+      const payload = {
+        application_id: appId,
+        job_id: appRow.job_id,
+        worker_id: appRow.worker_id,
+        employer_id: appRow.jobs.employer_id,
+        date,
+        attendance_date: date,
+        status: 'present',
+        marked_by: me.id,
+        marked_at: new Date().toISOString(),
+        worker_latitude: workerLat,
+        worker_longitude: workerLng,
+        distance_meters: Math.round(distance),
+        verification_method: 'gps',
+      };
+
+      let { data, error } = await admin.from('attendance_records')
+        .upsert(payload, { onConflict: 'application_id,attendance_date' })
+        .select()
+        .single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        const fallback = { application_id: appId, job_id: appRow.job_id, worker_id: appRow.worker_id, employer_id: appRow.jobs.employer_id, date, attendance_date: date, status: 'present', marked_by: me.id, marked_at: new Date().toISOString() };
+        ({ data, error } = await admin.from('attendance_records').upsert(fallback, { onConflict: 'application_id,attendance_date' }).select().single());
+      }
+      if (error) return err(error.message, 400);
+
+      await notify(admin, appRow.jobs.employer_id, 'Employee marked attendance', `Employee GPS attendance marked present for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
+      await notify(admin, appRow.worker_id, 'Attendance marked', `Your GPS attendance was marked present for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
+      await logActivity(admin, appRow.worker_id, 'gps_attendance_marked', { application_id: appId, date, distance_meters: Math.round(distance), job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, appRow.jobs.employer_id, 'worker_gps_attendance_marked', { application_id: appId, worker_id: appRow.worker_id, date, distance_meters: Math.round(distance), job_title: appRow.jobs.title }, me.id);
+
+      return json({ attendance: data, distance_meters: Math.round(distance), allowed_meters: allowedMeters });
+    }
+
+    if (path.match(/^applications\/[^/]+\/attendance$/) && method === 'POST') {
+      const appId = path.split('/')[1];
+      const body = await request.json().catch(() => ({}));
+      const date = body.date || new Date().toISOString().slice(0, 10);
+      const status = body.status || 'present';
+      if (!['present', 'absent'].includes(status)) return err('Invalid attendance status', 400);
+
+      const { data: appRow } = await admin.from('applications')
+        .select('id,status,worker_id,job_id,jobs!inner(employer_id,title)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      if (appRow.jobs?.employer_id !== me.id && me.role !== 'admin') return err('Only employer can mark attendance', 403);
+      if (appRow.status !== 'ongoing') return err('Attendance can be marked only after worker accepts and job moves to ongoing', 400);
+
+      const payload = {
+        application_id: appId,
+        job_id: appRow.job_id,
+        worker_id: appRow.worker_id,
+        employer_id: appRow.jobs.employer_id,
+        // Support both old and new schemas. Some older SQL had a required `date` column.
+        date,
+        attendance_date: date,
+        status,
+        marked_by: me.id,
+        marked_at: new Date().toISOString(),
+      };
+
+      let { data, error } = await admin.from('attendance_records')
+        .upsert(payload, { onConflict: 'application_id,attendance_date' })
+        .select()
+        .single();
+      if (error) return err(error.message, 400);
+
+      await notify(admin, appRow.worker_id, 'Attendance updated', `Attendance marked ${status} for ${appRow.jobs.title} on ${date}.`, 'attendance', appId);
+      await logActivity(admin, appRow.worker_id, 'attendance_marked', { application_id: appId, date, status, job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, me.id, 'marked_attendance', { application_id: appId, worker_id: appRow.worker_id, date, status, job_title: appRow.jobs.title }, me.id);
+
+      return json({ attendance: data });
     }
 
     if (path.match(/^applications\/[^/]+$/) && method === 'PATCH') {
@@ -1284,30 +1533,63 @@ async function route(request, { params }) {
         .select('*, jobs!inner(employer_id,title,start_date,duration_days)')
         .eq('id', appId).maybeSingle();
       if (!appRow) return err('Application not found', 404);
-      if (appRow.jobs.employer_id !== me.id) return err('Forbidden', 403);
+      const isEmployerOwner = appRow.jobs.employer_id === me.id;
+      const isWorkerOwner = appRow.worker_id === me.id;
+      if (!isEmployerOwner && !(isWorkerOwner && status === 'ongoing')) return err('Forbidden', 403);
 
+      // Employer accept means invitation only. Employee/worker must accept before it becomes ongoing.
+      const nowIso = new Date().toISOString();
       const updateData = { status };
-      if (status === 'ongoing') {
-        updateData.started_at = new Date().toISOString();
+      if (status === 'accepted') {
+        updateData.accepted_at = appRow.accepted_at || nowIso;
+      } else if (status === 'ongoing') {
+        updateData.accepted_at = appRow.accepted_at || nowIso;
+        updateData.started_at = appRow.started_at || nowIso;
+        updateData.worker_confirmed_at = appRow.worker_confirmed_at || nowIso;
       } else if (status === 'completed') {
-        updateData.completed_at = new Date().toISOString();
+        updateData.completed_at = appRow.completed_at || nowIso;
       }
 
-      const { data, error } = await admin.from('applications').update(updateData).eq('id', appId).select().single();
+      let { data, error } = await admin.from('applications').update(updateData).eq('id', appId).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        // Older databases may not yet have accepted_at / started_at / worker_confirmed_at / completed_at.
+        // Status is the source of truth for tabs, so keep the workflow working.
+        ({ data, error } = await admin.from('applications').update({ status }).eq('id', appId).select().single());
+      }
       if (error) return err(error.message, 400);
       await notify(admin, appRow.worker_id,
-        `Application ${status}`,
-        `Your application for "${appRow.jobs.title}" was ${status}.`,
+        status === 'accepted' ? 'Job invitation received' : `Application ${status}`,
+        status === 'accepted' ? `Your application for "${appRow.jobs.title}" was accepted. Open Applied Jobs and accept the invitation to move it to Ongoing Jobs.` : `Your application for "${appRow.jobs.title}" was ${status}.`,
         'application', appId);
       await logActivity(admin, appRow.worker_id, `application_${status}`, { application_id: appId, job_title: appRow.jobs.title }, me.id);
       await logActivity(admin, me.id, `set_application_${status}`, { application_id: appId, worker_id: appRow.worker_id, job_title: appRow.jobs.title }, me.id);
       const { data: w } = await admin.from('user_profiles').select('email,full_name').eq('id', appRow.worker_id).maybeSingle();
       if (w?.email) sendEmail({
         to: w.email,
-        subject: `Your application was ${status}`,
-        html: `<p>Hi ${w.full_name || ''},</p><p>Your application for <b>${appRow.jobs.title}</b> is now <b>${status}</b>.</p>`,
+        subject: status === 'accepted' ? `Job invitation: ${appRow.jobs.title}` : `Your application was ${status}`,
+        html: status === 'accepted'
+          ? `<p>Hi ${w.full_name || ''},</p><p>Your application for <b>${appRow.jobs.title}</b> was accepted. Please open Work2Wish Applied Jobs and accept the invitation to start the job.</p>`
+          : `<p>Hi ${w.full_name || ''},</p><p>Your application for <b>${appRow.jobs.title}</b> is now <b>${status}</b>.</p>`,
       });
       return json({ application: data });
+    }
+
+    if (path.match(/^applications\/[^/]+$/) && method === 'DELETE') {
+      const appId = path.split('/')[1];
+      const { data: appRow } = await admin.from('applications')
+        .select('id,worker_id,job_id,status,jobs!inner(employer_id,title)')
+        .eq('id', appId).maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      if (appRow.jobs.employer_id !== me.id && me.role !== 'admin') return err('Forbidden', 403);
+
+      await admin.from('attendance_records').delete().eq('application_id', appId);
+      const { error } = await admin.from('applications').delete().eq('id', appId);
+      if (error) return err(error.message, 400);
+
+      await notify(admin, appRow.worker_id, 'Removed from hired job', `You were removed from "${appRow.jobs.title}" by the employer.`, 'application', appId);
+      await logActivity(admin, appRow.worker_id, 'removed_from_hired_job', { application_id: appId, job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, me.id, 'removed_hired_worker', { application_id: appId, worker_id: appRow.worker_id, job_title: appRow.jobs.title }, me.id);
+      return json({ ok: true });
     }
 
     // ---------- Feedback routes ----------
@@ -1391,32 +1673,29 @@ async function route(request, { params }) {
         .eq('worker_id', me.id).order('applied_at', { ascending: false });
       if (error) return err(error.message, 400);
 
-      // Auto-update status based on dates
-      const now = new Date();
-      for (const app of data || []) {
-        if (app.status === 'accepted' && app.jobs.start_date) {
-          const startDate = new Date(app.jobs.start_date);
-          if (now >= startDate) {
-            await admin.from('applications').update({
-              status: 'ongoing',
-              started_at: startDate.toISOString()
-            }).eq('id', app.id);
-            app.status = 'ongoing';
-            app.started_at = startDate.toISOString();
+      // IMPORTANT: Do not auto-complete ongoing jobs here.
+      // After the employee accepts the invitation, the application must stay in `ongoing`
+      // until the employer manually clicks Complete & Pay.
+
+      try {
+        const ids = (data || []).map((a) => a.id);
+        if (ids.length) {
+          const { data: attendanceRows } = await admin.from('attendance_records')
+            .select('*')
+            .in('application_id', ids)
+            .order('attendance_date', { ascending: true });
+          const byApp = {};
+          for (const row of attendanceRows || []) {
+            if (!byApp[row.application_id]) byApp[row.application_id] = [];
+            byApp[row.application_id].push(row);
           }
-        } else if (app.status === 'ongoing' && app.started_at && app.jobs.duration_days) {
-          const startedAt = new Date(app.started_at);
-          const endDate = new Date(startedAt);
-          endDate.setDate(endDate.getDate() + app.jobs.duration_days);
-          if (now >= endDate) {
-            await admin.from('applications').update({
-              status: 'completed',
-              completed_at: endDate.toISOString()
-            }).eq('id', app.id);
-            app.status = 'completed';
-            app.completed_at = endDate.toISOString();
+          for (const app of data || []) {
+            app.attendance_records = byApp[app.id] || [];
           }
         }
+      } catch (e) {
+        // Attendance table may not exist until the SQL below is run. Never block jobs loading.
+        for (const app of data || []) app.attendance_records = [];
       }
 
       return json({ applications: data });

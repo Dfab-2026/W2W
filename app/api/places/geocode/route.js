@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 
 function getKey() {
-  return process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY || '';
+  return process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAP_API_KEY || '';
 }
 
 export async function GET(req) {
@@ -16,10 +16,9 @@ export async function GET(req) {
     const key = getKey();
     if (!key) return NextResponse.json({ error: 'Google Maps API key missing in .env.local' }, { status: 400 });
 
-    const params = new URLSearchParams({ key, language: 'en', region: 'in' });
+    const params = new URLSearchParams({ key, language: 'en' });
     if (address) {
       params.set('address', address);
-      params.set('components', 'country:IN');
     }
     if (latlng) params.set('latlng', latlng);
 
