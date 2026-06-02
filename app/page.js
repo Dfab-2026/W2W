@@ -10,7 +10,7 @@ import {
   Hammer, Users, ClipboardList, Clock, CheckCircle2, XCircle, MessageSquare,
   Edit3, Camera, ChevronLeft, Filter, Banknote, Upload, ArrowLeft, Image as ImgIcon,
   Mail, KeyRound, Hash, Copy, Eye, EyeOff, Lock, ShieldAlert, X,
-  FileText, Tag, IndianRupee, Calendar, Award, Check, UserCircle, Sun, Moon, Trash2, CheckCheck, Save
+  FileText, Tag, IndianRupee, Calendar, Award, Check, UserCircle, Sun, Moon, Globe2, Trash2, CheckCheck, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -303,10 +303,15 @@ function ThemeToggle() {
     applyAppTheme(next);
     toast.success(`Theme: ${next === 'light' ? 'Light' : next === 'dark' ? 'Dark' : 'System default'}`);
   };
+  const ThemeIcon = theme === 'dark' ? Moon : theme === 'light' ? Sun : Sparkles;
   return (
     <Select value={theme} onValueChange={changeTheme}>
-      <SelectTrigger className="h-10 w-[128px] rounded-full bg-white/90 dark:bg-slate-900 border-slate-200 dark:border-slate-700">
-        <SelectValue placeholder="Theme" />
+      <SelectTrigger
+        title="Theme"
+        aria-label="Theme"
+        className="h-10 w-10 rounded-full bg-[#07183f] border border-sky-300/30 px-0 grid place-items-center text-white hover:bg-[#0b2a68] shadow-sm transition-colors"
+      >
+        <ThemeIcon className="w-4 h-4" />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="system"><span className="inline-flex items-center gap-2"><Sparkles className="w-4 h-4" /> System</span></SelectItem>
@@ -333,8 +338,12 @@ const [lang, setLang] = useState('en');
   };
   return (
     <Select value={lang} onValueChange={change}>
-      <SelectTrigger className="h-10 w-[118px] rounded-full bg-white/90 dark:bg-slate-900 border-slate-200 dark:border-slate-700">
-        <SelectValue placeholder="Language" />
+      <SelectTrigger
+        title="Language"
+        aria-label="Language"
+        className="h-10 w-10 rounded-full bg-[#07183f] border border-sky-300/30 px-0 grid place-items-center text-white hover:bg-[#0b2a68] shadow-sm transition-colors"
+      >
+        <Globe2 className="w-4 h-4" />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="en">English</SelectItem>
@@ -1097,8 +1106,8 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
     amber: 'border-amber-200 bg-amber-50/60 text-amber-800',
   };
   const button = verified
-    ? 'border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:opacity-100 disabled:bg-emerald-600 disabled:text-white'
-    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50';
+    ? 'border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:!opacity-100 disabled:bg-emerald-600 disabled:text-white disabled:cursor-default'
+    : 'border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700';
   return (
     <div className={`rounded-3xl border ${styles[tone] || styles.indigo} p-4 shadow-sm`}>
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -1107,7 +1116,7 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
           <Badge className={verified ? 'mt-2 bg-emerald-100 text-emerald-800 border border-emerald-200' : 'mt-2 bg-white text-slate-600 border border-slate-200'}>{verified ? 'Section verified' : 'Review pending'}</Badge>
         </div>
         <Button size="sm" variant="outline" disabled={disabled || verified} onClick={onVerify} className={button}>
-          <CheckCircle2 className="w-4 h-4 mr-1" /> {verified ? 'Verified' : 'Verify'}
+          <CheckCircle2 className="w-4 h-4 mr-1" /> {verified ? 'Done' : 'Verify'}
         </Button>
       </div>
       <div className="space-y-3">{children}</div>
@@ -2999,19 +3008,19 @@ function WorkerApp({ auth, onLogout }) {
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
       {/* top bar — premium */}
-      <header className="bg-white/95 backdrop-blur-xl border-b border-slate-100 shrink-0 z-10 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
+      <header className="bg-gradient-to-r from-[#04112f] via-[#071f55] to-[#0b3b91] backdrop-blur-xl border-b border-blue-400/20 shrink-0 z-10 shadow-[0_10px_34px_rgba(7,31,85,0.30)]">
         <div className="container py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <motion.div
-              className="w-11 h-11 rounded-xl bg-white grid place-items-center shadow-lg shadow-sky-500/20 ring-1 ring-sky-100 p-1"
+              className="w-11 h-11 rounded-xl bg-white grid place-items-center shadow-lg shadow-blue-950/30 ring-2 ring-sky-300/40 p-1"
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.5 }}
             >
               <Work2WishLogo className="w-full h-full" />
             </motion.div>
             <div className="leading-tight">
-              <p className="font-extrabold text-slate-900 tracking-tight">{me?.profile?.full_name || 'Worker'}</p>
-              <p className="text-[10px] text-slate-500">Worker portal</p>
+              <p className="font-extrabold text-white tracking-tight">{me?.profile?.full_name || 'Worker'}</p>
+              <p className="text-[10px] text-sky-100/80">Worker portal</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -3019,7 +3028,7 @@ function WorkerApp({ auth, onLogout }) {
             <GlobalLanguageSelect />
             <ThemeToggle />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setTab('profile')} title="Profile">
+              <Button type="button" variant="ghost" size="icon" className="rounded-xl text-sky-100 hover:bg-white/10 hover:text-white" onClick={() => setTab('profile')} title="Profile">
                 <UserCircle className="w-5 h-5" />
               </Button>
             </motion.div>
@@ -3035,7 +3044,7 @@ function WorkerApp({ auth, onLogout }) {
       </main>
 
       {/* bottom nav — premium */}
-      <nav className={`shrink-0 bg-white/95 backdrop-blur-xl shadow-[0_-4px_20px_rgba(15,23,42,0.06)] ${tab === 'profile' ? 'border-t-0' : 'border-t border-slate-100'}`}>
+      <nav className={`shrink-0 bg-gradient-to-r from-[#04112f] via-[#071f55] to-[#0b3b91] backdrop-blur-xl shadow-[0_-8px_30px_rgba(7,31,85,0.28)] ${tab === 'profile' ? 'border-t-0' : 'border-t border-blue-400/20'}`}>
         <div className="container grid grid-cols-3">
           {[
             { k: 'home',    i: Search,         l: 'Find' },
@@ -3046,11 +3055,11 @@ function WorkerApp({ auth, onLogout }) {
             return (
               <button key={t.k}
                 onClick={() => { setTab(t.k); if (t.k !== 'chats') setChatPeer(null); }}
-                className={`py-2.5 flex flex-col items-center gap-1 text-xs font-medium transition-all duration-200 relative ${active ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                className={`py-2.5 flex flex-col items-center gap-1 text-xs font-medium transition-all duration-200 relative ${active ? 'text-white' : 'text-sky-200/70 hover:text-white'}`}>
                 {active && (
                   <motion.span
                     layoutId="worker-tab-indicator"
-                    className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-indigo-600"
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-sky-300"
                     initial={false}
                     transition={{ type: 'spring', stiffness: 500, damping: 35 }}
                   />
@@ -3058,7 +3067,7 @@ function WorkerApp({ auth, onLogout }) {
                 <motion.span
                   animate={{ scale: active ? 1.12 : 1, y: active ? -1 : 0 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-indigo-50' : ''}`}
+                  className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-white/12 ring-1 ring-sky-300/25' : ''}`}
                 >
                   <t.i className="w-5 h-5" />
                 </motion.span>
@@ -3528,7 +3537,7 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="w-[92vw] max-w-5xl rounded-3xl p-0 overflow-hidden">
-          <DialogHeader className={`p-5 text-white ${isEmerald ? 'bg-gradient-to-r from-emerald-700 to-teal-500' : 'bg-gradient-to-r from-indigo-700 to-sky-500'}`}>
+          <DialogHeader className={`p-5 text-white ${'bg-gradient-to-r from-sky-700 via-blue-600 to-cyan-500'}`}>
             <DialogTitle>Pin exact location</DialogTitle>
             <DialogDescription className="text-white/80">Use current GPS or enter latitude and longitude. The map preview updates before saving.</DialogDescription>
           </DialogHeader>
@@ -4858,7 +4867,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
 
   return (
     <Card className="border-slate-200 shadow-sm overflow-hidden rounded-3xl bg-white">
-      <CardHeader className={`${accent === 'emerald' ? 'bg-emerald-50/70' : 'bg-indigo-50/70'} border-b`}>
+      <CardHeader className={`${'bg-sky-50/80'} border-b`}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
@@ -6543,19 +6552,19 @@ function EmployerApp({ auth, onLogout }) {
 
   return (
     <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
-      <header className="bg-white/95 backdrop-blur-xl border-b border-slate-100 shrink-0 z-10 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
+      <header className="bg-gradient-to-r from-[#04112f] via-[#071f55] to-[#0b3b91] backdrop-blur-xl border-b border-blue-400/20 shrink-0 z-10 shadow-[0_10px_34px_rgba(7,31,85,0.30)]">
         <div className="container py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <motion.div
-              className="w-11 h-11 rounded-xl bg-white grid place-items-center shadow-lg shadow-sky-500/20 ring-1 ring-sky-100 p-1"
+              className="w-11 h-11 rounded-xl bg-white grid place-items-center shadow-lg shadow-blue-950/30 ring-2 ring-sky-300/40 p-1"
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.5 }}
             >
               <Work2WishLogo className="w-full h-full" />
             </motion.div>
             <div className="leading-tight">
-              <p className="font-extrabold text-slate-900 tracking-tight">{me?.extra?.company_name || 'Work2Wish'}</p>
-              <p className="text-[10px] text-slate-500">Employer portal</p>
+              <p className="font-extrabold text-white tracking-tight">{me?.extra?.company_name || 'Work2Wish'}</p>
+              <p className="text-[10px] text-sky-100/80">Employer portal</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -6563,7 +6572,7 @@ function EmployerApp({ auth, onLogout }) {
             <GlobalLanguageSelect />
             <ThemeToggle />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setTab('profile')} title="Profile">
+              <Button type="button" variant="ghost" size="icon" className="rounded-xl text-sky-100 hover:bg-white/10 hover:text-white" onClick={() => setTab('profile')} title="Profile">
                 <UserCircle className="w-5 h-5" />
               </Button>
             </motion.div>
@@ -6579,7 +6588,7 @@ function EmployerApp({ auth, onLogout }) {
         {tab === 'profile'   && <EmployerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
       </main>
 
-      <nav className="shrink-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]">
+      <nav className="shrink-0 bg-gradient-to-r from-[#04112f] via-[#071f55] to-[#0b3b91] backdrop-blur-xl border-t border-blue-400/20 shadow-[0_-8px_30px_rgba(7,31,85,0.28)]">
         <div className="container grid grid-cols-4">
           {[
             { k: 'dashboard', i: ClipboardList, l: 'Jobs' },
@@ -6591,11 +6600,11 @@ function EmployerApp({ auth, onLogout }) {
             return (
               <button key={t.k}
                 onClick={() => { setTab(t.k); if (t.k !== 'chats') setChatPeer(null); }}
-                className={`py-2.5 flex flex-col items-center gap-1 text-xs font-medium transition-all duration-200 relative ${active ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                className={`py-2.5 flex flex-col items-center gap-1 text-xs font-medium transition-all duration-200 relative ${active ? 'text-white' : 'text-sky-200/70 hover:text-white'}`}>
                 {active && (
                   <motion.span
                     layoutId="employer-tab-indicator"
-                    className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-emerald-600"
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-sky-300"
                     initial={false}
                     transition={{ type: 'spring', stiffness: 500, damping: 35 }}
                   />
@@ -6603,7 +6612,7 @@ function EmployerApp({ auth, onLogout }) {
                 <motion.span
                   animate={{ scale: active ? 1.12 : 1, y: active ? -1 : 0 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-emerald-50' : ''}`}
+                  className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-white/12 ring-1 ring-sky-300/25' : ''}`}
                 >
                   <t.i className="w-5 h-5" />
                 </motion.span>
@@ -8626,7 +8635,7 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
                 <p className={`whitespace-pre-wrap break-words leading-relaxed ${deleted ? 'italic text-slate-500' : ''}`}>{m.content}</p>
                 <div className="flex items-center justify-end gap-2 mt-1.5">
                   {m.edited_at && !deleted && <span className="text-[10px] text-slate-400">edited</span>}
-                  <span className="text-[10px] text-slate-500">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="text-[10px] text-sky-100/80">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 {!String(m.id).startsWith('tmp-') && !deleted && (
                   <div className={`mt-2 hidden group-hover:flex gap-1 ${mine ? 'justify-end' : 'justify-start'}`}>
