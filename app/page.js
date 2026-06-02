@@ -31,6 +31,18 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 
 import { getSupabase } from '@/lib/supabase/client';
 
+
+function Work2WishLogo({ className = 'w-10 h-10', imgClassName = 'w-full h-full object-contain rounded-xl' }) {
+  return (
+    <img
+      src="/work2wish-logo.png"
+      alt="Work2Wish logo"
+      className={className + ' select-none'}
+      draggable={false}
+    />
+  );
+}
+
 // ----------------------------- helpers -----------------------------
 const SESSION_KEY = 'w2w-session';
 
@@ -1163,7 +1175,7 @@ function AdminDocPreview({ title, url }) {
 function Splash() {
   return (
     <motion.div key="splash" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.05 }}
-      className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-700 via-blue-600 to-emerald-500 p-6 overflow-hidden relative">
+      className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#061a4d] via-[#0b67bd] to-[#9ee8ff] p-6 overflow-hidden relative">
       <GradientMesh />
       <Particles count={28} color="bg-white/40" />
       <div className="text-center text-white relative" style={{ perspective: 1000 }}>
@@ -1174,13 +1186,7 @@ function Splash() {
           transition={{ type: 'spring', stiffness: 90, damping: 12 }}
           style={{ transformStyle: 'preserve-3d' }}
         >
-          <motion.div
-            animate={{ rotateY: [0, 360] }}
-            transition={{ duration: 8, repeat: Infinity, ease: 'linear', delay: 0.8 }}
-            style={{ transformStyle: 'preserve-3d' }}
-          >
-            <Hammer className="w-16 h-16 drop-shadow-lg" />
-          </motion.div>
+          <Work2WishLogo className="w-24 h-24 drop-shadow-2xl" />
         </motion.div>
         <motion.h1 className="text-7xl font-extrabold tracking-tight mt-8 drop-shadow-2xl"
           initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3, type: 'spring', stiffness: 80 }}>
@@ -1239,17 +1245,17 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
 
   return (
     <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-indigo-50 grid lg:grid-cols-2 relative">
+      className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-sky-50 grid lg:grid-cols-2 relative">
       {/* left: marketing with 3D depth */}
-      <div className="hidden lg:flex flex-col justify-center p-10 bg-gradient-to-br from-indigo-700 via-blue-600 to-emerald-500 text-white relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-center p-10 bg-gradient-to-br from-[#061a4d] via-[#0b67bd] to-[#9ee8ff] text-white relative overflow-hidden">
         <GradientMesh />
         <Particles count={22} color="bg-white/30" />
         <div className="relative z-10" style={{ perspective: 1200 }}>
           <motion.div className="flex items-center gap-3"
             initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
-            <motion.div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur grid place-items-center ring-1 ring-white/30"
-              animate={{ rotate: [0, 8, 0, -8, 0] }} transition={{ duration: 6, repeat: Infinity }}>
-              <Hammer className="w-6 h-6" />
+            <motion.div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur grid place-items-center ring-1 ring-white/30 p-1.5"
+              animate={{ rotate: [0, 3, 0, -3, 0] }} transition={{ duration: 6, repeat: Infinity }}>
+              <Work2WishLogo className="w-full h-full" />
             </motion.div>
             <span className="text-2xl font-extrabold">Work2Wish</span>
           </motion.div>
@@ -1288,7 +1294,7 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
       <div className="flex flex-col items-center justify-center p-6 sm:p-10 relative">
         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-emerald-500 grid place-items-center text-white"><Hammer className="w-5 h-5" /></div>
+            <div className="w-12 h-12 rounded-xl bg-white grid place-items-center shadow-sm ring-1 ring-sky-100 p-1"><Work2WishLogo className="w-full h-full" /></div>
             <span className="text-xl font-extrabold">Work2Wish</span>
           </div>
           <h2 className="text-3xl font-extrabold tracking-tight">Welcome back</h2>
@@ -1360,14 +1366,14 @@ function ForgotEmail({ onSent, onBack }) {
   };
   return (
     <motion.div key="forgot-email" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 flex flex-col relative overflow-hidden">
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 flex flex-col relative overflow-hidden">
       <GradientMesh />
       <Button variant="ghost" size="sm" onClick={onBack} className="self-start m-6 relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
       <div className="flex-1 flex items-center justify-center px-6 relative">
         <Tilt3D className="w-full max-w-md">
           <Card className="shadow-2xl border-0 ring-1 ring-black/5">
             <CardHeader className="text-center pb-2">
-              <motion.div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-500 grid place-items-center text-white mb-3"
+              <motion.div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-[#061a4d] to-[#0b8fe8] grid place-items-center text-white mb-3"
                 animate={{ rotate: [0, -8, 8, 0] }} transition={{ duration: 2, repeat: Infinity }}>
                 <Lock className="w-7 h-7" />
               </motion.div>
@@ -1423,14 +1429,14 @@ function ForgotReset({ email, onAuthed, onBack }) {
 
   return (
     <motion.div key="forgot-reset" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 flex flex-col relative overflow-hidden">
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 flex flex-col relative overflow-hidden">
       <GradientMesh />
       <Button variant="ghost" size="sm" onClick={onBack} className="self-start m-6 relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
       <div className="flex-1 flex items-center justify-center px-6 relative">
         <Tilt3D className="w-full max-w-md">
           <Card className="shadow-2xl border-0 ring-1 ring-black/5">
             <CardHeader className="text-center pb-2">
-              <motion.div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-indigo-600 to-emerald-500 grid place-items-center text-white mb-3"
+              <motion.div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-[#061a4d] to-[#21b7ff] grid place-items-center text-white mb-3"
                 animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 2, repeat: Infinity }}>
                 <ShieldAlert className="w-7 h-7" />
               </motion.div>
@@ -1473,7 +1479,7 @@ function ForgotReset({ email, onAuthed, onBack }) {
 function SignupRolePicker({ onPick, onBack }) {
   return (
     <motion.div key="signup-role" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 p-6 flex flex-col relative overflow-hidden">
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 p-6 flex flex-col relative overflow-hidden">
       <GradientMesh />
       <div className="relative z-10 flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={onBack} className="relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
@@ -1497,7 +1503,7 @@ function SignupRolePicker({ onPick, onBack }) {
               <Tilt3D max={20}>
                 <button onClick={() => onPick(r.role)}
                   className={`w-full text-left p-7 bg-white rounded-2xl border-2 hover:border-${r.color}-500 hover:shadow-2xl transition-shadow group block`}>
-                  <motion.div className={`w-16 h-16 rounded-2xl grid place-items-center text-white ${r.color === 'indigo' ? 'bg-gradient-to-br from-indigo-600 to-blue-500' : 'bg-gradient-to-br from-emerald-600 to-teal-500'} shadow-lg`}
+                  <motion.div className={`w-16 h-16 rounded-2xl grid place-items-center text-white ${r.color === 'indigo' ? 'bg-gradient-to-br from-[#061a4d] to-[#0b8fe8]' : 'bg-gradient-to-br from-[#061a4d] to-[#21b7ff]'} shadow-lg`}
                     whileHover={{ rotate: [0, -8, 8, 0] }} transition={{ duration: 0.6 }}>
                     <r.icon className="w-8 h-8" />
                   </motion.div>
@@ -1561,7 +1567,7 @@ function SignupForm({ data, onChange, onSent, onBack }) {
         <Card className="w-full max-w-md shadow-xl border-0 ring-1 ring-black/5">
           <CardHeader className="text-center pb-2">
             <div className={`w-14 h-14 mx-auto rounded-2xl grid place-items-center text-white mb-3 ${
-              data.role === 'employer' ? 'bg-gradient-to-br from-emerald-600 to-teal-500' : 'bg-gradient-to-br from-indigo-600 to-blue-500'
+              data.role === 'employer' ? 'bg-gradient-to-br from-[#061a4d] to-[#21b7ff]' : 'bg-gradient-to-br from-[#061a4d] to-[#0b8fe8]'
             }`}>
               {data.role === 'employer' ? <Briefcase className="w-7 h-7" /> : <HardHat className="w-7 h-7" />}
             </div>
@@ -1688,7 +1694,7 @@ function SignupOTP({ data, onAuthed, onBack }) {
         <Card className="w-full max-w-md shadow-xl border-0 ring-1 ring-black/5">
           <CardHeader className="text-center pb-2">
             <motion.div className={`w-14 h-14 mx-auto rounded-2xl grid place-items-center text-white mb-3 ${
-              accent === 'emerald' ? 'bg-gradient-to-br from-emerald-600 to-teal-500' : 'bg-gradient-to-br from-indigo-600 to-blue-500'
+              accent === 'emerald' ? 'bg-gradient-to-br from-[#061a4d] to-[#21b7ff]' : 'bg-gradient-to-br from-[#061a4d] to-[#0b8fe8]'
             }`}
               animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity }}>
               <Mail className="w-7 h-7" />
@@ -1732,7 +1738,7 @@ function OAuthRolePicker({ ctx, onPick }) {
     <motion.div key="oauth-role" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="min-h-screen bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col items-center justify-center">
       <div className="text-center max-w-md">
-        <motion.div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-indigo-600 to-emerald-500 grid place-items-center text-white"
+        <motion.div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#061a4d] to-[#21b7ff] grid place-items-center text-white"
           initial={{ rotate: -10, scale: 0.8 }} animate={{ rotate: 0, scale: 1 }}>
           <Sparkles className="w-8 h-8" />
         </motion.div>
@@ -1747,7 +1753,7 @@ function OAuthRolePicker({ ctx, onPick }) {
           <motion.button key={r.role} onClick={() => onPick(r.role)}
             whileHover={{ y: -4, scale: 1.02 }} whileTap={{ scale: 0.98 }}
             className={`text-left p-6 bg-white rounded-2xl border-2 hover:border-${r.color}-500 hover:shadow-xl transition`}>
-            <div className={`w-14 h-14 rounded-2xl grid place-items-center text-white ${r.color === 'indigo' ? 'bg-gradient-to-br from-indigo-600 to-blue-500' : 'bg-gradient-to-br from-emerald-600 to-teal-500'}`}>
+            <div className={`w-14 h-14 rounded-2xl grid place-items-center text-white ${r.color === 'indigo' ? 'bg-gradient-to-br from-[#061a4d] to-[#0b8fe8]' : 'bg-gradient-to-br from-[#061a4d] to-[#21b7ff]'}`}>
               <r.icon className="w-7 h-7" />
             </div>
             <p className="font-bold text-xl mt-4">{r.title}</p>
@@ -2594,7 +2600,7 @@ className="
 w-12
 h-12
 rounded-2xl
-bg-gradient-to-br from-indigo-600 to-emerald-500
+bg-gradient-to-br from-[#061a4d] to-[#21b7ff]
 text-white
 flex
 items-center
@@ -2997,11 +3003,11 @@ function WorkerApp({ auth, onLogout }) {
         <div className="container py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <motion.div
-              className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 grid place-items-center text-white shadow-lg shadow-indigo-500/25"
-              whileHover={{ rotate: [0, -8, 8, 0], scale: 1.05 }}
+              className="w-11 h-11 rounded-xl bg-white grid place-items-center shadow-lg shadow-sky-500/20 ring-1 ring-sky-100 p-1"
+              whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.5 }}
             >
-              <Hammer className="w-4 h-4" />
+              <Work2WishLogo className="w-full h-full" />
             </motion.div>
             <div className="leading-tight">
               <p className="font-extrabold text-slate-900 tracking-tight">{me?.profile?.full_name || 'Worker'}</p>
@@ -4629,21 +4635,28 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
   const [savingLocation, setSavingLocation] = useState(false);
   const [savedKey, setSavedKey] = useState(locationKey);
   const [editingLocation, setEditingLocation] = useState(!hasSaved);
+  const [locationEditUnlocked, setLocationEditUnlocked] = useState(false);
+  const lastLoadedLocationKeyRef = useRef(locationKey);
 
   useEffect(() => {
-    // Keep a saved location closed after reload/refresh.
-    // Open it only when the user clicks Change, or when there is no saved location yet.
+    // Saved locations must stay locked/closed after reload.
+    // Only the Change button can unlock the editor again.
     if (!hasSaved) {
       setEditingLocation(true);
+      setLocationEditUnlocked(false);
+      lastLoadedLocationKeyRef.current = '';
       return;
     }
-    if (!editingLocation) {
-      if (locationKey !== savedKey) setSavedKey(locationKey);
+
+    // When the saved location arrives from DB after refresh/login, keep it closed.
+    // Do not treat the initial DB hydration as a user edit.
+    if (!lastLoadedLocationKeyRef.current || !locationEditUnlocked) {
+      lastLoadedLocationKeyRef.current = locationKey;
+      setSavedKey(locationKey);
       setEditingLocation(false);
-      return;
+      setLocationEditUnlocked(false);
     }
-    if (locationKey === savedKey) setEditingLocation(false);
-  }, [hasSaved, locationKey, savedKey, editingLocation]);
+  }, [hasSaved, locationKey, locationEditUnlocked]);
 
   const isEmerald = color === 'emerald';
   const wrapClass = isEmerald
@@ -4667,6 +4680,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
     if (!onSave) {
       setSavedKey(locationKey);
       setEditingLocation(false);
+      setLocationEditUnlocked(false);
       toast.success('Location ready. Press Save profile to store it.');
       return;
     }
@@ -4681,6 +4695,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
       });
       setSavedKey(locationKey);
       setEditingLocation(false);
+      setLocationEditUnlocked(false);
       toast.success('Location saved');
     } catch (e) {
       toast.error(e.message || 'Location save failed');
@@ -4707,7 +4722,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
               <Button type="button" variant="outline" disabled className={savedButtonClass}>
                 <CheckCircle2 className="w-4 h-4 mr-2" /> Saved
               </Button>
-              <Button type="button" variant="outline" className={changeButtonClass} onClick={() => setEditingLocation(true)}>
+              <Button type="button" variant="outline" className={changeButtonClass} onClick={() => { setLocationEditUnlocked(true); setEditingLocation(true); }}>
                 Change
               </Button>
             </>
@@ -6532,11 +6547,11 @@ function EmployerApp({ auth, onLogout }) {
         <div className="container py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <motion.div
-              className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-500 grid place-items-center text-white shadow-lg shadow-emerald-500/25"
-              whileHover={{ rotate: [0, -8, 8, 0], scale: 1.05 }}
+              className="w-11 h-11 rounded-xl bg-white grid place-items-center shadow-lg shadow-sky-500/20 ring-1 ring-sky-100 p-1"
+              whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.5 }}
             >
-              <Briefcase className="w-4 h-4" />
+              <Work2WishLogo className="w-full h-full" />
             </motion.div>
             <div className="leading-tight">
               <p className="font-extrabold text-slate-900 tracking-tight">{me?.extra?.company_name || 'Work2Wish'}</p>
