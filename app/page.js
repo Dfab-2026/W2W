@@ -854,7 +854,8 @@ function AdminApp({ auth, onLogout }) {
               </div>
 
               {(() => {
-                const canFinalVerify = ['profile', 'bank', 'verification'].every(isSectionVerified);
+                const requiredAdminSections = selected.role === 'employer' ? ['profile', 'verification'] : ['profile', 'bank', 'verification'];
+                const canFinalVerify = requiredAdminSections.every(isSectionVerified);
                 const verificationTitle = selected.role === 'worker' ? 'Worker Verification' : 'Employer Verification';
                 return (
                   <div className="grid lg:grid-cols-3 gap-4">
@@ -877,22 +878,24 @@ function AdminApp({ auth, onLogout }) {
                       {selected.role === 'employer' && <InfoTile label="HR contact" value={selected.hr_contact || selected.official_email} />}
                     </AdminVerificationSection>
 
-                    <AdminVerificationSection
-                      title="Bank Details"
-                      tone="emerald"
-                      icon={<Banknote className="w-4 h-4" />}
-                      verified={isSectionVerified('bank')}
-                      onVerify={() => verifySection('bank')}
-                      disabled={busy || selected.role === 'admin'}
-                    >
-                      <InfoTile label="Account holder" value={selected.account_holder_name || selected.full_name || selected.company_name} />
-                      <InfoTile label="Bank name" value={selected.bank_name} />
-                      <InfoTile label="Bank account" value={selected.bank_account || selected.bank_account_number} />
-                      <InfoTile label="IFSC" value={selected.ifsc_code} />
-                      <InfoTile label="Branch name" value={selected.branch_name} />
-                      <InfoTile label="UPI" value={selected.upi_id} />
-                      <AdminDocPreview title="UPI QR" url={selected.bank_qr_url} />
-                    </AdminVerificationSection>
+                    {selected.role === 'worker' && (
+                      <AdminVerificationSection
+                        title="Bank Details"
+                        tone="emerald"
+                        icon={<Banknote className="w-4 h-4" />}
+                        verified={isSectionVerified('bank')}
+                        onVerify={() => verifySection('bank')}
+                        disabled={busy || selected.role === 'admin'}
+                      >
+                        <InfoTile label="Account holder" value={selected.account_holder_name || selected.full_name || selected.company_name} />
+                        <InfoTile label="Bank name" value={selected.bank_name} />
+                        <InfoTile label="Bank account" value={selected.bank_account || selected.bank_account_number} />
+                        <InfoTile label="IFSC" value={selected.ifsc_code} />
+                        <InfoTile label="Branch name" value={selected.branch_name} />
+                        <InfoTile label="UPI" value={selected.upi_id} />
+                        <AdminDocPreview title="UPI QR" url={selected.bank_qr_url} />
+                      </AdminVerificationSection>
+                    )}
 
                     <AdminVerificationSection
                       title={verificationTitle}
@@ -911,7 +914,7 @@ function AdminApp({ auth, onLogout }) {
                         <AdminDocPreview title={selected.role === 'employer' ? 'Company PAN front' : 'PAN front'} url={selected.pan_image_url} />
                         <AdminDocPreview title={selected.role === 'employer' ? 'Company PAN back' : 'PAN back'} url={selected.pan_back_url} />
                         {selected.role === 'employer' && <AdminDocPreview title="GST certificate" url={selected.gst_certificate_url} />}
-                        {selected.role === 'worker' && <AdminDocPreview title="Selfie" url={selected.selfie_url} />}
+                        <AdminDocPreview title={selected.role === 'employer' ? 'Employer selfie' : 'Selfie'} url={selected.selfie_url || selected.selfie_front_url} />
                         {selected.role === 'worker' && <AdminDocPreview title="Skill certificate" url={selected.certificate_url} />}
                       </div>
                       {selected.role === 'worker' && (
@@ -948,7 +951,7 @@ function AdminApp({ auth, onLogout }) {
               </div>
 
               <div className="flex flex-wrap gap-2 rounded-2xl border bg-white p-4">
-                <Button disabled={busy || selected.role === 'admin' || !['profile', 'bank', 'verification'].every(isSectionVerified)} onClick={() => verifyUser(selected.id, true)} className="bg-emerald-600 hover:bg-emerald-700"><ShieldCheck className="w-4 h-4 mr-2" /> Final verify account</Button>
+                <Button disabled={busy || selected.role === 'admin' || !(selected.role === 'employer' ? ['profile', 'verification'] : ['profile', 'bank', 'verification']).every(isSectionVerified)} onClick={() => verifyUser(selected.id, true)} className="bg-emerald-600 hover:bg-emerald-700"><ShieldCheck className="w-4 h-4 mr-2" /> Final verify account</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => verifyUser(selected.id, false)}><XCircle className="w-4 h-4 mr-2" /> Reject verification</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => blockUser(selected.id, !selected.blocked)}>{selected.blocked ? 'Unblock user' : 'Block user'}</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="destructive" onClick={() => deleteUser(selected.id, selected.email)}>Delete user</Button>
@@ -4583,12 +4586,19 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
   const [editingLocation, setEditingLocation] = useState(!hasSaved);
 
   useEffect(() => {
+    // Keep a saved location closed after reload/refresh.
+    // It should open only when the user clicks Change or when there is no saved GPS.
+    if (hasSaved && locationKey === savedKey) {
+      setEditingLocation(false);
+      return;
+    }
     if (hasSaved && !savedKey) {
       setSavedKey(locationKey);
       setEditingLocation(false);
+      return;
     }
     if (!hasSaved) setEditingLocation(true);
-  }, [hasSaved]);
+  }, [hasSaved, locationKey, savedKey]);
 
   const isEmerald = color === 'emerald';
   const wrapClass = isEmerald
@@ -5426,7 +5436,16 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     }
     setBusy(true);
     try {
-      await api('me/profile', { method: 'PATCH', token, body: { verification_status: 'verified' } });
+      const body = {
+        ...buildWorkerProfilePayload(),
+        ...buildWorkerDocumentPayload(),
+        ...buildWorkerBankPayload(),
+        mobile_verified: !!(form.mobile_verified || me?.extra?.mobile_verified),
+        selfie_verified: !!(form.selfie_verified || me?.extra?.selfie_verified),
+        verification_status: 'verified',
+      };
+      await api('me/profile', { method: 'PATCH', token, body });
+      setForm((prev) => ({ ...prev, ...body }));
       localStorage.setItem(finalProfileSaveKey(me, 'worker'), 'saved');
       setFinalSaved(true);
       toast.success('Profile saved');
@@ -5449,6 +5468,8 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setForm((s) => ({ ...s, ...body }));
+    localStorage.removeItem(finalProfileSaveKey(me, 'worker'));
+    setFinalSaved(false);
     await onSaved();
   };
 
@@ -7743,6 +7764,13 @@ bank_qr_url:me.extra?.bank_qr_url || '',
 pan_image_url:me.extra?.pan_image_url || '',
 pan_back_url:me.extra?.pan_back_url || '',
 gst_certificate_url:me.extra?.gst_certificate_url || '',
+mobile_verified: !!me.extra?.mobile_verified,
+selfie_url: me.extra?.selfie_url || '',
+selfie_front_url: me.extra?.selfie_front_url || '',
+selfie_left_url: me.extra?.selfie_left_url || '',
+selfie_right_url: me.extra?.selfie_right_url || '',
+selfie_verified: !!me.extra?.selfie_verified,
+selfie_verified_at: me.extra?.selfie_verified_at || '',
 verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
 language:me.profile?.language || 'en'
 
@@ -7769,7 +7797,14 @@ JSON.stringify(savedData);
 
 setHasChanges(changed);
 
-},[f,savedData]);
+// Employer final Save must behave like employee profile: when profile data changes,
+// the disabled Saved state should clear so the button can become Save again after re-verification.
+if (changed && finalSaved) {
+  localStorage.removeItem(finalProfileSaveKey(me, 'employer'));
+  setFinalSaved(false);
+}
+
+},[f,savedData,finalSaved,me]);
 
   const loadAttendanceRows = async () => {
     if (!token) return;
@@ -7862,32 +7897,48 @@ setHasChanges(changed);
   const employerProfileChangedAfterReview = (employerProfileReviewStatus === 'pending' || employerProfileReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_PROFILE_VERIFY_FIELDS, buildEmployerProfilePayload(), me?.profile || {}, me?.extra || {});
   const employerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
   const employerDocumentChangedAfterReview = (employerDocumentReviewStatus === 'pending' || employerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_DOCUMENT_VERIFY_FIELDS, buildEmployerDocumentPayload(), me?.profile || {}, me?.extra || {});
-  const employerAllProfileCardsVerified = isFinalCardVerified(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified, employerProfileChangedAfterReview)
-    && isFinalCardVerified(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified, employerDocumentChangedAfterReview);
+
+  // Employer final save follows the working employee profile pattern, without removed employer bank/mobile checks.
+  // Required cards: Company/Profile approval + Documents approval + Selfie verified.
+  const employerSelfieCardVerified = !!(f.selfie_verified || me?.extra?.selfie_verified || me?.extra?.selfie_status === 'verified');
+  const employerProfileCardVerified = isFinalCardVerified(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified, employerProfileChangedAfterReview);
+  const employerDocumentCardVerified = isFinalCardVerified(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified, employerDocumentChangedAfterReview);
+  const employerAllProfileCardsVerified = employerProfileCardVerified && employerDocumentCardVerified && employerSelfieCardVerified;
   const employerAnyProfileCardPending = [employerProfileReviewStatus, employerDocumentReviewStatus].some((s) => s === 'pending') || employerProfileChangedAfterReview || employerDocumentChangedAfterReview;
   const employerTopStatus = finalSaved && employerAllProfileCardsVerified ? 'verified' : employerAnyProfileCardPending ? 'pending' : 'unverified';
 
   useEffect(() => {
-    if (!employerAllProfileCardsVerified && finalSaved) {
-      localStorage.removeItem(finalProfileSaveKey(me, 'employer'));
-      setFinalSaved(false);
-    }
+    // Employer Save button should stay Saved after a successful click,
+    // and should only return to Save when profile inputs actually change.
   }, [employerAllProfileCardsVerified, finalSaved, me]);
 
   const save = async () => {
-    if (!employerAllProfileCardsVerified) {
-      toast.error('Verify Company Profile and Documents before final save');
-      return;
-    }
     setBusy(true);
     try {
-      await api('me/profile', { method: 'PATCH', token, body: { verification_status: 'verified' } });
+      const body = {
+        ...buildEmployerProfilePayload(),
+        ...buildEmployerDocumentPayload(),
+        selfie_url: f.selfie_url || f.selfie_front_url || me?.extra?.selfie_url || me?.extra?.selfie_front_url || '',
+        selfie_front_url: f.selfie_front_url || f.selfie_url || me?.extra?.selfie_front_url || me?.extra?.selfie_url || '',
+        selfie_verified: !!(f.selfie_verified || me?.extra?.selfie_verified),
+        selfie_verified_at: f.selfie_verified_at || me?.extra?.selfie_verified_at || null,
+        mobile_verified: !!(f.mobile_verified || me?.extra?.mobile_verified),
+        verification_status: employerAllProfileCardsVerified ? 'verified' : (f.verification_status || me?.extra?.verification_status || 'saved'),
+      };
+
+      await api('me/profile', { method: 'PATCH', token, body });
       localStorage.setItem(finalProfileSaveKey(me, 'employer'), 'saved');
+      setF((prev) => ({ ...prev, ...body }));
+      setSavedData((prev) => ({ ...prev, ...body }));
+      setHasChanges(false);
       setFinalSaved(true);
-      toast.success('Saved');
+      toast.success('Profile saved');
       await onSaved?.();
+    } catch (e) {
+      toast.error(e.message || 'Unable to save employer profile');
+    } finally {
+      setBusy(false);
     }
-    catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
   const saveCompanyLocation = async (loc) => {
@@ -7905,6 +7956,9 @@ setHasChanges(changed);
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setF((s) => ({ ...s, ...body }));
+    setSavedData((s) => ({ ...s, ...body }));
+    localStorage.removeItem(finalProfileSaveKey(me, 'employer'));
+    setFinalSaved(false);
     await onSaved();
   };
 
@@ -8061,7 +8115,7 @@ setHasChanges(changed);
               </CardHeader>
               <CardContent className="p-4 grid lg:grid-cols-2 gap-4 items-stretch">
                 <MobileOtpVerificationBox token={token} phone={f.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setF(s => ({ ...s, phone: phone || s.phone, mobile_verified: true })); onSaved?.(); }} />
-                <SelfieVerificationBox token={token} url={f.selfie_url} frontUrl={f.selfie_front_url} leftUrl={f.selfie_left_url} rightUrl={f.selfie_right_url} verified={!!(me.extra?.selfie_verified || f.selfie_verified)} disabled={busy} onUploaded={(payload) => { setF(s => ({ ...s, ...(typeof payload === 'string' ? { selfie_url: payload, selfie_verified: true } : payload), selfie_verified: true, verification_status: 'verified' })); onSaved?.(); }} />
+                <SelfieVerificationBox token={token} url={f.selfie_url || me.extra?.selfie_url} frontUrl={f.selfie_front_url || me.extra?.selfie_front_url} leftUrl={f.selfie_left_url || me.extra?.selfie_left_url} rightUrl={f.selfie_right_url || me.extra?.selfie_right_url} verified={!!(f.selfie_verified || me.extra?.selfie_verified)} disabled={busy} onUploaded={(payload) => { setF(s => ({ ...s, ...(typeof payload === 'string' ? { selfie_url: payload, selfie_verified: true } : { selfie_url: payload.selfie_url || payload.selfie_front_url || payload.url || '', selfie_verified: true }), selfie_verified: true, verification_status: 'verified' })); setFinalSaved(false); onSaved?.(); }} />
               </CardContent>
             </Card>
           </div>
@@ -8095,7 +8149,7 @@ setHasChanges(changed);
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           onClick={save}
-          disabled={busy || !employerAllProfileCardsVerified || finalSaved}
+          disabled={busy || finalSaved}
           className="h-12 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed disabled:bg-emerald-600 disabled:text-white"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}

@@ -958,6 +958,7 @@ async function route(request, { params }) {
                     'latitude', 'longitude', 'place_id', 'place_name', 'description', 'company_address', 'gst_number',
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'gst_certificate_url',
                     'account_holder_name', 'bank_name', 'bank_account', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url',
+                    'mobile_verified', 'selfie_url', 'selfie_verified', 'selfie_verified_at',
                     'verification_status', 'verification_notes'];
         const eu = {}; for (const k of ef) if (k in body) eu[k] = body[k];
 
@@ -977,7 +978,7 @@ async function route(request, { params }) {
             result = await admin.from('employers').insert({ user_id: me.id, ...eu }).select().maybeSingle();
           }
           if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['company_name','company_logo','industry','company_size','hr_contact','official_email','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safeKeys = ['company_name','company_logo','industry','company_size','hr_contact','official_email','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_url','selfie_verified','selfie_verified_at','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
             const safe = {}; for (const k of safeKeys) if (k in eu) safe[k] = eu[k];
             result = existingEmployer
               ? await admin.from('employers').update(safe).eq('user_id', me.id).select().maybeSingle()
