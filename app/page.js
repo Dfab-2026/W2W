@@ -53,22 +53,67 @@ function clearSession() {
   } catch {}
 }
 
+function getSavedAccessToken() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = loadSession();
+    return saved?.session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getFreshAccessToken(preferredToken) {
+  if (preferredToken) return preferredToken;
+  if (typeof window === 'undefined') return null;
+  const saved = loadSession();
+  try {
+    const supa = getSupabase();
+    if (saved?.session?.access_token && saved?.session?.refresh_token) {
+      await supa.auth.setSession({
+        access_token: saved.session.access_token,
+        refresh_token: saved.session.refresh_token,
+      });
+    }
+    const { data: refreshed } = await supa.auth.refreshSession();
+    const session = refreshed?.session;
+    if (session?.access_token) {
+      saveSession(session, saved?.role, saved?.profile);
+      return session.access_token;
+    }
+  } catch {}
+  return saved?.session?.access_token || null;
+}
+
 async function api(path, { method = 'GET', body, token } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`/api/${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const makeRequest = async (accessToken) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    return fetch(`/api/${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  };
+
+  let accessToken = token || getSavedAccessToken();
+  let res = await makeRequest(accessToken);
+
+  // On Vercel, a saved session can become stale. Refresh once and retry without
+  // logging the user out or blocking actions such as posting a job/profile save.
+  if (res.status === 401) {
+    const refreshedToken = await getFreshAccessToken(null);
+    if (refreshedToken && refreshedToken !== accessToken) {
+      accessToken = refreshedToken;
+      res = await makeRequest(accessToken);
+    }
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = data.error || `Request failed (${res.status})`;
-    // Do not auto-logout users on temporary 401/JWT/API issues.
-    // Keep the saved local session and show the actual error so the app does not
-    // unnecessarily force users back to login while they are working.
     if (res.status === 401 || /unauthorized|jwt|token|session/i.test(message)) {
-      throw new Error('Authentication check failed. Please try again.');
+      throw new Error('Please login again or refresh the page, then try once more.');
     }
     throw new Error(message);
   }
@@ -323,8 +368,15 @@ export default function App() {
     const boot = async () => {
       const s = loadSession();
       if (s?.session?.access_token) {
-        // Validate saved session against the server
+        // Validate saved session against the server. Also restore the Supabase
+        // client session so authenticated actions continue working after deploy/refresh.
         try {
+          if (s.session?.refresh_token) {
+            await getSupabase().auth.setSession({
+              access_token: s.session.access_token,
+              refresh_token: s.session.refresh_token,
+            });
+          }
           const me = await api('me', { token: s.session.access_token });
           if (me?.profile?.id) {
             const validated = {
@@ -404,6 +456,14 @@ export default function App() {
   const handleAuthed = (data) => {
     const payload = { session: data.session, role: data.role, profile: data.profile || data.user };
     saveSession(payload.session, payload.role, payload.profile);
+    try {
+      if (payload.session?.access_token && payload.session?.refresh_token) {
+        getSupabase().auth.setSession({
+          access_token: payload.session.access_token,
+          refresh_token: payload.session.refresh_token,
+        });
+      }
+    } catch {}
     setAuth(payload);
     setScreen(data.role === 'admin' ? 'admin-app' : data.role === 'employer' ? 'employer-app' : 'worker-app');
     toast.success('Welcome to Work2Wish!');
@@ -606,9 +666,8 @@ function AdminApp({ auth, onLogout }) {
   };
 
   const verifyUser = async (id, verified = true) => {
-    const requiredSectionsDone = ['profile', 'bank', 'verification'].every(isSectionVerified);
-    if (verified && selected?.role !== 'admin' && !requiredSectionsDone) {
-      toast.error('Verify Profile, Bank Details and Verification section first');
+    if (verified && adminUserRole !== 'admin' && !adminRequiredSectionsDone) {
+      toast.error(adminUserRole === 'worker' ? 'Verify Profile, Bank Details and Verification section first' : 'Verify Profile and Employer Verification section first');
       return;
     }
     setBusy(true);
@@ -646,7 +705,8 @@ function AdminApp({ auth, onLogout }) {
   const getAdminSectionState = (section) => {
     const wanted = normalizeVerificationSection(section);
     const sectionStatuses = selected?.section_statuses || selected?.extra?.section_statuses || {};
-    const directStatus = sectionStatuses?.[wanted];
+    const aliasWanted = wanted === 'documents' ? 'verification' : wanted === 'verification' ? 'documents' : wanted;
+    const directStatus = sectionStatuses?.[wanted] || sectionStatuses?.[aliasWanted];
     if (directStatus === 'pending' || directStatus === 'submitted' || directStatus === 'modified') return 'pending';
     if (directStatus === 'rejected') return 'rejected';
     if (directStatus === 'verified') return 'verified';
@@ -670,6 +730,9 @@ function AdminApp({ auth, onLogout }) {
     return 'not_submitted';
   };
   const isSectionVerified = (section) => getAdminSectionState(section) === 'verified';
+  const adminUserRole = (selected?.role || '').toLowerCase();
+  const adminRequiredSections = adminUserRole === 'worker' ? ['profile', 'bank', 'verification'] : ['profile', 'verification'];
+  const adminRequiredSectionsDone = adminRequiredSections.every(isSectionVerified);
 
   const verifySection = async (section) => {
     if (!selected?.id) return;
@@ -854,8 +917,7 @@ function AdminApp({ auth, onLogout }) {
               </div>
 
               {(() => {
-                const requiredAdminSections = selected.role === 'employer' ? ['profile', 'verification'] : ['profile', 'bank', 'verification'];
-                const canFinalVerify = requiredAdminSections.every(isSectionVerified);
+                const canFinalVerify = adminRequiredSectionsDone;
                 const verificationTitle = selected.role === 'worker' ? 'Worker Verification' : 'Employer Verification';
                 return (
                   <div className="grid lg:grid-cols-3 gap-4">
@@ -878,7 +940,7 @@ function AdminApp({ auth, onLogout }) {
                       {selected.role === 'employer' && <InfoTile label="HR contact" value={selected.hr_contact || selected.official_email} />}
                     </AdminVerificationSection>
 
-                    {selected.role === 'worker' && (
+                    {adminUserRole === 'worker' && (
                       <AdminVerificationSection
                         title="Bank Details"
                         tone="emerald"
@@ -917,7 +979,7 @@ function AdminApp({ auth, onLogout }) {
                         <AdminDocPreview title={selected.role === 'employer' ? 'Employer selfie' : 'Selfie'} url={selected.selfie_url || selected.selfie_front_url} />
                         {selected.role === 'worker' && <AdminDocPreview title="Skill certificate" url={selected.certificate_url} />}
                       </div>
-                      {selected.role === 'worker' && (
+                      {adminUserRole === 'worker' && (
                         <div className="grid gap-3">
                           <AdminCheck label="Verified Worker" checked={!!selected.badge_verified_worker} onChange={(v) => setSelected(s => ({ ...s, badge_verified_worker: v }))} />
                           <AdminCheck label="Skilled Worker" checked={!!selected.badge_skilled_worker} onChange={(v) => setSelected(s => ({ ...s, badge_skilled_worker: v }))} />
@@ -951,7 +1013,7 @@ function AdminApp({ auth, onLogout }) {
               </div>
 
               <div className="flex flex-wrap gap-2 rounded-2xl border bg-white p-4">
-                <Button disabled={busy || selected.role === 'admin' || !(selected.role === 'employer' ? ['profile', 'verification'] : ['profile', 'bank', 'verification']).every(isSectionVerified)} onClick={() => verifyUser(selected.id, true)} className="bg-emerald-600 hover:bg-emerald-700"><ShieldCheck className="w-4 h-4 mr-2" /> Final verify account</Button>
+                <Button disabled={busy || adminUserRole === 'admin' || !adminRequiredSectionsDone} onClick={() => verifyUser(selected.id, true)} className="bg-emerald-600 hover:bg-emerald-700"><ShieldCheck className="w-4 h-4 mr-2" /> Final verify account</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => verifyUser(selected.id, false)}><XCircle className="w-4 h-4 mr-2" /> Reject verification</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => blockUser(selected.id, !selected.blocked)}>{selected.blocked ? 'Unblock user' : 'Block user'}</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="destructive" onClick={() => deleteUser(selected.id, selected.email)}>Delete user</Button>
@@ -971,7 +1033,7 @@ function AdminApp({ auth, onLogout }) {
                 />
               )}
 
-              {selected.role === 'worker' && (
+              {adminUserRole === 'worker' && (
                 <AdminCompactList
                   title="Applications"
                   icon={<ClipboardList className="w-4 h-4" />}
@@ -1842,37 +1904,7 @@ justify-center
 
 <>
 
-{/* Overlay */}
-
-<motion.div
-
-initial={{
-opacity:0
-}}
-
-animate={{
-opacity:1
-}}
-
-exit={{
-opacity:0
-}}
-
-onClick={()=>{
-setOpen(false);
-setSelected(null);
-}}
-
-className="
-fixed
-inset-0
-bg-black/40
-z-[9998]
-"
-
-/>
-
-
+{/* No page overlay: notification panel stays separate and will not dim/cover other cards */}
 
 {/* Right Panel */}
 
@@ -1897,16 +1929,19 @@ damping:25
 
 className="
 fixed
-top-0
-right-0
-w-[min(380px,94vw)]
-h-screen
+top-[64px]
+right-3
+w-[min(360px,92vw)]
+h-[calc(100vh-76px)]
+rounded-3xl
+border border-slate-200/80
 bg-gradient-to-b from-white via-slate-50 to-indigo-50
 dark:bg-slate-900
 shadow-2xl
-z-[9999]
+z-[60]
 flex
 flex-col
+overflow-hidden
 "
 
 >
@@ -2928,21 +2963,31 @@ function WorkerApp({ auth, onLogout }) {
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
   const handleNotificationNavigate = (notif) => {
-    const { type } = notif;
-    
-    if (!type) return;
-    
-    // Route to appropriate tab/screen based on notification type
-    const route = notif.target_route || notif.target_page || '';
-    if (route.includes('profile') || type === 'account_verified' || type === 'account_rejected' || type === 'verification_submit') {
-      setTab('profile');
-    } else if (route.includes('chat') || type === 'message') {
+    const type = (notif?.type || '').toLowerCase();
+    const title = (notif?.title || '').toLowerCase();
+    const route = (notif?.target_route || notif?.target_page || notif?.route || '').toLowerCase();
+    const message = (notif?.body || notif?.message || '').toLowerCase();
+    const text = `${type} ${title} ${route} ${message}`;
+
+    if (text.includes('chat') || type === 'message') {
       setChatPeer(null);
       setTab('chats');
-    } else if (type === 'application_accepted' || type === 'application_completed' || type === 'application_submitted' || type === 'application_ongoing' || type === 'attendance_marked' || route.includes('ongoing') || route.includes('job')) {
-      setTab('myjobs');
+      return;
     }
-    // For other types, just mark as read (already done in NotificationCenter)
+
+    if (text.includes('verification') || text.includes('verified') || text.includes('profile') || text.includes('document') || text.includes('selfie')) {
+      setTab('profile');
+      return;
+    }
+
+    if (text.includes('application') || text.includes('accepted') || text.includes('ongoing') || text.includes('attendance') || text.includes('completed') || text.includes('payment') || text.includes('job moved')) {
+      setTab('myjobs');
+      return;
+    }
+
+    if (text.includes('job')) {
+      setTab('home');
+    }
   };
 
   return (
@@ -3924,8 +3969,8 @@ function WorkerHome({ token, me, onChat }) {
   const visibleJobs = hasCheckedNearby ? nearbyJobs : jobs;
 
   return (
-    <div className="space-y-4">
-      <Card className="sticky top-0 z-20 rounded-3xl premium-card premium-search-card border-indigo-100 bg-gradient-to-r from-white via-indigo-50/60 to-sky-50/70 shadow-xl shadow-indigo-100/60">
+    <div className="space-y-4 pt-6 relative z-0">
+      <Card className="sticky top-6 z-10 rounded-3xl premium-card premium-search-card border-indigo-100 bg-gradient-to-r from-white via-indigo-50/60 to-sky-50/70 shadow-xl shadow-indigo-100/60">
         <CardContent className="p-3 md:p-4">
           <div className="flex flex-col lg:flex-row gap-2 lg:items-center">
             <div className="relative flex-1 min-w-[240px]">
@@ -4245,7 +4290,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
             body: { latitude, longitude, date: new Date().toISOString().slice(0, 10) }
           });
           const distance = getDistanceMeters(latitude, longitude, jobLat, jobLng);
-          toast.success(`Attendance marked present. Distance: ${Math.round(distance)}m`);
+          toast.success(`Attendance completed. Distance: ${Math.round(distance)}m`);
           await load();
           setActiveTab('Ongoing');
         } catch (e) {
@@ -4402,7 +4447,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                     <div className="grid grid-cols-6 gap-1.5">
                       {getWorkDates(a.jobs).map((date, idx) => {
                         const status = getAttendanceStatus(a, date);
-                        const isPresent = status === 'present';
+                        const isPresent = status === 'present' || status === 'completed';
                         const isAbsent = status === 'absent';
                         const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
                         return (
@@ -4411,7 +4456,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                             isAbsent ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' :
                             'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                           }`}>
-                            {isPresent ? '✅' : isAbsent ? '❌' : ''}
+                            {isPresent ? <Check className="w-4 h-4 mx-auto mb-0.5" /> : isAbsent ? '❌' : ''}
                             <p>{dateStr}</p>
                           </div>
                         );
@@ -4427,7 +4472,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                       {gpsAttendanceId === a.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MapPin className="w-4 h-4 mr-2" />}
                       Mark Today Attendance with GPS
                     </Button>
-                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 text-center">Works only when your current GPS is within 20m of saved company/job GPS.</p>
+                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 text-center">Works only when your current GPS is inside the employer selected radius.</p>
                   </div>
                   
                   {/* Job Details */}
@@ -4579,7 +4624,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
 }
 
 function SavedLocationEditor({ label, value, latitude, longitude, color = 'indigo', placeholder, helper, onChange, onSave }) {
-  const hasSaved = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && !!value;
+  const hasSaved = !!String(value || '').trim();
   const locationKey = `${value || ''}|${latitude || ''}|${longitude || ''}`;
   const [savingLocation, setSavingLocation] = useState(false);
   const [savedKey, setSavedKey] = useState(locationKey);
@@ -4587,18 +4632,18 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
 
   useEffect(() => {
     // Keep a saved location closed after reload/refresh.
-    // It should open only when the user clicks Change or when there is no saved GPS.
-    if (hasSaved && locationKey === savedKey) {
+    // Open it only when the user clicks Change, or when there is no saved location yet.
+    if (!hasSaved) {
+      setEditingLocation(true);
+      return;
+    }
+    if (!editingLocation) {
+      if (locationKey !== savedKey) setSavedKey(locationKey);
       setEditingLocation(false);
       return;
     }
-    if (hasSaved && !savedKey) {
-      setSavedKey(locationKey);
-      setEditingLocation(false);
-      return;
-    }
-    if (!hasSaved) setEditingLocation(true);
-  }, [hasSaved, locationKey, savedKey]);
+    if (locationKey === savedKey) setEditingLocation(false);
+  }, [hasSaved, locationKey, savedKey, editingLocation]);
 
   const isEmerald = color === 'emerald';
   const wrapClass = isEmerald
@@ -4728,7 +4773,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
     try {
       const { url } = await uploadFile(file, kind, token);
       setForm((s) => ({ ...s, [field]: url }));
-      toast.success(field === 'certificate_url' ? 'Skill certificate selected. Click Verify Edited Details to send it for admin review.' : 'Document selected. Click Verify Edited Details to send it for admin review.');
+      toast.success(field === 'certificate_url' ? 'Skill certificate selected. Click Send for Verification to send it for admin review.' : 'Document selected. Click Send for Verification to send it for admin review.');
     } catch (e) {
       toast.error(e.message || 'Upload failed');
     } finally {
@@ -4969,11 +5014,11 @@ status==="submitted"
 
 ?
 
-'bg-amber-500 text-white hover:bg-amber-600'
+'bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
 
 :
 
-'bg-rose-600 hover:bg-rose-700 text-white disabled:bg-rose-600 disabled:text-white disabled:opacity-100'
+'!bg-rose-600 hover:!bg-rose-700 !text-white disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100'
 
 }
 
@@ -5058,7 +5103,7 @@ mr-2
 "
 />
 
-Verify Edited Details
+Send for Verification
 
 </>
 
@@ -5074,7 +5119,7 @@ mr-2
 "
 />
 
-Verify your account
+Send for Verification
 
 </>
 
@@ -5135,7 +5180,8 @@ function sectionReviewState(me, section, fallbackStatus, verified) {
   const normalizedSection = section === 'verification' ? 'documents' : section;
   const normalizeSection = (value) => value === 'verification' ? 'documents' : value;
   const sectionStatuses = me?.section_statuses || me?.extra?.section_statuses || {};
-  const sectionStatus = sectionStatuses?.[normalizedSection];
+  const aliasSection = normalizedSection === 'documents' ? 'verification' : normalizedSection === 'verification' ? 'documents' : normalizedSection;
+  const sectionStatus = sectionStatuses?.[normalizedSection] || sectionStatuses?.[aliasSection];
   if (sectionStatus === 'pending' || sectionStatus === 'submitted' || sectionStatus === 'modified') return 'pending';
   if (sectionStatus === 'rejected') return 'rejected';
   if (sectionStatus === 'verified') return 'verified';
@@ -5238,14 +5284,14 @@ function SectionVerificationAction({ token, me, section, title, description, col
   const verified = !!me?.extra?.verified;
   const rawStatus = sectionReviewState(me, section, me?.extra?.verification_status, verified);
   const status = modified && (rawStatus === 'pending' || rawStatus === 'verified') ? 'modified' : rawStatus;
-  const label = status === 'verified' ? 'Done' : status === 'pending' ? 'Pending Approval' : status === 'modified' ? 'Verify Edited Details' : status === 'rejected' ? 'Send Again' : 'Send for Verification';
+  const label = status === 'verified' ? 'Done' : status === 'pending' ? 'Pending Approval' : 'Send for Verification';
   const Icon = status === 'verified' ? CheckCircle2 : status === 'pending' ? Clock : ShieldCheck;
   const blocked = !!disabled || status === 'pending' || status === 'verified';
   const actionClass = status === 'verified'
     ? 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
     : status === 'pending'
       ? 'bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
-      : 'bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-600 disabled:text-white disabled:!opacity-100 disabled:cursor-pointer';
+      : '!bg-rose-600 !text-white hover:!bg-rose-700 disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-pointer';
   const sendForReview = async () => {
     if (blocked || busy) return;
     setBusy(true);
@@ -5410,9 +5456,12 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   const workerProfileChangedAfterReview = (workerProfileReviewStatus === 'pending' || workerProfileReviewStatus === 'verified') && hasVerifySectionChanged(PROFILE_VERIFY_FIELDS, buildWorkerProfilePayload(), me?.profile || {}, me?.extra || {});
   const workerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, verified);
   const workerDocumentChangedAfterReview = (workerDocumentReviewStatus === 'pending' || workerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(WORKER_DOCUMENT_VERIFY_FIELDS, buildWorkerDocumentPayload(), me?.profile || {}, me?.extra || {});
-  const workerAllProfileCardsVerified = isFinalCardVerified(me, 'profile', me?.extra?.verification_status, verified, workerProfileChangedAfterReview)
-    && isFinalCardVerified(me, 'documents', me?.extra?.verification_status, verified, workerDocumentChangedAfterReview)
-    && isFinalCardVerified(me, 'bank', me?.extra?.verification_status, verified, workerBankChangedAfterReview);
+  // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
+  // Do not block final Save because of stale local comparison data after admin approval or page refresh.
+  const workerProfileCardVerifiedForSave = workerProfileReviewStatus === 'verified' || verified;
+  const workerDocumentCardVerifiedForSave = workerDocumentReviewStatus === 'verified' || verified;
+  const workerBankCardVerifiedForSave = workerBankReviewStatus === 'verified' || verified;
+  const workerAllProfileCardsVerified = workerProfileCardVerifiedForSave && workerDocumentCardVerifiedForSave && workerBankCardVerifiedForSave;
   const workerAnyProfileCardPending = [workerProfileReviewStatus, workerDocumentReviewStatus, workerBankReviewStatus].some((s) => s === 'pending') || workerProfileChangedAfterReview || workerDocumentChangedAfterReview || workerBankChangedAfterReview;
   const workerTopStatus = finalSaved && workerAllProfileCardsVerified ? 'verified' : workerAnyProfileCardPending ? 'pending' : 'unverified';
 
@@ -5468,8 +5517,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setForm((s) => ({ ...s, ...body }));
-    localStorage.removeItem(finalProfileSaveKey(me, 'worker'));
-    setFinalSaved(false);
+    // Keep the location box saved/closed after refresh. Final profile Save state is controlled only by card verification and real profile edits.
     await onSaved();
   };
 
@@ -5553,7 +5601,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             </div>
             <label className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700 cursor-pointer hover:bg-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-700/50 dark:text-emerald-300">
               <Upload className="w-4 h-4" /> QR upload <span className="text-[10px] font-normal opacity-70">optional</span>
-              <input type="file" accept="image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'bank-qr', token); setForm(f => ({ ...f, bank_qr_url: url })); toast.success('QR uploaded. Click Verify Edited Details to send it for admin review.'); } catch (err) { toast.error(err.message || 'QR upload failed'); } finally { e.target.value = ''; } }} />
+              <input type="file" accept="image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'bank-qr', token); setForm(f => ({ ...f, bank_qr_url: url })); toast.success('QR uploaded. Click Send for Verification to send it for admin review.'); } catch (err) { toast.error(err.message || 'QR upload failed'); } finally { e.target.value = ''; } }} />
             </label>
           </div>
         </CardHeader>
@@ -6124,7 +6172,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             <p className="font-semibold flex items-center gap-2"><Camera className="w-4 h-4" /> Selfie verification</p>
             <p className="text-xs text-muted-foreground mt-1">Front face only. Camera auto captures when your face is clear inside the frame.</p>
           </div>
-          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending</Badge>}
+          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>}
         </div>
 
         {verified ? (
@@ -6139,8 +6187,8 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
       </div>
 
       {!verified && (
-        <Button type="button" className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={disabled || busy} onClick={openVerification}>
-          <Camera className="w-4 h-4 mr-2" /> Capture front face
+        <Button type="button" className="mt-4 !bg-rose-600 hover:!bg-rose-700 !text-white disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100" disabled={disabled || busy} onClick={openVerification}>
+          <Camera className="w-4 h-4 mr-2" /> Send for Verification
         </Button>
       )}
 
@@ -6441,53 +6489,40 @@ function EmployerApp({ auth, onLogout }) {
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
   const handleNotificationNavigate = (notif) => {
-    const type = notif?.type || '';
-    const route = notif?.target_route || notif?.target_page || '';
+    const type = (notif?.type || '').toLowerCase();
+    const title = (notif?.title || '').toLowerCase();
+    const route = (notif?.target_route || notif?.target_page || notif?.route || '').toLowerCase();
+    const message = (notif?.body || notif?.message || '').toLowerCase();
     const refId = notif?.reference_id || notif?.related_id || notif?.source_id || notif?.target_id;
+    const text = `${type} ${title} ${route} ${message}`;
 
-    // New applicant / application notification: open the related Applicants popup directly.
-    if (
-      type === 'application' ||
-      type === 'new_application' ||
-      type === 'application_submitted' ||
-      route.includes('application') ||
-      route.includes('applicant')
-    ) {
+    if (text.includes('chat') || type === 'message') {
+      setChatPeer(null);
+      setTab('chats');
+      return;
+    }
+
+    if (text.includes('verification') || text.includes('verified') || text.includes('profile') || text.includes('document') || text.includes('selfie')) {
+      setTab('profile');
+      return;
+    }
+
+    if (text.includes('new applicant') || text.includes('applicant') || text.includes('application submitted')) {
       setNotificationFocusApplicationId(refId || null);
       refreshJobs?.();
       setTab('dashboard');
       return;
     }
 
-    // Worker accepted invitation / attendance / ongoing work: go to Hired tab.
-    if (
-      type === 'worker_marked_attendance' ||
-      type === 'attendance' ||
-      type === 'attendance_marked' ||
-      type === 'application_accepted' ||
-      type === 'application_ongoing' ||
-      route.includes('hired') ||
-      route.includes('ongoing')
-    ) {
+    if (text.includes('accepted') || text.includes('ongoing') || text.includes('hired') || text.includes('attendance') || text.includes('completed') || text.includes('payment') || text.includes('removed')) {
       refreshJobs?.();
       setTab('hired');
       return;
     }
 
-    if (route.includes('profile') || type === 'account_verified' || type === 'account_rejected' || type === 'verification_submit' || type === 'verification' || type === 'verification_section') {
-      setTab('profile');
-      return;
-    }
-
-    if (route.includes('chat') || type === 'message' || type === 'chat') {
-      setChatPeer(null);
-      setTab('chats');
-      return;
-    }
-
-    if (type === 'job_post' || route.includes('job')) {
+    if (text.includes('job')) {
+      refreshJobs?.();
       setTab('dashboard');
-      return;
     }
   };
 
@@ -6866,16 +6901,23 @@ function PostJob({ token, onPosted, initialJob = null }) {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    if (!token) { toast.error('Please wait and try again. Login session is being checked.'); return; }
     if (!f.description?.trim() || !f.shift_timing || !f.experience || !f.contact_number?.trim()) {
       toast.error('Please fill all required fields before publishing');
       return;
     }
     setBusy(true);
     try {
-      await api(initialJob?.id ? `jobs/${initialJob.id}` : 'jobs', { method: initialJob?.id ? 'PATCH' : 'POST', token, body: f });
+      const payload = {
+        ...f,
+        daily_pay: Number(f.daily_pay) || 0,
+        duration_days: Number(f.duration_days) || 1,
+        workers_needed: Number(f.workers_needed) || 1,
+        post_valid_days: Number(f.post_valid_days) || 5,
+        attendance_radius_meters: Number(f.attendance_radius_meters) || 20,
+      };
+      await api(initialJob?.id ? `jobs/${initialJob.id}` : 'jobs', { method: initialJob?.id ? 'PATCH' : 'POST', token, body: payload });
       toast.success(initialJob?.id ? 'Job updated successfully!' : 'Job posted successfully!');
-      onPosted();
+      onPosted?.();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
@@ -6968,35 +7010,42 @@ function PostJob({ token, onPosted, initialJob = null }) {
                 onSubmit={submit}
                 className="h-full min-h-0 flex flex-col justify-between gap-2"
               >
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3">
+                <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-2 pr-0">
                   <div className="md:col-span-12 space-y-1">
-                    <Label className="text-sm">Job location <span className="font-normal text-slate-500">(used for attendance)</span></Label>
-                    <LocationSearchBox
-                      label=""
-                      value={f.location_text || ''}
-                      latitude={f.latitude}
-                      longitude={f.longitude}
-                      color="emerald"
-                      placeholder="Search factory location, company name, site address, landmark, or work area"
-                      helper="Select the exact company/site location. Employee attendance will match their current GPS with this saved location."
-                      onChange={(loc) => setF(s => ({ ...s, ...loc }))}
-                    />
-                    <div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-emerald-900 flex items-center gap-2"><MapPin className="w-4 h-4" /> Attendance GPS point</p>
-                        <p className="text-xs text-emerald-700 mt-0.5">Use current GPS only when you are at the company/site. Worker daily attendance will be marked automatically when their GPS is within the allowed distance.</p>
-                        <p className="text-[11px] text-emerald-800 mt-1 truncate">{f.latitude && f.longitude ? `Saved GPS: ${formatCoordinates(f.latitude, f.longitude)} · Radius ${f.attendance_radius_meters || 20}m` : 'No exact GPS saved yet. Search/select a place or use current GPS.'}</p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">Use current GPS only when you are at the company/site. Worker daily attendance will be marked automatically when their GPS is within the allowed distance.</p>
+                        <p className="text-[11px] text-emerald-800 mt-1 truncate">{f.latitude && f.longitude ? `Saved GPS: ${formatCoordinates(f.latitude, f.longitude)} · Radius ${f.attendance_radius_meters || 20}m` : 'No exact GPS saved yet. Use current GPS while standing at the company/site.'}</p>
                       </div>
                       <Button type="button" size="sm" className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shrink-0" onClick={useCurrentJobGps}>
                         <MapPin className="w-4 h-4 mr-2" /> Use current GPS
                       </Button>
                     </div>
-                    <input type="hidden" value={f.attendance_radius_meters || 20} readOnly />
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-sm">Attendance radius *</Label>
+                        <Select value={String(f.attendance_radius_meters || 20)} onValueChange={(v) => setF(s => ({ ...s, attendance_radius_meters: Number(v) }))}>
+                          <SelectTrigger className="h-9 rounded-xl border-emerald-200 bg-white">
+                            <SelectValue placeholder="Select allowed distance" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="10">10 meters</SelectItem>
+                            <SelectItem value="20">20 meters</SelectItem>
+                            <SelectItem value="25">25 meters</SelectItem>
+                            <SelectItem value="50">50 meters</SelectItem>
+                            <SelectItem value="100">100 meters</SelectItem>
+                            <SelectItem value="200">200 meters</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-[11px] text-emerald-700 leading-snug">Employee attendance is marked automatically when their current GPS is inside this saved job radius. Manual attendance marking is not required.</p>
+                    </div>
                   </div>
 
                   <div className="md:col-span-12 space-y-1">
                     <Label className="text-sm">Description *</Label>
-                    <Textarea className="min-h-[60px] h-[60px] resize-none" value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="Work details, materials, shift timing, tools, safety rules and worker requirements." required />
+                    <Textarea className="min-h-[44px] h-[44px] resize-none" value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="Work details, materials, shift timing, tools, safety rules and worker requirements." required />
                   </div>
 
                   <div className="md:col-span-6 space-y-1">
@@ -7034,7 +7083,7 @@ function PostJob({ token, onPosted, initialJob = null }) {
                     <Input className="h-9" type="tel" value={f.contact_number} onChange={e => setF(s => ({ ...s, contact_number: e.target.value }))} placeholder="Workers can contact this number directly" required />
                   </div>
 
-                  <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-5 gap-2">
+                  <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-5 gap-1.5">
                     {[
                       ['accommodation_available', 'Accommodation'],
                       ['food_included', 'Food'],
@@ -7046,7 +7095,7 @@ function PostJob({ token, onPosted, initialJob = null }) {
                         type="button"
                         key={key}
                         onClick={() => setF(s => ({ ...s, [key]: typeof s[key] === 'boolean' ? !s[key] : (s[key] === 'yes' ? 'no' : 'yes') }))}
-                        className={`h-9 rounded-xl border text-xs font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
+                        className={`h-8 rounded-xl border text-xs font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         {label}
                       </button>
@@ -7054,7 +7103,7 @@ function PostJob({ token, onPosted, initialJob = null }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1 shrink-0">
+                <div className="grid grid-cols-2 gap-2 pt-1.5 shrink-0 border-t bg-white">
                   <Button type="button" variant="outline" onClick={prevStep} className="h-10 rounded-xl border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold">
                     <ArrowLeft className="w-4 h-4 mr-2" /> Back
                   </Button>
@@ -7378,43 +7427,38 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                             return (
                               <div
                                 key={date}
-                                className={`p-3 rounded-lg border-2 text-center transition ${
-                                  canMarkAttendance ? 'cursor-pointer hover:shadow-md' : 'cursor-not-allowed opacity-60'
+                                className={`min-h-[96px] p-4 rounded-2xl border text-center transition-all duration-200 shadow-sm hover:shadow-lg ${
+                                  canMarkAttendance ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-not-allowed opacity-60'
                                 } ${
-                                  attRec?.status === 'present'
-                                    ? 'bg-emerald-100 dark:bg-emerald-900 border-emerald-500 dark:border-emerald-400'
+                                  (attRec?.status === 'present' || attRec?.status === 'completed')
+                                    ? 'bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950 dark:to-slate-900 border-emerald-400 dark:border-emerald-500 shadow-emerald-100 dark:shadow-none'
                                     : attRec?.status === 'absent'
-                                    ? 'bg-red-100 dark:bg-red-900 border-red-500 dark:border-red-400'
-                                    : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+                                    ? 'bg-gradient-to-br from-red-50 to-white dark:from-red-950 dark:to-slate-900 border-red-400 dark:border-red-500 shadow-red-100 dark:shadow-none'
+                                    : 'bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700'
                                 }`}
                                 onClick={() => canMarkAttendance && setSelectedDate(selectedDate === date ? null : date)}
                               >
-                                <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase">
+                                <p className="text-[11px] font-bold tracking-[0.18em] text-slate-500 dark:text-slate-300 uppercase">
                                   {dayName}
                                 </p>
-                                <p className="text-lg font-bold my-1">
+                                <p className="text-2xl font-black my-2 text-slate-950 dark:text-white">
                                   {dayNum}
                                 </p>
-                                {attRec?.status === 'present' && (
-                                  <div className="flex items-center justify-center gap-1">
+                                {(attRec?.status === 'present' || attRec?.status === 'completed') && (
+                                  <div className="inline-flex items-center justify-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/60 px-3 py-1">
                                     <Check className="w-4 h-4 text-emerald-600" />
                                     <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                                      Present
+                                      Completed
                                     </span>
                                   </div>
                                 )}
                                 {attRec?.status === 'absent' && (
-                                  <div className="flex items-center justify-center gap-1">
+                                  <div className="inline-flex items-center justify-center gap-1 rounded-full bg-red-100 dark:bg-red-900/60 px-3 py-1">
                                     <X className="w-4 h-4 text-red-600" />
                                     <span className="text-[10px] font-semibold text-red-700 dark:text-red-300">
                                       Absent
                                     </span>
                                   </div>
-                                )}
-                                {!attRec && (
-                                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-300">
-                                    Unmarked
-                                  </span>
                                 )}
                               </div>
                             );
@@ -7422,47 +7466,23 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                         </div>
                       </div>
 
-                      {/* Quick Mark Buttons for Selected Date */}
+                      {/* GPS Auto Attendance Notice */}
                       {selectedDate && canMarkAttendance && (
-                        <div className="mb-4 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-700">
-                          <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-2">
-                            Mark attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-700">
+                          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mb-1">
+                            GPS auto attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              disabled={markingAttendance || !canMarkAttendance}
-                              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                              onClick={() => markAttendance(app.id, selectedDate, 'present')}
-                            >
-                              {markingAttendance ? (
-                                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                              ) : (
-                                <Check className="w-3.5 h-3.5 mr-1" />
-                              )}
-                              Mark Present
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={markingAttendance || !canMarkAttendance}
-                              onClick={() => markAttendance(app.id, selectedDate, 'absent')}
-                            >
-                              {markingAttendance ? (
-                                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                              ) : (
-                                <X className="w-3.5 h-3.5 mr-1" />
-                              )}
-                              Mark Absent
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setSelectedDate(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
+                          <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                            Attendance is marked automatically from the employee Ongoing job GPS check-in when they are inside the employer selected radius. Manual attendance marking is disabled.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="mt-2 text-emerald-700 hover:bg-emerald-100"
+                            onClick={() => setSelectedDate(null)}
+                          >
+                            Close
+                          </Button>
                         </div>
                       )}
 
@@ -7900,19 +7920,37 @@ if (changed && finalSaved) {
 
   // Employer final save follows the working employee profile pattern, without removed employer bank/mobile checks.
   // Required cards: Company/Profile approval + Documents approval + Selfie verified.
-  const employerSelfieCardVerified = !!(f.selfie_verified || me?.extra?.selfie_verified || me?.extra?.selfie_status === 'verified');
-  const employerProfileCardVerified = isFinalCardVerified(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified, employerProfileChangedAfterReview);
-  const employerDocumentCardVerified = isFinalCardVerified(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified, employerDocumentChangedAfterReview);
+  // Important: employer admin can approve the whole employer profile through the existing final verified flag.
+  // Treat that final approval as profile+document verified unless the user edited those sections again.
+  const employerSelfieCardVerified = !!(
+    f.selfie_verified ||
+    me?.extra?.selfie_verified ||
+    me?.extra?.selfie_status === 'verified' ||
+    me?.extra?.selfie_verification_status === 'verified'
+  );
+  const employerProfileRawStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerDocumentRawStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerGloballyVerified = !!me?.extra?.verified && me?.extra?.verification_status === 'verified';
+  // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
+  // Do not block final Save because of stale local comparison data after admin approval or page refresh.
+  const employerProfileCardVerified = employerProfileRawStatus === 'verified' || employerGloballyVerified;
+  const employerDocumentCardVerified = employerDocumentRawStatus === 'verified' || employerGloballyVerified;
   const employerAllProfileCardsVerified = employerProfileCardVerified && employerDocumentCardVerified && employerSelfieCardVerified;
-  const employerAnyProfileCardPending = [employerProfileReviewStatus, employerDocumentReviewStatus].some((s) => s === 'pending') || employerProfileChangedAfterReview || employerDocumentChangedAfterReview;
+  const employerAnyProfileCardPending = [employerProfileRawStatus, employerDocumentRawStatus].some((s) => s === 'pending') || employerProfileChangedAfterReview || employerDocumentChangedAfterReview;
   const employerTopStatus = finalSaved && employerAllProfileCardsVerified ? 'verified' : employerAnyProfileCardPending ? 'pending' : 'unverified';
 
   useEffect(() => {
-    // Employer Save button should stay Saved after a successful click,
-    // and should only return to Save when profile inputs actually change.
+    if (!employerAllProfileCardsVerified && finalSaved) {
+      localStorage.removeItem(finalProfileSaveKey(me, 'employer'));
+      setFinalSaved(false);
+    }
   }, [employerAllProfileCardsVerified, finalSaved, me]);
 
   const save = async () => {
+    if (!employerAllProfileCardsVerified) {
+      toast.error('Verify all required profile cards before final save');
+      return;
+    }
     setBusy(true);
     try {
       const body = {
@@ -7920,16 +7958,21 @@ if (changed && finalSaved) {
         ...buildEmployerDocumentPayload(),
         selfie_url: f.selfie_url || f.selfie_front_url || me?.extra?.selfie_url || me?.extra?.selfie_front_url || '',
         selfie_front_url: f.selfie_front_url || f.selfie_url || me?.extra?.selfie_front_url || me?.extra?.selfie_url || '',
+        selfie_left_url: f.selfie_left_url || me?.extra?.selfie_left_url || '',
+        selfie_right_url: f.selfie_right_url || me?.extra?.selfie_right_url || '',
         selfie_verified: !!(f.selfie_verified || me?.extra?.selfie_verified),
         selfie_verified_at: f.selfie_verified_at || me?.extra?.selfie_verified_at || null,
         mobile_verified: !!(f.mobile_verified || me?.extra?.mobile_verified),
-        verification_status: employerAllProfileCardsVerified ? 'verified' : (f.verification_status || me?.extra?.verification_status || 'saved'),
+        language: f.language || me?.profile?.language || 'en',
+        verified: true,
+        verification_status: 'verified',
       };
 
-      await api('me/profile', { method: 'PATCH', token, body });
+      const saved = await api('me/profile', { method: 'PATCH', token, body });
       localStorage.setItem(finalProfileSaveKey(me, 'employer'), 'saved');
-      setF((prev) => ({ ...prev, ...body }));
-      setSavedData((prev) => ({ ...prev, ...body }));
+      const savedExtra = saved?.extra || {};
+      setF((prev) => ({ ...prev, ...body, ...savedExtra }));
+      setSavedData((prev) => ({ ...prev, ...body, ...savedExtra }));
       setHasChanges(false);
       setFinalSaved(true);
       toast.success('Profile saved');
@@ -7949,16 +7992,15 @@ if (changed && finalSaved) {
       location_text: loc.location_text || '',
       latitude: loc.latitude,
       longitude: loc.longitude,
-      place_id: f.place_id || '',
-      place_name: f.place_name || '',
+      place_id: loc.place_id || f.place_id || '',
+      place_name: loc.place_name || f.place_name || '',
       verification_status: nextStatus,
       verification_section: 'location',
     };
     await api('me/profile', { method: 'PATCH', token, body });
     setF((s) => ({ ...s, ...body }));
     setSavedData((s) => ({ ...s, ...body }));
-    localStorage.removeItem(finalProfileSaveKey(me, 'employer'));
-    setFinalSaved(false);
+    // Keep the location card saved/closed after refresh; do not reopen or mark unsaved just because location was saved.
     await onSaved();
   };
 
@@ -8149,7 +8191,7 @@ if (changed && finalSaved) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           onClick={save}
-          disabled={busy || finalSaved}
+          disabled={busy || !employerAllProfileCardsVerified || finalSaved}
           className="h-12 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed disabled:bg-emerald-600 disabled:text-white"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}

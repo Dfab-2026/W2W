@@ -969,6 +969,12 @@ async function route(request, { params }) {
           eu.verification_submitted_at = new Date().toISOString();
         }
 
+        if (body.verification_status === 'verified') {
+          eu.verified = true;
+          eu.verification_status = 'verified';
+          eu.verification_notes = null;
+        }
+
         if (Object.keys(eu).length) {
           const { data: existingEmployer } = await admin.from('employers').select('user_id').eq('user_id', me.id).maybeSingle();
           let result;
@@ -1475,9 +1481,9 @@ async function route(request, { params }) {
       }
       if (error) return err(error.message, 400);
 
-      await notify(admin, appRow.jobs.employer_id, 'Employee marked attendance', `Employee GPS attendance marked present for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
-      await notify(admin, appRow.worker_id, 'Attendance marked', `Your GPS attendance was marked present for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
-      await logActivity(admin, appRow.worker_id, 'gps_attendance_marked', { application_id: appId, date, distance_meters: Math.round(distance), job_title: appRow.jobs.title }, me.id);
+      await notify(admin, appRow.jobs.employer_id, 'Employee marked attendance', `Employee GPS attendance completed for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
+      await notify(admin, appRow.worker_id, 'Attendance marked', `Your GPS attendance was completed for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
+      await logActivity(admin, appRow.worker_id, 'gps_attendance_completed', { application_id: appId, date, distance_meters: Math.round(distance), job_title: appRow.jobs.title }, me.id);
       await logActivity(admin, appRow.jobs.employer_id, 'worker_gps_attendance_marked', { application_id: appId, worker_id: appRow.worker_id, date, distance_meters: Math.round(distance), job_title: appRow.jobs.title }, me.id);
 
       return json({ attendance: data, distance_meters: Math.round(distance), allowed_meters: allowedMeters });
