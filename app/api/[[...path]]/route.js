@@ -30,6 +30,7 @@ async function sendEmail({ to, subject, html }) {
   }
 }
 
+<<<<<<< HEAD
 
 async function getActiveSubscription(admin, userId, role) {
   try {
@@ -67,6 +68,8 @@ function planFeatures(role, planName) {
   return { plan_name: plan, ...(plans[roleKey][plan] || plans[roleKey].Free) };
 }
 
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
 async function notify(admin, userId, title, body, type, relatedId) {
   try {
     await admin.from('notifications').insert({
@@ -90,6 +93,7 @@ async function logActivity(admin, userId, action, details = {}, actorId = null) 
   }
 }
 
+<<<<<<< HEAD
 function getMsg91AuthKey() {
   return (process.env.MSG91_AUTH_KEY || process.env.MSG91_AUTHKEY || '').trim();
 }
@@ -105,6 +109,10 @@ function getMsg91TemplateId() {
 
 function isMsg91Configured() {
   return !!getMsg91AuthKey() && !!getMsg91TemplateId();
+=======
+function isMsg91Configured() {
+  return !!process.env.MSG91_AUTH_KEY && !!process.env.MSG91_TEMPLATE_ID;
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
 }
 
 function canUseDevOtpFallback() {
@@ -121,6 +129,7 @@ function normalizePhone(phone) {
   return null;
 }
 
+<<<<<<< HEAD
 function msg91SafeError(data, fallback) {
   if (!data) return fallback || 'Unknown MSG91 response';
   if (typeof data === 'string') return data;
@@ -135,10 +144,15 @@ async function sendSmsOtp(phone, code) {
   const templateId = getMsg91TemplateId();
 
   if (!authKey || !templateId) {
+=======
+async function sendSmsOtp(phone, code) {
+  if (!isMsg91Configured()) {
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
     if (canUseDevOtpFallback()) {
       console.warn(`DEV OTP for ${phone}: ${code}`);
       return { type: 'success', dev: true };
     }
+<<<<<<< HEAD
     throw new Error('SMS OTP is not configured. Add MSG91_AUTH_KEY and MSG91_TEMPLATE_ID in Vercel/.env.local, then redeploy. Use ALLOW_DEV_OTP=true only for local testing.');
   }
 
@@ -196,6 +210,27 @@ async function sendSmsOtp(phone, code) {
 
   if (!success) {
     throw new Error(`MSG91 OTP send failed: ${msg91SafeError(data, res.statusText)}`);
+=======
+    throw new Error('SMS OTP is not configured. Add MSG91_AUTH_KEY and MSG91_TEMPLATE_ID in .env.local, or set ALLOW_DEV_OTP=true only for local testing.');
+  }
+
+  const cleanPhone = String(phone).replace(/\D/g, '');
+  const url = new URL('https://control.msg91.com/api/v5/otp');
+  url.searchParams.set('template_id', process.env.MSG91_TEMPLATE_ID);
+  url.searchParams.set('mobile', cleanPhone);
+  url.searchParams.set('otp', code);
+
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { authkey: process.env.MSG91_AUTH_KEY },
+    cache: 'no-store',
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data?.type && data.type !== 'success')) {
+    const message = data?.message || data?.errors?.[0] || data?.error || res.statusText;
+    throw new Error(`MSG91 OTP send failed: ${message || 'Unknown error'}`);
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
   }
 
   return data || { type: 'success' };
@@ -288,6 +323,7 @@ async function route(request, { params }) {
       await admin.from('user_profiles').update({ phone, updated_at: new Date().toISOString() }).eq('id', me.id);
       const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
       if (profile?.role === 'worker') {
+<<<<<<< HEAD
         await admin.from('workers').update({
           mobile_verified: true,
           verified_mobile: phone,
@@ -299,6 +335,11 @@ async function route(request, { params }) {
           verified_mobile: phone,
           mobile_verified_at: new Date().toISOString(),
         }).eq('user_id', me.id);
+=======
+        await admin.from('workers').update({ mobile_verified: true }).eq('user_id', me.id);
+      } else if (profile?.role === 'employer') {
+        await admin.from('employers').update({ mobile_verified: true }).eq('user_id', me.id);
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
       }
       return json({ ok: true, mobile_verified: true });
     }
@@ -724,6 +765,7 @@ async function route(request, { params }) {
       return { ok: true };
     }
 
+<<<<<<< HEAD
 
 
     // ---------- Subscription current/select (UI + feature gating ready) ----------
@@ -760,6 +802,8 @@ async function route(request, { params }) {
       }
     }
 
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
     async function deleteUserEverywhere(userId) {
       await admin.from('messages').delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
       await admin.from('notifications').delete().eq('user_id', userId);
@@ -1285,6 +1329,7 @@ async function route(request, { params }) {
       // ensure employer
       const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
       if (profile?.role !== 'employer') return err('Only employers can post jobs', 403);
+<<<<<<< HEAD
       const employerSub = await getActiveSubscription(admin, me.id, 'employer');
       const employerFeatures = planFeatures('employer', employerSub?.plan_name || 'Free');
       if (Number.isFinite(employerFeatures.maxActiveJobs)) {
@@ -1294,6 +1339,8 @@ async function route(request, { params }) {
           .not('status', 'in', '(completed,closed,deleted)');
         if ((count || 0) >= employerFeatures.maxActiveJobs) return err(`${employerFeatures.plan_name} plan allows only ${employerFeatures.maxActiveJobs} active job posts. Upgrade your plan to post more jobs.`, 403);
       }
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
 
       const { data: employer } = await admin.from('employers')
         .select('location_text, latitude, longitude')
@@ -1409,6 +1456,7 @@ async function route(request, { params }) {
       const body = await request.json().catch(() => ({}));
       const { data: profile } = await admin.from('user_profiles').select('role,full_name,email').eq('id', me.id).maybeSingle();
       if (profile?.role !== 'worker') return err('Only workers can apply', 403);
+<<<<<<< HEAD
       const workerSub = await getActiveSubscription(admin, me.id, 'worker');
       const workerFeatures = planFeatures('worker', workerSub?.plan_name || 'Free');
       if (Number.isFinite(workerFeatures.maxApplicationsPerMonth)) {
@@ -1421,6 +1469,8 @@ async function route(request, { params }) {
           .gte('applied_at', monthStart.toISOString());
         if ((count || 0) >= workerFeatures.maxApplicationsPerMonth) return err(`${workerFeatures.plan_name} plan allows ${workerFeatures.maxApplicationsPerMonth} job applications per month. Upgrade to apply more.`, 403);
       }
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
 
       const { data: job } = await admin.from('jobs').select('id,title,employer_id').eq('id', jobId).maybeSingle();
       if (!job) return err('Job not found', 404);
@@ -1609,9 +1659,12 @@ async function route(request, { params }) {
         .maybeSingle();
       if (!appRow) return err('Application not found', 404);
       if (appRow.worker_id !== me.id && me.role !== 'admin') return err('Only assigned employee can mark GPS attendance', 403);
+<<<<<<< HEAD
       const workerSub = await getActiveSubscription(admin, appRow.worker_id, 'worker');
       const workerFeatures = planFeatures('worker', workerSub?.plan_name || 'Free');
       if (!workerFeatures.gpsAttendance && me.role !== 'admin') return err('GPS attendance is available from Starter plan. Free plan uses employer manual attendance.', 403);
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
       if (appRow.status !== 'ongoing') return err('Attendance can be marked only for ongoing jobs', 400);
 
       const jobLat = Number(appRow.jobs?.latitude);
@@ -1670,9 +1723,12 @@ async function route(request, { params }) {
         .maybeSingle();
       if (!appRow) return err('Application not found', 404);
       if (appRow.jobs?.employer_id !== me.id && me.role !== 'admin') return err('Only employer can mark attendance', 403);
+<<<<<<< HEAD
       const employerSub = await getActiveSubscription(admin, appRow.jobs?.employer_id, 'employer');
       const employerFeatures = planFeatures('employer', employerSub?.plan_name || 'Free');
       if (!employerFeatures.manualAttendance && me.role !== 'admin') return err('Manual attendance is available only in Free plan. Paid plans use GPS auto attendance.', 403);
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
       if (appRow.status !== 'ongoing') return err('Attendance can be marked only after worker accepts and job moves to ongoing', 400);
 
       const payload = {

@@ -684,6 +684,7 @@ button:disabled[class*="bg-green"] {
   opacity: 1 !important;
   filter: none !important;
 }
+<<<<<<< HEAD
 
 /* ============================================================
    FINAL FIX: remove unreadable black buttons only.
@@ -1001,3 +1002,5 @@ button[class*="bg-black"] * {
 [role="dialog"] button.bg-sky-700 * {
   text-shadow: none !important;
 }
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4

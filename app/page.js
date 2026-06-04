@@ -43,6 +43,7 @@ function Work2WishLogo({ className = 'w-10 h-10', imgClassName = 'w-full h-full 
   );
 }
 
+<<<<<<< HEAD
 
 // ----------------------------- subscription feature gates -----------------------------
 const SUBSCRIPTION_FEATURES = {
@@ -97,6 +98,8 @@ function SubscriptionLock({ title = 'Upgrade required', description = 'This feat
   );
 }
 
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
 // ----------------------------- helpers -----------------------------
 const SESSION_KEY = 'w2w-session';
 
@@ -4275,8 +4278,11 @@ function JobCard({ job, onClick, onProfile }) {
 }
 
 function WorkerMyJobs({ token, onChat, onLogout }) {
+<<<<<<< HEAD
   const workerSubscription = getSubscriptionFeatures('worker', loadSession()?.profile);
   const workerPlan = workerSubscription.plan;
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
   const [apps, setApps] = useState([]);
   const [profileView, setProfileView] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -4533,6 +4539,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                         );
                       })}
                     </div>
+<<<<<<< HEAD
                     {workerSubscription.gpsAttendance ? (
                       <>
                         <Button
@@ -4553,6 +4560,19 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                         description="GPS auto attendance unlocks from Starter plan. Ask the employer to mark manual attendance for Free plan workers."
                       />
                     )}
+=======
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={gpsAttendanceId === a.id}
+                      className="mt-3 w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold"
+                      onClick={() => markGpsAttendance(a)}
+                    >
+                      {gpsAttendanceId === a.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MapPin className="w-4 h-4 mr-2" />}
+                      Mark Today Attendance with GPS
+                    </Button>
+                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 text-center">Works only when your current GPS is inside the employer selected radius.</p>
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                   </div>
                   
                   {/* Job Details */}
@@ -5428,8 +5448,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+<<<<<<< HEAD
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
   const [finalSaved, setFinalSaved] = useState(false);
   const verified = !!me?.extra?.verified;
   useEffect(() => {
@@ -5885,11 +5908,18 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           variant="outline"
           disabled={busy}
           onClick={() => setSettingsOpen(true)}
+<<<<<<< HEAD
           className="h-12 !bg-red-600 !text-white !border-red-600 hover:!bg-red-700 hover:!text-white shadow-lg shadow-red-600/25 font-bold"
           style={{ backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' }}
         >
           <ShieldCheck className="w-4 h-4 mr-2 text-white" />
           <span className="text-white font-bold">Account settings</span>
+=======
+          className="h-12 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+        >
+          <ShieldCheck className="w-4 h-4 mr-2" />
+          Account settings
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
         </Button>
         <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
           <SheetContent side="right" className="w-full sm:max-w-md">
@@ -5908,6 +5938,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
               <div className="rounded-2xl border p-4 space-y-3">
                 <p className="text-sm font-semibold text-slate-900">Quick actions</p>
+<<<<<<< HEAD
                 <Button
                   type="button"
                   variant="outline"
@@ -5926,6 +5957,8 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                   <MessageSquare className="w-4 h-4 mr-2" />
                   Help & Support
                 </Button>
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                 <AccountActivitySheet token={token} accent="indigo" />
                 <Button
                   type="button"
@@ -5949,8 +5982,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             </div>
           </SheetContent>
         </Sheet>
+<<<<<<< HEAD
         <SubscriptionPlansDialog open={subscriptionOpen} onOpenChange={setSubscriptionOpen} role="worker" me={me} />
         <HelpSupportDialog open={supportOpen} onOpenChange={setSupportOpen} role="worker" me={me} />
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
       </div>
     </div>
   );
@@ -6670,7 +6706,11 @@ function EmployerApp({ auth, onLogout }) {
 
       <main className={tab === 'post' || tab === 'chats' ? "w-full flex-1 min-h-0 p-1 md:p-2 overflow-hidden" : "container flex-1 min-h-0 overflow-y-auto py-4 pb-4"}>
         {tab === 'dashboard' && <EmployerDashboard token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} onEditJob={(job) => { setEditingJob(job); setTab('post'); }} focusApplicationId={notificationFocusApplicationId} onFocusHandled={() => setNotificationFocusApplicationId(null)} />}
+<<<<<<< HEAD
         {tab === 'post'      && <PostJob token={token} initialJob={editingJob} currentJobs={jobs} onPosted={() => { setEditingJob(null); refreshJobs(); setTab('dashboard'); }} />}
+=======
+        {tab === 'post'      && <PostJob token={token} initialJob={editingJob} onPosted={() => { setEditingJob(null); refreshJobs(); setTab('dashboard'); }} />}
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
         {tab === 'hired'     && <HiredJobs token={token} jobs={jobs} reload={refreshJobs} onChat={openChatWith} />}
         {tab === 'chats'     && <ChatScreen token={token} me={{ id: me?.profile?.id, profile: me?.profile }} peerHint={chatPeer} color="emerald" />}
         {tab === 'profile'   && <EmployerProfile token={token} me={me} onSaved={refreshMe} onLogout={onLogout} />}
@@ -6960,9 +7000,13 @@ function StatCard({ label, value, icon: Icon, color }) {
   );
 }
 
+<<<<<<< HEAD
 function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
   const employerSubscription = getSubscriptionFeatures('employer', loadSession()?.profile);
   const employerPlan = employerSubscription.plan;
+=======
+function PostJob({ token, onPosted, initialJob = null }) {
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
   const [step, setStep] = useState(1);
   const [f, setF] = useState({
     title: '', category: 'general', description: '', location_text: '', latitude: '', longitude: '',
@@ -7015,11 +7059,14 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
+<<<<<<< HEAD
     const activeJobCount = (currentJobs || []).filter((j) => !['completed','closed','deleted'].includes(String(j.status || '').toLowerCase())).length;
     if (!initialJob?.id && Number.isFinite(employerSubscription.maxActiveJobs) && activeJobCount >= employerSubscription.maxActiveJobs) {
       toast.error(`${employerPlan} plan allows only ${employerSubscription.maxActiveJobs} active job posts. Upgrade plan to post more jobs.`);
       return;
     }
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
     if (!f.description?.trim() || !f.shift_timing || !f.experience || !f.contact_number?.trim()) {
       toast.error('Please fill all required fields before publishing');
       return;
@@ -7072,7 +7119,11 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 18 }}
                 onSubmit={nextStep}
+<<<<<<< HEAD
                 className="h-full min-h-0 flex flex-col justify-between gap-1.5"
+=======
+                className="h-full min-h-0 flex flex-col justify-between gap-2"
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
               >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                   <div className="md:col-span-2 space-y-1">
@@ -7127,6 +7178,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -18 }}
                 onSubmit={submit}
+<<<<<<< HEAD
                 className="h-full min-h-0 flex flex-col justify-between gap-1.5"
               >
                 <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-12 gap-1.5 md:gap-2 pr-0">
@@ -7144,6 +7196,28 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                         <Select disabled={!employerSubscription.radiusControl} value={String(f.attendance_radius_meters || 20)} onValueChange={(v) => setF(s => ({ ...s, attendance_radius_meters: Number(v) }))}>
                           <SelectTrigger className="h-8 rounded-lg border-emerald-200 bg-white w-32 sm:w-40 text-xs">
                             <SelectValue placeholder="Radius" />
+=======
+                className="h-full min-h-0 flex flex-col justify-between gap-2"
+              >
+                <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-2 pr-0">
+                  <div className="md:col-span-12 space-y-1">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-emerald-900 flex items-center gap-2"><MapPin className="w-4 h-4" /> Attendance GPS point</p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">Use current GPS only when you are at the company/site. Worker daily attendance will be marked automatically when their GPS is within the allowed distance.</p>
+                        <p className="text-[11px] text-emerald-800 mt-1 truncate">{f.latitude && f.longitude ? `Saved GPS: ${formatCoordinates(f.latitude, f.longitude)} · Radius ${f.attendance_radius_meters || 20}m` : 'No exact GPS saved yet. Use current GPS while standing at the company/site.'}</p>
+                      </div>
+                      <Button type="button" size="sm" className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shrink-0" onClick={useCurrentJobGps}>
+                        <MapPin className="w-4 h-4 mr-2" /> Use current GPS
+                      </Button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-sm">Attendance radius *</Label>
+                        <Select value={String(f.attendance_radius_meters || 20)} onValueChange={(v) => setF(s => ({ ...s, attendance_radius_meters: Number(v) }))}>
+                          <SelectTrigger className="h-9 rounded-xl border-emerald-200 bg-white">
+                            <SelectValue placeholder="Select allowed distance" />
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="10">10 meters</SelectItem>
@@ -7154,20 +7228,33 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                             <SelectItem value="200">200 meters</SelectItem>
                           </SelectContent>
                         </Select>
+<<<<<<< HEAD
                         <p className="hidden md:block text-[10px] text-emerald-700 leading-snug flex-1">{employerSubscription.gpsAttendance ? 'Auto attendance uses this selected radius. Manual attendance marking is not required.' : 'Free plan uses manual attendance. Upgrade to Business or higher to enable GPS attendance and radius control.'}</p>
                       </div>
+=======
+                      </div>
+                      <p className="text-[11px] text-emerald-700 leading-snug">Employee attendance is marked automatically when their current GPS is inside this saved job radius. Manual attendance marking is not required.</p>
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                     </div>
                   </div>
 
                   <div className="md:col-span-12 space-y-1">
                     <Label className="text-sm">Description *</Label>
+<<<<<<< HEAD
                     <Textarea className="min-h-[38px] h-[38px] resize-none text-sm" value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="Work details, materials, shift timing, tools, safety rules and worker requirements." required />
+=======
+                    <Textarea className="min-h-[44px] h-[44px] resize-none" value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="Work details, materials, shift timing, tools, safety rules and worker requirements." required />
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                   </div>
 
                   <div className="md:col-span-6 space-y-1">
                     <Label className="text-sm">Shift timing *</Label>
                     <Select value={f.shift_timing} onValueChange={(v) => setF(s => ({ ...s, shift_timing: v }))}>
+<<<<<<< HEAD
                       <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+=======
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                       <SelectContent>
                         <SelectItem value="day">Day Shift (8AM-5PM)</SelectItem>
                         <SelectItem value="night">Night Shift (8PM-5AM)</SelectItem>
@@ -7179,7 +7266,11 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                   <div className="md:col-span-6 space-y-1">
                     <Label className="text-sm">Experience needed *</Label>
                     <Select value={f.experience} onValueChange={(v) => setF(s => ({ ...s, experience: v }))}>
+<<<<<<< HEAD
                       <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+=======
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                       <SelectContent>
                         <SelectItem value="beginner">Beginner (0-1 year)</SelectItem>
                         <SelectItem value="intermediate">Intermediate (1-3 years)</SelectItem>
@@ -7191,15 +7282,26 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
 
                   <div className="md:col-span-6 space-y-1">
                     <Label className="text-sm">Skill needed</Label>
+<<<<<<< HEAD
                     <Input className="h-8 text-sm" value={f.skill_needed} onChange={e => setF(s => ({ ...s, skill_needed: e.target.value }))} placeholder="TIG welding, CNC, helper, fitter" />
+=======
+                    <Input className="h-9" value={f.skill_needed} onChange={e => setF(s => ({ ...s, skill_needed: e.target.value }))} placeholder="TIG welding, CNC, helper, fitter" />
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                   </div>
 
                   <div className="md:col-span-6 space-y-1">
                     <Label className="text-sm">Contact number *</Label>
+<<<<<<< HEAD
                     <Input className="h-8 text-sm" type="tel" value={f.contact_number} onChange={e => setF(s => ({ ...s, contact_number: e.target.value }))} placeholder="Workers can contact this number directly" required />
                   </div>
 
                   <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-5 gap-1">
+=======
+                    <Input className="h-9" type="tel" value={f.contact_number} onChange={e => setF(s => ({ ...s, contact_number: e.target.value }))} placeholder="Workers can contact this number directly" required />
+                  </div>
+
+                  <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-5 gap-1.5">
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                     {[
                       ['accommodation_available', 'Accommodation'],
                       ['food_included', 'Food'],
@@ -7211,7 +7313,11 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                         type="button"
                         key={key}
                         onClick={() => setF(s => ({ ...s, [key]: typeof s[key] === 'boolean' ? !s[key] : (s[key] === 'yes' ? 'no' : 'yes') }))}
+<<<<<<< HEAD
                         className={`h-7 rounded-lg border text-[11px] font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
+=======
+                        className={`h-8 rounded-xl border text-xs font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                       >
                         {label}
                       </button>
@@ -7219,11 +7325,19 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                   </div>
                 </div>
 
+<<<<<<< HEAD
                 <div className="grid grid-cols-2 gap-2 pt-1 shrink-0 border-t bg-white">
                   <Button type="button" variant="outline" onClick={prevStep} className="h-9 rounded-xl border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold">
                     <ArrowLeft className="w-4 h-4 mr-2" /> Back
                   </Button>
                   <Button type="submit" disabled={busy} className="h-9 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
+=======
+                <div className="grid grid-cols-2 gap-2 pt-1.5 shrink-0 border-t bg-white">
+                  <Button type="button" variant="outline" onClick={prevStep} className="h-10 rounded-xl border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold">
+                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                  </Button>
+                  <Button type="submit" disabled={busy} className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                     {busy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     {initialJob?.id ? 'Update Job' : 'Publish Job'}
                   </Button>
@@ -7238,8 +7352,11 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
 }
 
 function HiredJobs({ token, jobs, reload, onChat }) {
+<<<<<<< HEAD
   const employerSubscription = getSubscriptionFeatures('employer', loadSession()?.profile);
   const employerPlan = employerSubscription.plan;
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [loadingApp, setLoadingApp] = useState(false);
@@ -7584,6 +7701,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                         </div>
                       </div>
 
+<<<<<<< HEAD
                       {/* Plan Based Attendance Action */}
                       {selectedDate && canMarkAttendance && (
                         <div className={`mb-4 p-3 rounded-xl border ${employerSubscription.manualAttendance ? 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-700' : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-700'}`}>
@@ -7607,6 +7725,25 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           ) : (
                             <Button size="sm" variant="ghost" className="mt-2 text-emerald-700 hover:bg-emerald-100" onClick={() => setSelectedDate(null)}>Close</Button>
                           )}
+=======
+                      {/* GPS Auto Attendance Notice */}
+                      {selectedDate && canMarkAttendance && (
+                        <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-700">
+                          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mb-1">
+                            GPS auto attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </p>
+                          <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                            Attendance is marked automatically from the employee Ongoing job GPS check-in when they are inside the employer selected radius. Manual attendance marking is disabled.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="mt-2 text-emerald-700 hover:bg-emerald-100"
+                            onClick={() => setSelectedDate(null)}
+                          >
+                            Close
+                          </Button>
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                         </div>
                       )}
 
@@ -7870,8 +8007,11 @@ function EmployerProfile({ token, me, onSaved, onLogout }) {
   const [f,setF]=useState({});
 const [busy,setBusy]=useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+<<<<<<< HEAD
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
   const [finalSaved, setFinalSaved] = useState(false);
 
 const [savedData,setSavedData]=useState({});
@@ -8329,11 +8469,18 @@ if (changed && finalSaved) {
           variant="outline"
           disabled={busy}
           onClick={() => setSettingsOpen(true)}
+<<<<<<< HEAD
           className="h-12 !bg-red-600 !text-white !border-red-600 hover:!bg-red-700 hover:!text-white shadow-lg shadow-red-600/25 font-bold"
           style={{ backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' }}
         >
           <ShieldCheck className="w-4 h-4 mr-2 text-white" />
           <span className="text-white font-bold">Account settings</span>
+=======
+          className="h-12 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+        >
+          <ShieldCheck className="w-4 h-4 mr-2" />
+          Account settings
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
         </Button>
         <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
           <SheetContent side="right" className="w-full sm:max-w-md">
@@ -8352,6 +8499,7 @@ if (changed && finalSaved) {
 
               <div className="rounded-2xl border p-4 space-y-3">
                 <p className="text-sm font-semibold text-slate-900">Quick actions</p>
+<<<<<<< HEAD
                 <Button
                   type="button"
                   variant="outline"
@@ -8370,6 +8518,8 @@ if (changed && finalSaved) {
                   <MessageSquare className="w-4 h-4 mr-2" />
                   Help & Support
                 </Button>
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
                 <AccountActivitySheet token={token} accent="emerald" />
                 <Button
                   type="button"
@@ -8393,14 +8543,18 @@ if (changed && finalSaved) {
             </div>
           </SheetContent>
         </Sheet>
+<<<<<<< HEAD
         <SubscriptionPlansDialog open={subscriptionOpen} onOpenChange={setSubscriptionOpen} role="employer" me={me} />
         <HelpSupportDialog open={supportOpen} onOpenChange={setSupportOpen} role="employer" me={me} />
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
       </div>
     </div>
   );
 }
 
 
+<<<<<<< HEAD
 
 function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const isEmployer = role === 'employer';
@@ -8645,6 +8799,8 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
   );
 }
 
+=======
+>>>>>>> 2e184e548a506e14c8bce48a1472abbe6dbea4d4
 // ============================================================
 // Avatar uploader (used by both worker & employer profile)
 // ============================================================
