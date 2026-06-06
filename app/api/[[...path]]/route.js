@@ -90,21 +90,8 @@ async function logActivity(admin, userId, action, details = {}, actorId = null) 
   }
 }
 
-function getMsg91AuthKey() {
-  return (process.env.MSG91_AUTH_KEY || process.env.MSG91_AUTHKEY || '').trim();
-}
-
-function getMsg91TemplateId() {
-  return (
-    process.env.MSG91_TEMPLATE_ID ||
-    process.env.MSG91_OTP_TEMPLATE_ID ||
-    process.env.MSG91_SENDOTP_TEMPLATE_ID ||
-    ''
-  ).trim();
-}
-
 function isMsg91Configured() {
-  return !!getMsg91AuthKey() && !!getMsg91TemplateId();
+  return !!process.env.MSG91_AUTH_KEY && !!process.env.MSG91_TEMPLATE_ID;
 }
 
 function canUseDevOtpFallback() {
@@ -121,81 +108,31 @@ function normalizePhone(phone) {
   return null;
 }
 
-function msg91SafeError(data, fallback) {
-  if (!data) return fallback || 'Unknown MSG91 response';
-  if (typeof data === 'string') return data;
-  if (Array.isArray(data?.errors) && data.errors.length) {
-    return data.errors.map((e) => (typeof e === 'string' ? e : e?.message || JSON.stringify(e))).join(', ');
-  }
-  return data?.message || data?.error || data?.description || fallback || JSON.stringify(data);
-}
-
 async function sendSmsOtp(phone, code) {
-  const authKey = getMsg91AuthKey();
-  const templateId = getMsg91TemplateId();
-
-  if (!authKey || !templateId) {
+  if (!isMsg91Configured()) {
     if (canUseDevOtpFallback()) {
       console.warn(`DEV OTP for ${phone}: ${code}`);
       return { type: 'success', dev: true };
     }
-    throw new Error('SMS OTP is not configured. Add MSG91_AUTH_KEY and MSG91_TEMPLATE_ID in Vercel/.env.local, then redeploy. Use ALLOW_DEV_OTP=true only for local testing.');
+    throw new Error('SMS OTP is not configured. Add MSG91_AUTH_KEY and MSG91_TEMPLATE_ID in .env.local, or set ALLOW_DEV_OTP=true only for local testing.');
   }
 
-  // MSG91 SendOTP endpoint expects the mobile number without '+'.
-  // India examples: 919876543210.
   const cleanPhone = String(phone).replace(/\D/g, '');
-  if (!cleanPhone || cleanPhone.length < 11 || cleanPhone.length > 15) {
-    throw new Error('Invalid mobile number. Use country code format, e.g. 919876543210.');
-  }
-
   const url = new URL('https://control.msg91.com/api/v5/otp');
-  url.searchParams.set('template_id', templateId);
+  url.searchParams.set('template_id', process.env.MSG91_TEMPLATE_ID);
   url.searchParams.set('mobile', cleanPhone);
   url.searchParams.set('otp', code);
-  url.searchParams.set('otp_expiry', '10');
-  // Some MSG91 accounts accept authkey only as a header, while some examples include it as query.
-  // Sending both avoids "request accepted locally but not visible in MSG91 logs" confusion.
-  url.searchParams.set('authkey', authKey);
 
   const res = await fetch(url.toString(), {
     method: 'GET',
-    headers: {
-      authkey: authKey,
-      accept: 'application/json',
-    },
+    headers: { authkey: process.env.MSG91_AUTH_KEY },
     cache: 'no-store',
   });
 
-  const text = await res.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-
-  console.log('MSG91 SendOTP response:', {
-    ok: res.ok,
-    status: res.status,
-    type: data?.type,
-    message: data?.message || data?.error || data?.description || (typeof data === 'string' ? data.slice(0, 160) : undefined),
-    mobile: cleanPhone,
-    template_id: templateId,
-  });
-
-  const success =
-    res.ok &&
-    (
-      data?.type === 'success' ||
-      data?.type === 'successfully_sent' ||
-      data?.message === 'OTP sent successfully' ||
-      data?.request_id ||
-      data?.otp_request_id
-    );
-
-  if (!success) {
-    throw new Error(`MSG91 OTP send failed: ${msg91SafeError(data, res.statusText)}`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data?.type && data.type !== 'success')) {
+    const message = data?.message || data?.errors?.[0] || data?.error || res.statusText;
+    throw new Error(`MSG91 OTP send failed: ${message || 'Unknown error'}`);
   }
 
   return data || { type: 'success' };
@@ -288,17 +225,9 @@ async function route(request, { params }) {
       await admin.from('user_profiles').update({ phone, updated_at: new Date().toISOString() }).eq('id', me.id);
       const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
       if (profile?.role === 'worker') {
-        await admin.from('workers').update({
-          mobile_verified: true,
-          verified_mobile: phone,
-          mobile_verified_at: new Date().toISOString(),
-        }).eq('user_id', me.id);
+        await admin.from('workers').update({ mobile_verified: true }).eq('user_id', me.id);
       } else if (profile?.role === 'employer') {
-        await admin.from('employers').update({
-          mobile_verified: true,
-          verified_mobile: phone,
-          mobile_verified_at: new Date().toISOString(),
-        }).eq('user_id', me.id);
+        await admin.from('employers').update({ mobile_verified: true }).eq('user_id', me.id);
       }
       return json({ ok: true, mobile_verified: true });
     }

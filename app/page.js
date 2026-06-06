@@ -1160,8 +1160,11 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
     amber: 'border-amber-200 bg-amber-50/60 text-amber-800',
   };
   const button = verified
-    ? 'border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:!opacity-100 disabled:bg-emerald-600 disabled:text-white disabled:cursor-default'
-    : 'border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700';
+    ? 'w2w-verify-button w2w-verify-done border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:!opacity-100 disabled:bg-emerald-600 disabled:text-white disabled:cursor-default'
+    : 'w2w-verify-button w2w-verify-idle border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700';
+  const buttonStyle = verified
+    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
+    : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
   return (
     <div className={`rounded-3xl border ${styles[tone] || styles.indigo} p-4 shadow-sm`}>
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -1169,7 +1172,7 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
           <h3 className="font-extrabold flex items-center gap-2">{icon}{title}</h3>
           <Badge className={verified ? 'mt-2 bg-emerald-100 text-emerald-800 border border-emerald-200' : 'mt-2 bg-white text-slate-600 border border-slate-200'}>{verified ? 'Section verified' : 'Review pending'}</Badge>
         </div>
-        <Button size="sm" variant="outline" disabled={disabled || verified} onClick={onVerify} className={button}>
+        <Button size="sm" variant="outline" disabled={disabled || verified} onClick={onVerify} className={button} style={buttonStyle}>
           <CheckCircle2 className="w-4 h-4 mr-1" /> {verified ? 'Done' : 'Verify'}
         </Button>
       </div>
@@ -3742,8 +3745,9 @@ function LocationSearchBox({
     const v = e.target.value;
     setQuery(v);
     updateDropdownPosition();
-    onChange?.({ location_text: v, latitude: null, longitude: null });
-
+    // Do not push typed text to the saved profile/location state.
+    // Location must only change after selecting a suggestion, using GPS/map,
+    // and then clicking the parent Save Location button.
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchPredictions(v), 250);
   };
@@ -4722,15 +4726,16 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
       return;
     }
 
-    // When the saved location arrives from DB after refresh/login, keep it closed.
-    // Do not treat the initial DB hydration as a user edit.
-    if (!lastLoadedLocationKeyRef.current || !locationEditUnlocked) {
+    // Saved locations must stay closed after refresh/login.
+    // While the editor is open, typing/selecting a new location must NOT auto-save
+    // or auto-close. It should close only after the user clicks Save Location.
+    if (!locationEditUnlocked && !editingLocation) {
       lastLoadedLocationKeyRef.current = locationKey;
       setSavedKey(locationKey);
       setEditingLocation(false);
       setLocationEditUnlocked(false);
     }
-  }, [hasSaved, locationKey, locationEditUnlocked]);
+  }, [hasSaved, locationKey, locationEditUnlocked, editingLocation]);
 
   const isEmerald = color === 'emerald';
   const wrapClass = isEmerald
@@ -4929,6 +4934,16 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
   };
 
   const inputClass = 'h-11 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0';
+  const documentButtonStyle = lockedVerified
+    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
+    : (status === 'pending' || status === 'submitted')
+      ? { backgroundColor: '#f59e0b', color: '#ffffff', borderColor: '#f59e0b' }
+      : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
+  const documentButtonStateClass = lockedVerified
+    ? 'w2w-verify-button w2w-verify-done'
+    : (status === 'pending' || status === 'submitted')
+      ? 'w2w-verify-button w2w-verify-pending'
+      : 'w2w-verify-button w2w-verify-idle';
 
   return (
     <Card className="border-slate-200 shadow-sm overflow-hidden rounded-3xl bg-white">
@@ -5077,7 +5092,7 @@ status==="pending" ||
 status==="submitted"
 }
 
-className={`
+className={`${documentButtonStateClass}
 
 min-w-[220px]
 h-12
@@ -5112,6 +5127,7 @@ status==="submitted"
 }
 
 `}
+style={documentButtonStyle}
 >
 
 {
@@ -5377,10 +5393,15 @@ function SectionVerificationAction({ token, me, section, title, description, col
   const Icon = status === 'verified' ? CheckCircle2 : status === 'pending' ? Clock : ShieldCheck;
   const blocked = !!disabled || status === 'pending' || status === 'verified';
   const actionClass = status === 'verified'
-    ? 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
+    ? 'w2w-verify-button w2w-verify-done bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
     : status === 'pending'
-      ? 'bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
-      : '!bg-rose-600 !text-white hover:!bg-rose-700 disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-pointer';
+      ? 'w2w-verify-button w2w-verify-pending bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
+      : 'w2w-verify-button w2w-verify-idle !bg-rose-600 !text-white hover:!bg-rose-700 disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-pointer';
+  const actionStyle = status === 'verified'
+    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
+    : status === 'pending'
+      ? { backgroundColor: '#f59e0b', color: '#ffffff', borderColor: '#f59e0b' }
+      : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
   const sendForReview = async () => {
     if (blocked || busy) return;
     setBusy(true);
@@ -5416,6 +5437,7 @@ function SectionVerificationAction({ token, me, section, title, description, col
         disabled={busy || blocked}
         onClick={sendForReview}
         className={`${actionClass} min-w-[220px] h-12 rounded-2xl font-semibold transition-all duration-300 disabled:!opacity-100 disabled:cursor-not-allowed`}
+        style={actionStyle}
       >
         {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Icon className="w-4 h-4 mr-2" />}
         {label}
@@ -6299,7 +6321,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
       </div>
 
       {!verified && (
-        <Button type="button" className="mt-4 !bg-rose-600 hover:!bg-rose-700 !text-white disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100" disabled={disabled || busy} onClick={openVerification}>
+        <Button type="button" className="w2w-verify-button w2w-verify-idle mt-4 !bg-rose-600 hover:!bg-rose-700 !text-white disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100" style={{ backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' }} disabled={disabled || busy} onClick={openVerification}>
           <Camera className="w-4 h-4 mr-2" /> Send for Verification
         </Button>
       )}
