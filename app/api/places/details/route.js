@@ -8,7 +8,7 @@ function getKey() {
 }
 
 function toLocationFromNew(place, fallbackId) {
-  const name = place.displayName?.text || '';
+  const name = typeof place.displayName === 'object' ? (place.displayName?.text || '') : (place.displayName || '');
   const address = place.formattedAddress || name;
   const text = name && address && !address.toLowerCase().startsWith(name.toLowerCase()) ? `${name} - ${address}` : (address || name || 'Selected location');
   return {

@@ -116,7 +116,7 @@ async function googlePlacesNewTextSearch(input, key) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !Array.isArray(data.places)) return [];
   return data.places.map((place) => {
-    const name = getText(place.displayName) || '';
+    const name = typeof place.displayName === 'object' ? (place.displayName?.text || '') : (place.displayName || '');
     const address = place.formattedAddress || '';
     const description = name && address && !address.toLowerCase().startsWith(name.toLowerCase())
       ? `${name} - ${address}`
