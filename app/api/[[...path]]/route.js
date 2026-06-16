@@ -51,19 +51,18 @@ function planFeatures(role, planName) {
   const roleKey = role === 'employer' ? 'employer' : 'worker';
   const plans = {
     worker: {
-      Free: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 10, featuredProfile: false, analytics: false, premiumBadge: false },
-      Starter: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, featuredProfile: false, analytics: false, premiumBadge: false },
-      'Pro Worker': { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, featuredProfile: true, analytics: true, premiumBadge: false },
-      'Elite Worker': { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, featuredProfile: true, analytics: true, premiumBadge: true },
+      Basic: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 5, nearbySearch: true, mailAlerts: true, profileVisibility: 'medium', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
+      Growth: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'high', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: true, analytics: true },
+      Premium: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
     },
     employer: {
-      Free: { manualAttendance: true, gpsAttendance: false, maxActiveJobs: 3, radiusControl: false, featuredJobs: false, analytics: false },
-      Business: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, radiusControl: true, featuredJobs: false, analytics: false },
-      'Premium Employer': { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, radiusControl: true, featuredJobs: true, analytics: true },
-      Enterprise: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true },
+      Starter: { manualAttendance: true, gpsAttendance: false, maxActiveJobs: 5, maxWorkersPerJob: 5, limitedWorkerDatabase: true, fullWorkerDatabase: false, mailAlerts: true, basicSupport: true, prioritySupport: false, directEmployeeChat: false, companyBranding: false, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false },
+      Business: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 10, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: true, featuredJobs: false, analytics: true, multiLocation: false },
+      Enterprise: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 20, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true },
     },
   };
-  const plan = plans[roleKey][planName] ? planName : 'Free';
+  const fallbackPlan = roleKey === 'employer' ? 'Free' : 'Basic';
+  const plan = plans[roleKey][planName] ? planName : fallbackPlan;
   return { plan_name: plan, ...(plans[roleKey][plan] || plans[roleKey].Free) };
 }
 
@@ -90,6 +89,18 @@ async function logActivity(admin, userId, action, details = {}, actorId = null) 
   }
 }
 
+function getTwoFactorApiKey() {
+  return process.env.TWO_FACTOR_API_KEY || process.env.TWOFACTOR_API_KEY || process.env.TWO_FACTOR_AUTH_KEY || '';
+}
+
+function getTwoFactorTemplateName() {
+  return process.env.TWO_FACTOR_TEMPLATE_NAME || process.env.TWOFACTOR_TEMPLATE_NAME || process.env.TWO_FACTOR_OTP_TEMPLATE || '';
+}
+
+function isTwoFactorConfigured() {
+  return !!getTwoFactorApiKey();
+}
+
 function isMsg91Configured() {
   return !!process.env.MSG91_AUTH_KEY && !!process.env.MSG91_TEMPLATE_ID;
 }
@@ -109,33 +120,56 @@ function normalizePhone(phone) {
 }
 
 async function sendSmsOtp(phone, code) {
-  if (!isMsg91Configured()) {
-    if (canUseDevOtpFallback()) {
-      console.warn(`DEV OTP for ${phone}: ${code}`);
-      return { type: 'success', dev: true };
-    }
-    throw new Error('SMS OTP is not configured. Add MSG91_AUTH_KEY and MSG91_TEMPLATE_ID in .env.local, or set ALLOW_DEV_OTP=true only for local testing.');
-  }
-
   const cleanPhone = String(phone).replace(/\D/g, '');
-  const url = new URL('https://control.msg91.com/api/v5/otp');
-  url.searchParams.set('template_id', process.env.MSG91_TEMPLATE_ID);
-  url.searchParams.set('mobile', cleanPhone);
-  url.searchParams.set('otp', code);
 
-  const res = await fetch(url.toString(), {
-    method: 'GET',
-    headers: { authkey: process.env.MSG91_AUTH_KEY },
-    cache: 'no-store',
-  });
+  // Preferred provider: 2Factor.in. Add only TWO_FACTOR_API_KEY in .env.local.
+  // Optional: TWO_FACTOR_TEMPLATE_NAME if your 2Factor account uses an approved OTP template name.
+  if (isTwoFactorConfigured()) {
+    const apiKey = getTwoFactorApiKey();
+    const template = getTwoFactorTemplateName();
+    const encodedTemplate = template ? `/${encodeURIComponent(template)}` : '';
+    const url = `https://2factor.in/API/V1/${encodeURIComponent(apiKey)}/SMS/${cleanPhone}/${encodeURIComponent(code)}${encodedTemplate}`;
 
-  const data = await res.json().catch(() => null);
-  if (!res.ok || (data?.type && data.type !== 'success')) {
-    const message = data?.message || data?.errors?.[0] || data?.error || res.statusText;
-    throw new Error(`MSG91 OTP send failed: ${message || 'Unknown error'}`);
+    const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+    const data = await res.json().catch(() => null);
+    const status = String(data?.Status || data?.status || '').toLowerCase();
+
+    if (!res.ok || (status && status !== 'success')) {
+      const message = data?.Details || data?.details || data?.message || res.statusText;
+      throw new Error(`2Factor OTP send failed: ${message || 'Unknown error'}`);
+    }
+
+    return { type: 'success', provider: '2factor', response: data };
   }
 
-  return data || { type: 'success' };
+  // Existing fallback provider: MSG91, kept for compatibility.
+  if (isMsg91Configured()) {
+    const url = new URL('https://control.msg91.com/api/v5/otp');
+    url.searchParams.set('template_id', process.env.MSG91_TEMPLATE_ID);
+    url.searchParams.set('mobile', cleanPhone);
+    url.searchParams.set('otp', code);
+
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { authkey: process.env.MSG91_AUTH_KEY },
+      cache: 'no-store',
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data?.type && data.type !== 'success')) {
+      const message = data?.message || data?.errors?.[0] || data?.error || res.statusText;
+      throw new Error(`MSG91 OTP send failed: ${message || 'Unknown error'}`);
+    }
+
+    return data || { type: 'success', provider: 'msg91' };
+  }
+
+  if (canUseDevOtpFallback()) {
+    console.warn(`DEV OTP for ${phone}: ${code}`);
+    return { type: 'success', dev: true };
+  }
+
+  throw new Error('SMS OTP is not configured. Add TWO_FACTOR_API_KEY in .env.local. Optional: TWO_FACTOR_TEMPLATE_NAME. For local testing only, set ALLOW_DEV_OTP=true.');
 }
 
 // Generate a unique 6-digit login_id, retrying on collision.
@@ -659,16 +693,16 @@ async function route(request, { params }) {
     if (path === 'subscription/current' && method === 'GET') {
       const role = me.role === 'employer' ? 'employer' : 'worker';
       const sub = await getActiveSubscription(admin, me.id, role);
-      const features = planFeatures(role, sub?.plan_name || 'Free');
-      return json({ subscription: sub || { user_id: me.id, role, plan_name: 'Free', status: 'active' }, features });
+      const features = planFeatures(role, sub?.plan_name || (role === 'employer' ? 'Starter' : 'Basic'));
+      return json({ subscription: { ...(sub || { user_id: me.id, role, status: 'active' }), plan_name: features.plan_name }, features });
     }
 
     if (path === 'subscription/select' && method === 'POST') {
       const body = await request.json().catch(() => ({}));
       const role = body.role === 'employer' ? 'employer' : 'worker';
       if ((me.role === 'employer' ? 'employer' : 'worker') !== role && me.role !== 'admin') return err('Subscription role mismatch', 403);
-      const allowed = role === 'employer' ? ['Free','Business','Premium Employer','Enterprise'] : ['Free','Starter','Pro Worker','Elite Worker'];
-      const planName = allowed.includes(body.plan_name) ? body.plan_name : 'Free';
+      const allowed = role === 'employer' ? ['Starter','Business','Enterprise'] : ['Basic','Growth','Premium'];
+      const planName = allowed.includes(body.plan_name) ? body.plan_name : (role === 'employer' ? 'Starter' : 'Basic');
       const payload = {
         user_id: me.id,
         role,
@@ -685,7 +719,7 @@ async function route(request, { params }) {
         await admin.from('user_profiles').update({ subscription_plan: planName, subscription_status: 'active', subscription_expiry: null }).eq('id', me.id);
         return json({ subscription: data, features: planFeatures(role, planName) });
       } catch (e) {
-        return err('Run supabase_subscription_feature_gating.sql before saving subscriptions permanently.', 400);
+        return json({ subscription: payload, features: planFeatures(role, planName), saved: false });
       }
     }
 
@@ -1266,7 +1300,18 @@ async function route(request, { params }) {
         overtime_available: !!body.overtime_available,
         transportation_provided: !!body.transportation_provided,
         post_valid_days: Number(body.post_valid_days) || 5,
-        attendance_radius_meters: Math.max(10, Math.min(Number(body.attendance_radius_meters) || 20, 200)),
+        attendance_radius_meters: Math.max(1, Math.min(Number(body.attendance_radius_meters) || 20, 1000)),
+        hourly_pay: Number(body.hourly_pay) || 0,
+        pay_type: body.pay_type || null,
+        duration_hours: Number(body.duration_hours) || 0,
+        work_duration_type: body.work_duration_type || null,
+        end_date: body.end_date || null,
+        start_time: body.start_time || null,
+        start_meridiem: body.start_meridiem || null,
+        end_time: body.end_time || null,
+        end_meridiem: body.end_meridiem || null,
+        work_time_range: body.work_time_range || null,
+        candidate_verification: body.candidate_verification || 'all',
         expires_at: (() => { const d = new Date(); d.setDate(d.getDate() + (Number(body.post_valid_days) || 5)); return d.toISOString(); })(),
       };
 
@@ -1310,7 +1355,17 @@ async function route(request, { params }) {
         overtime_available: !!body.overtime_available,
         transportation_provided: !!body.transportation_provided,
         post_valid_days: days,
-        attendance_radius_meters: Math.max(10, Math.min(Number(body.attendance_radius_meters || current.attendance_radius_meters) || 20, 200)),
+        attendance_radius_meters: Math.max(1, Math.min(Number(body.attendance_radius_meters || current.attendance_radius_meters) || 20, 1000)),
+        hourly_pay: Number(body.hourly_pay) || current.hourly_pay || 0,
+        pay_type: body.pay_type || current.pay_type || null,
+        duration_hours: Number(body.duration_hours) || current.duration_hours || 0,
+        work_duration_type: body.work_duration_type || current.work_duration_type || null,
+        end_date: body.end_date || current.end_date || null,
+        start_time: body.start_time || current.start_time || null,
+        start_meridiem: body.start_meridiem || current.start_meridiem || null,
+        end_time: body.end_time || current.end_time || null,
+        end_meridiem: body.end_meridiem || current.end_meridiem || null,
+        work_time_range: body.work_time_range || current.work_time_range || null,
         expires_at: expires.toISOString(),
         status: body.status || current.status || 'open',
       };
@@ -1336,7 +1391,7 @@ async function route(request, { params }) {
     if (path.match(/^jobs\/[^/]+\/apply$/) && method === 'POST') {
       const jobId = path.split('/')[1];
       const body = await request.json().catch(() => ({}));
-      const { data: profile } = await admin.from('user_profiles').select('role,full_name,email').eq('id', me.id).maybeSingle();
+      const { data: profile } = await admin.from('user_profiles').select('role,full_name,email,verified,verification_status').eq('id', me.id).maybeSingle();
       if (profile?.role !== 'worker') return err('Only workers can apply', 403);
       const workerSub = await getActiveSubscription(admin, me.id, 'worker');
       const workerFeatures = planFeatures('worker', workerSub?.plan_name || 'Free');
@@ -1351,8 +1406,12 @@ async function route(request, { params }) {
         if ((count || 0) >= workerFeatures.maxApplicationsPerMonth) return err(`${workerFeatures.plan_name} plan allows ${workerFeatures.maxApplicationsPerMonth} job applications per month. Upgrade to apply more.`, 403);
       }
 
-      const { data: job } = await admin.from('jobs').select('id,title,employer_id').eq('id', jobId).maybeSingle();
+      const { data: job } = await admin.from('jobs').select('*').eq('id', jobId).maybeSingle();
       if (!job) return err('Job not found', 404);
+      const requiredCandidate = String(job.candidate_verification || 'all').toLowerCase();
+      const isWorkerVerified = !!profile?.verified || profile?.verification_status === 'verified';
+      if (requiredCandidate === 'verified' && !isWorkerVerified) return err('Only verified candidates can apply for this job', 403);
+      if (requiredCandidate === 'unverified' && isWorkerVerified) return err('Only unverified candidates can apply for this job', 403);
 
       const { data: app, error } = await admin.from('applications').insert({
         job_id: jobId, worker_id: me.id, message: body.message || null,
@@ -1540,14 +1599,14 @@ async function route(request, { params }) {
       if (appRow.worker_id !== me.id && me.role !== 'admin') return err('Only assigned employee can mark GPS attendance', 403);
       const workerSub = await getActiveSubscription(admin, appRow.worker_id, 'worker');
       const workerFeatures = planFeatures('worker', workerSub?.plan_name || 'Free');
-      if (!workerFeatures.gpsAttendance && me.role !== 'admin') return err('GPS attendance is available from Starter plan. Free plan uses employer manual attendance.', 403);
+      if (!workerFeatures.gpsAttendance && me.role !== 'admin') return err('GPS attendance is available from Growth plan. Basic plan uses employer manual attendance.', 403);
       if (appRow.status !== 'ongoing') return err('Attendance can be marked only for ongoing jobs', 400);
 
       const jobLat = Number(appRow.jobs?.latitude);
       const jobLng = Number(appRow.jobs?.longitude);
       if (!Number.isFinite(jobLat) || !Number.isFinite(jobLng)) return err('Employer has not saved job GPS location', 400);
 
-      const allowedMeters = Math.max(10, Math.min(Number(appRow.jobs?.attendance_radius_meters) || 20, 200));
+      const allowedMeters = Math.max(1, Math.min(Number(appRow.jobs?.attendance_radius_meters) || 20, 1000));
       const distance = distanceMeters(workerLat, workerLng, jobLat, jobLng);
       if (distance === null) return err('Unable to calculate GPS distance', 400);
       if (distance > allowedMeters) return err(`You are ${Math.round(distance)}m away from job location. Attendance allowed within ${allowedMeters}m only.`, 400);

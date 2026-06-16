@@ -1064,3 +1064,68 @@ button[class*="!bg-red-600"] * {
   color: #ffffff !important;
   stroke: #ffffff !important;
 }
+
+
+/* ============================================================
+   READABILITY FIX: remove unreadable black status pills/buttons.
+   UI color only; no layout, state, or workflow changes.
+   ============================================================ */
+.badge,
+[role="status"] {
+  opacity: 1 !important;
+}
+span[class*="bg-slate-900"],
+div[class*="bg-slate-900"],
+span[class*="bg-gray-900"],
+div[class*="bg-gray-900"],
+span[class*="bg-neutral-900"],
+div[class*="bg-neutral-900"],
+span[class*="bg-zinc-900"],
+div[class*="bg-zinc-900"],
+span[class*="bg-black"],
+div[class*="bg-black"] {
+  background-color: #0284c7 !important;
+  border-color: #0284c7 !important;
+  color: #ffffff !important;
+}
+span[class*="bg-slate-900"] *,
+div[class*="bg-slate-900"] *,
+span[class*="bg-gray-900"] *,
+div[class*="bg-gray-900"] *,
+span[class*="bg-neutral-900"] *,
+div[class*="bg-neutral-900"] *,
+span[class*="bg-zinc-900"] *,
+div[class*="bg-zinc-900"] *,
+span[class*="bg-black"] *,
+div[class*="bg-black"] * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+/* Make custom status badges win over component defaults. */
+span[class*="bg-rose-50"], div[class*="bg-rose-50"] {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #be123c !important;
+}
+span[class*="bg-rose-50"] *, div[class*="bg-rose-50"] * {
+  color: #be123c !important;
+  stroke: #be123c !important;
+}
+span[class*="bg-emerald-100"], div[class*="bg-emerald-100"] {
+  background-color: #d1fae5 !important;
+  border-color: #a7f3d0 !important;
+  color: #047857 !important;
+}
+span[class*="bg-emerald-100"] *, div[class*="bg-emerald-100"] * {
+  color: #047857 !important;
+  stroke: #047857 !important;
+}
+span[class*="bg-emerald-600"], div[class*="bg-emerald-600"], button[class*="bg-emerald-600"] {
+  background-color: #059669 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+}
+span[class*="bg-emerald-600"] *, div[class*="bg-emerald-600"] *, button[class*="bg-emerald-600"] * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}

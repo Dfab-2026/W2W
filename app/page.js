@@ -13,6 +13,7 @@ import {
   FileText, Tag, IndianRupee, Calendar, Award, Check, UserCircle, Sun, Moon, Globe2, Trash2, CheckCheck, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,16 +48,32 @@ function Work2WishLogo({ className = 'w-10 h-10', imgClassName = 'w-full h-full 
 // ----------------------------- subscription feature gates -----------------------------
 const SUBSCRIPTION_FEATURES = {
   worker: {
-    Free: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 10, featuredProfile: false, analytics: false, premiumBadge: false, directEmployerContact: false },
-    Starter: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: Infinity, featuredProfile: false, analytics: false, premiumBadge: false, directEmployerContact: false },
-    'Pro Worker': { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: Infinity, featuredProfile: true, analytics: true, premiumBadge: false, directEmployerContact: false },
-    'Elite Worker': { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: Infinity, featuredProfile: true, analytics: true, premiumBadge: true, directEmployerContact: true },
+    Basic: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 5, nearbySearch: true, mailAlerts: true, profileVisibility: 'medium', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
+    Growth: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'high', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: true, analytics: true },
+    Premium: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
   },
   employer: {
-    Free: { manualAttendance: true, gpsAttendance: false, maxActiveJobs: 3, radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false },
-    Business: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: Infinity, radiusControl: true, featuredJobs: false, analytics: false, multiLocation: false },
-    'Premium Employer': { manualAttendance: false, gpsAttendance: true, maxActiveJobs: Infinity, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: false },
-    Enterprise: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: Infinity, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true },
+    Starter: {
+      manualAttendance: true, gpsAttendance: false, maxActiveJobs: 5, maxWorkersPerJob: 5,
+      limitedWorkerDatabase: true, fullWorkerDatabase: false, mailAlerts: true, basicSupport: true,
+      prioritySupport: false, directEmployeeChat: false, companyBranding: false,
+      featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false,
+      radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false,
+    },
+    Business: {
+      manualAttendance: false, gpsAttendance: true, maxActiveJobs: Infinity, maxWorkersPerJob: 10,
+      limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true,
+      prioritySupport: true, directEmployeeChat: true, companyBranding: true,
+      featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false,
+      radiusControl: true, featuredJobs: false, analytics: true, multiLocation: false,
+    },
+    Enterprise: {
+      manualAttendance: true, gpsAttendance: true, maxActiveJobs: Infinity, maxWorkersPerJob: 20,
+      limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true,
+      prioritySupport: true, directEmployeeChat: true, companyBranding: true,
+      featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true,
+      radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true,
+    },
   },
 };
 
@@ -65,9 +82,9 @@ function getSubscriptionIdentity(role, profile) {
 }
 
 function getStoredSubscriptionPlan(role = 'worker', profile = null) {
-  const fallback = 'Free';
-  if (typeof window === 'undefined') return fallback;
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  const fallback = normalizedRole === 'employer' ? 'Starter' : 'Basic';
+  if (typeof window === 'undefined') return fallback;
   const identity = getSubscriptionIdentity(normalizedRole, profile);
   const keys = [
     `w2w-subscription-plan-${normalizedRole}-${identity}`,
@@ -85,7 +102,7 @@ function getStoredSubscriptionPlan(role = 'worker', profile = null) {
 function getSubscriptionFeatures(role = 'worker', profile = null) {
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   const plan = getStoredSubscriptionPlan(normalizedRole, profile);
-  return { plan, ...(SUBSCRIPTION_FEATURES[normalizedRole]?.[plan] || SUBSCRIPTION_FEATURES[normalizedRole].Free) };
+  return { plan, ...(SUBSCRIPTION_FEATURES[normalizedRole]?.[plan] || SUBSCRIPTION_FEATURES[normalizedRole][normalizedRole === 'employer' ? 'Starter' : 'Basic']) };
 }
 
 function SubscriptionLock({ title = 'Upgrade required', description = 'This feature is not available in your current plan.' }) {
@@ -95,6 +112,14 @@ function SubscriptionLock({ title = 'Upgrade required', description = 'This feat
       <p className="mt-1 text-xs text-amber-700">{description}</p>
     </div>
   );
+}
+
+function showSubscriptionRequired(feature = 'this feature', plan = 'Premium') {
+  const message = `Subscribe to ${plan} plan to use ${feature}.`;
+  try { toast.error(message); } catch {}
+  if (typeof window !== 'undefined') {
+    window.setTimeout(() => window.alert(message), 50);
+  }
 }
 
 // ----------------------------- helpers -----------------------------
@@ -304,6 +329,33 @@ function GradientMesh() {
 }
 
 const fmtMoney = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
+const jobPayLabel = (job = {}) => {
+  const type = job.pay_type || job.extra?.pay_type;
+  const daily = Number(job.daily_pay || 0);
+  const hourly = Number(job.hourly_pay || job.extra?.hourly_pay || 0);
+  if (type === 'both' && daily && hourly) return `${fmtMoney(daily)}/day + ${fmtMoney(hourly)}/hr`;
+  if (type === 'hourly' && hourly) return `${fmtMoney(hourly)}/hr`;
+  return `${fmtMoney(daily)}/day`;
+};
+const jobTotalPay = (job = {}) => {
+  const type = job.pay_type || job.extra?.pay_type;
+  const daily = Number(job.daily_pay || 0);
+  const hourly = Number(job.hourly_pay || job.extra?.hourly_pay || 0);
+  const days = Number(job.duration_days || 1);
+  const hours = Number(job.duration_hours || job.extra?.duration_hours || 0);
+  if (type === 'hourly') return hourly * Math.max(1, hours);
+  if (type === 'both') return (daily * Math.max(1, days)) + (hourly * Math.max(0, hours));
+  return daily * Math.max(1, days);
+};
+const jobDurationLabel = (job = {}) => {
+  const type = job.work_duration_type || job.extra?.work_duration_type;
+  const hours = Number(job.duration_hours || job.extra?.duration_hours || 0);
+  const days = Number(job.duration_days || 1);
+  const range = job.work_time_range || job.extra?.work_time_range;
+  if (type === 'hours') return `${hours || 1} hour(s)${range ? ` · ${range}` : ''}`;
+  return `${days} day(s)${range ? ` · ${range}` : ''}`;
+};
 const initials = (name) => (name || '').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
 const isYes = (v) => v === true || v === 'yes' || v === 'true';
 const jobBenefits = (job = {}) => ([
@@ -326,11 +378,190 @@ const detailsToWords = (details = {}) => Object.entries(details || {})
   .filter(([,v]) => v !== null && v !== undefined && v !== '')
   .map(([k,v]) => `${String(k).replace(/_/g, ' ')}: ${Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
 const trMap = {
-  ta: { 'Chats':'அரட்டைகள்','Type worker or company name to start chat':'தேடி அரட்டை தொடங்குங்கள்','Open jobs':'திறந்த வேலைகள்','Search':'தேடு','Post job':'வேலை பதிவு','Publish Job':'வேலை வெளியிடு','Update Job':'வேலை புதுப்பி','Notifications':'அறிவிப்புகள்','History':'வரலாறு','Profile':'சுயவிவரம்','My jobs':'என் வேலைகள்','Apply now':'விண்ணப்பிக்கவும்','Edit':'திருத்து','Hired':'நியமிக்கப்பட்ட','Jobs':'வேலைகள்','Post':'பதிவு' },
-  hi: { 'Chats':'चैट','Type worker or company name to start chat':'खोजें या नई चैट शुरू करें','Open jobs':'खुली नौकरियां','Search':'खोजें','Post job':'नौकरी पोस्ट करें','Publish Job':'नौकरी प्रकाशित करें','Update Job':'नौकरी अपडेट करें','Notifications':'सूचनाएं','History':'इतिहास','Profile':'प्रोफाइल','My jobs':'मेरी नौकरियां','Apply now':'अभी आवेदन करें','Edit':'संपादित करें','Hired':'नियुक्त','Jobs':'नौकरियां','Post':'पोस्ट' },
-  kn: { 'Chats':'ಚಾಟ್‌ಗಳು','Type worker or company name to start chat':'ಹುಡುಕಿ ಅಥವಾ ಹೊಸ ಚಾಟ್ ಆರಂಭಿಸಿ','Open jobs':'ತೆರೆದ ಕೆಲಸಗಳು','Search':'ಹುಡುಕಿ','Post job':'ಕೆಲಸ ಪೋಸ್ಟ್','Publish Job':'ಕೆಲಸ ಪ್ರಕಟಿಸಿ','Update Job':'ಕೆಲಸ ಅಪ್‌ಡೇಟ್','Notifications':'ಅಧಿಸೂಚನೆಗಳು','History':'ಇತಿಹಾಸ','Profile':'ಪ್ರೊಫೈಲ್','My jobs':'ನನ್ನ ಕೆಲಸಗಳು','Apply now':'ಅರ್ಜಿಸಲಿ','Edit':'ತಿದ್ದು','Hired':'ನೇಮಿಸಲಾದ','Jobs':'ಉದ್ಯೋಗಗಳು','Post':'ಪೋಸ್ಟ್' }
+  ta: {
+    'Chats':'அரட்டைகள்','Type worker or company name to start chat':'தொழிலாளர் அல்லது நிறுவனப் பெயரை தட்டச்சு செய்து அரட்டை தொடங்குங்கள்','Open jobs':'திறந்த வேலைகள்','Search':'தேடு','Post job':'வேலை பதிவு','Publish Job':'வேலை வெளியிடு','Update Job':'வேலை புதுப்பி','Notifications':'அறிவிப்புகள்','History':'வரலாறு','Profile':'சுயவிவரம்','My jobs':'என் வேலைகள்','Apply now':'விண்ணப்பிக்கவும்','Edit':'திருத்து','Delete':'நீக்கு','Hired':'நியமிக்கப்பட்டவர்','Jobs':'வேலைகள்','Post':'பதிவு','Refresh':'புதுப்பி','Back':'பின்','Save':'சேமி','Saved':'சேமிக்கப்பட்டது','Submit':'சமர்ப்பி','Verify':'சரிபார்','Verified':'சரிபார்க்கப்பட்டது','Unverified':'சரிபார்க்கப்படவில்லை','Pending':'நிலுவை','Pending review':'மதிப்பாய்வு நிலுவை','Job title':'வேலை தலைப்பு','Category':'வகை','Daily pay':'தினசரி சம்பளம்','Hourly pay':'மணிநேர சம்பளம்','Duration':'காலம்','Start date':'தொடக்க தேதி','Workers needed':'தேவையான தொழிலாளர்கள்','Candidate type':'வேட்பாளர் வகை','All candidates':'அனைத்து வேட்பாளர்கள்','Verified only':'சரிபார்க்கப்பட்டவர்கள் மட்டும்','Unverified only':'சரிபார்க்கப்படாதவர்கள் மட்டும்','Continue':'தொடரவும்','Finish Posting':'பதிவை முடிக்கவும்','Location':'இடம்','Use current GPS':'தற்போதைய GPS பயன்படுத்து','Change':'மாற்று','Full Name':'முழு பெயர்','Company Name':'நிறுவன பெயர்','Phone Number':'தொலைபேசி எண்','Mobile OTP':'மொபைல் OTP','Email':'மின்னஞ்சல்','Official email':'அதிகாரப்பூர்வ மின்னஞ்சல்','Industry':'துறை','Company address':'நிறுவன முகவரி','Address':'முகவரி','Skills':'திறன்கள்','Experience':'அனுபவம்','Expected wage':'எதிர்பார்க்கும் சம்பளம்','Bank Details':'வங்கி விவரங்கள்','Bank account':'வங்கி கணக்கு','IFSC':'IFSC','UPI':'UPI','Selfie verification':'செல்ஃபி சரிபார்ப்பு','Profile Details':'சுயவிவர விவரங்கள்','Documents':'ஆவணங்கள்','Subscription':'சந்தா','Subscribe to use this feature':'இந்த அம்சத்தை பயன்படுத்த சந்தா செலுத்தவும்','Applicants':'விண்ணப்பதாரர்கள்','No applicants yet':'இன்னும் விண்ணப்பதாரர்கள் இல்லை','View Profile':'சுயவிவரம் பார்','Accept':'ஏற்றுக்கொள்','Reject':'நிராகரி','Logout':'வெளியேறு','Settings':'அமைப்புகள்','Language':'மொழி','Worker Dashboard':'தொழிலாளர் டாஷ்போர்டு','Employer Dashboard':'நியமிப்பாளர் டாஷ்போர்டு','Admin Dashboard':'நிர்வாக டாஷ்போர்டு'
+  },
+  hi: {
+    'Chats':'चैट','Type worker or company name to start chat':'चैट शुरू करने के लिए worker या company नाम लिखें','Open jobs':'खुली नौकरियां','Search':'खोजें','Post job':'नौकरी पोस्ट करें','Publish Job':'नौकरी प्रकाशित करें','Update Job':'नौकरी अपडेट करें','Notifications':'सूचनाएं','History':'इतिहास','Profile':'प्रोफाइल','My jobs':'मेरी नौकरियां','Apply now':'अभी आवेदन करें','Edit':'संपादित करें','Delete':'हटाएं','Hired':'नियुक्त','Jobs':'नौकरियां','Post':'पोस्ट','Refresh':'रिफ्रेश','Back':'वापस','Save':'सेव','Saved':'सेव हो गया','Submit':'सबमिट','Verify':'सत्यापित करें','Verified':'सत्यापित','Unverified':'असत्यापित','Pending':'लंबित','Pending review':'समीक्षा लंबित','Job title':'नौकरी का शीर्षक','Category':'श्रेणी','Daily pay':'दैनिक वेतन','Hourly pay':'घंटे का वेतन','Duration':'अवधि','Start date':'आरंभ तिथि','Workers needed':'आवश्यक कर्मचारी','Candidate type':'उम्मीदवार प्रकार','All candidates':'सभी उम्मीदवार','Verified only':'केवल सत्यापित','Unverified only':'केवल असत्यापित','Continue':'जारी रखें','Finish Posting':'पोस्ट पूरा करें','Location':'स्थान','Use current GPS':'वर्तमान GPS उपयोग करें','Change':'बदलें','Full Name':'पूरा नाम','Company Name':'कंपनी का नाम','Phone Number':'फोन नंबर','Mobile OTP':'मोबाइल OTP','Email':'ईमेल','Official email':'आधिकारिक ईमेल','Industry':'उद्योग','Company address':'कंपनी पता','Address':'पता','Skills':'कौशल','Experience':'अनुभव','Expected wage':'अपेक्षित वेतन','Bank Details':'बैंक विवरण','Bank account':'बैंक खाता','IFSC':'IFSC','UPI':'UPI','Selfie verification':'सेल्फी सत्यापन','Profile Details':'प्रोफाइल विवरण','Documents':'दस्तावेज़','Subscription':'सदस्यता','Subscribe to use this feature':'इस सुविधा के लिए सदस्यता लें','Applicants':'आवेदक','No applicants yet':'अभी कोई आवेदक नहीं','View Profile':'प्रोफाइल देखें','Accept':'स्वीकार करें','Reject':'अस्वीकार करें','Logout':'लॉगआउट','Settings':'सेटिंग्स','Language':'भाषा','Worker Dashboard':'वर्कर डैशबोर्ड','Employer Dashboard':'एम्प्लॉयर डैशबोर्ड','Admin Dashboard':'एडमिन डैशबोर्ड'
+  },
+  kn: {
+    'Chats':'ಚಾಟ್‌ಗಳು','Type worker or company name to start chat':'ಚಾಟ್ ಆರಂಭಿಸಲು ಕಾರ್ಮಿಕ ಅಥವಾ ಕಂಪನಿ ಹೆಸರು ಟೈಪ್ ಮಾಡಿ','Open jobs':'ತೆರೆದ ಕೆಲಸಗಳು','Search':'ಹುಡುಕಿ','Post job':'ಕೆಲಸ ಪೋಸ್ಟ್','Publish Job':'ಕೆಲಸ ಪ್ರಕಟಿಸಿ','Update Job':'ಕೆಲಸ ಅಪ್‌ಡೇಟ್','Notifications':'ಅಧಿಸೂಚನೆಗಳು','History':'ಇತಿಹಾಸ','Profile':'ಪ್ರೊಫೈಲ್','My jobs':'ನನ್ನ ಕೆಲಸಗಳು','Apply now':'ಅರ್ಜಿಸಲಿ','Edit':'ತಿದ್ದು','Delete':'ಅಳಿಸಿ','Hired':'ನೇಮಕಗೊಂಡವರು','Jobs':'ಉದ್ಯೋಗಗಳು','Post':'ಪೋಸ್ಟ್','Refresh':'ರಿಫ್ರೆಶ್','Back':'ಹಿಂದೆ','Save':'ಉಳಿಸಿ','Saved':'ಉಳಿಸಲಾಗಿದೆ','Submit':'ಸಲ್ಲಿಸಿ','Verify':'ಪರಿಶೀಲಿಸಿ','Verified':'ಪರಿಶೀಲಿಸಲಾಗಿದೆ','Unverified':'ಪರಿಶೀಲಿಸಿಲ್ಲ','Pending':'ಬಾಕಿ','Pending review':'ಪರಿಶೀಲನೆ ಬಾಕಿ','Job title':'ಕೆಲಸದ ಶೀರ್ಷಿಕೆ','Category':'ವರ್ಗ','Daily pay':'ದಿನದ ವೇತನ','Hourly pay':'ಗಂಟೆ ವೇತನ','Duration':'ಅವಧಿ','Start date':'ಪ್ರಾರಂಭ ದಿನಾಂಕ','Workers needed':'ಬೇಕಾದ ಕಾರ್ಮಿಕರು','Candidate type':'ಅಭ್ಯರ್ಥಿ ಪ್ರಕಾರ','All candidates':'ಎಲ್ಲ ಅಭ್ಯರ್ಥಿಗಳು','Verified only':'ಪರಿಶೀಲಿಸಿದವರು ಮಾತ್ರ','Unverified only':'ಪರಿಶೀಲಿಸದವರು ಮಾತ್ರ','Continue':'ಮುಂದುವರಿಸಿ','Finish Posting':'ಪೋಸ್ಟ್ ಮುಗಿಸಿ','Location':'ಸ್ಥಳ','Use current GPS':'ಪ್ರಸ್ತುತ GPS ಬಳಸಿ','Change':'ಬದಲಿಸಿ','Full Name':'ಪೂರ್ಣ ಹೆಸರು','Company Name':'ಕಂಪನಿ ಹೆಸರು','Phone Number':'ಫೋನ್ ಸಂಖ್ಯೆ','Mobile OTP':'ಮೊಬೈಲ್ OTP','Email':'ಇಮೇಲ್','Official email':'ಅಧಿಕೃತ ಇಮೇಲ್','Industry':'ಉದ್ಯಮ','Company address':'ಕಂಪನಿ ವಿಳಾಸ','Address':'ವಿಳಾಸ','Skills':'ಕೌಶಲ್ಯಗಳು','Experience':'ಅನುಭವ','Expected wage':'ನಿರೀಕ್ಷಿತ ವೇತನ','Bank Details':'ಬ್ಯಾಂಕ್ ವಿವರಗಳು','Bank account':'ಬ್ಯಾಂಕ್ ಖಾತೆ','IFSC':'IFSC','UPI':'UPI','Selfie verification':'ಸೆಲ್ಫಿ ಪರಿಶೀಲನೆ','Profile Details':'ಪ್ರೊಫೈಲ್ ವಿವರಗಳು','Documents':'ದಾಖಲೆಗಳು','Subscription':'ಚಂದಾದಾರಿಕೆ','Subscribe to use this feature':'ಈ ವೈಶಿಷ್ಟ್ಯ ಬಳಸಲು ಚಂದಾದಾರರಾಗಿ','Applicants':'ಅರ್ಜಿದಾರರು','No applicants yet':'ಇನ್ನೂ ಅರ್ಜಿದಾರರಿಲ್ಲ','View Profile':'ಪ್ರೊಫೈಲ್ ನೋಡಿ','Accept':'ಸ್ವೀಕರಿಸಿ','Reject':'ನಿರಾಕರಿಸಿ','Logout':'ಲಾಗ್ ಔಟ್','Settings':'ಸೆಟ್ಟಿಂಗ್‌ಗಳು','Language':'ಭಾಷೆ','Worker Dashboard':'ಕಾರ್ಮಿಕ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್','Employer Dashboard':'ನಿಯೋಜಕ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್','Admin Dashboard':'ನಿರ್ವಾಹಕ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್'
+  },
+  te: {
+    'Chats':'చాట్లు','Type worker or company name to start chat':'చాట్ ప్రారంభించడానికి కార్మికుడు లేదా కంపెనీ పేరు టైప్ చేయండి','Open jobs':'తెరిచిన ఉద్యోగాలు','Search':'వెతుకు','Post job':'ఉద్యోగం పోస్ట్ చేయి','Publish Job':'ఉద్యోగం ప్రచురించు','Update Job':'ఉద్యోగం నవీకరించు','Notifications':'నోటిఫికేషన్లు','History':'చరిత్ర','Profile':'ప్రొఫైల్','My jobs':'నా ఉద్యోగాలు','Apply now':'ఇప్పుడే దరఖాస్తు','Edit':'సవరించు','Delete':'తొలగించు','Hired':'నియమించబడిన','Jobs':'ఉద్యోగాలు','Post':'పోస్ట్','Refresh':'రిఫ్రెష్','Back':'వెనక్కి','Save':'సేవ్','Saved':'సేవ్ అయింది','Submit':'సమర్పించు','Verify':'ధృవీకరించు','Verified':'ధృవీకరించబడింది','Unverified':'ధృవీకరించలేదు','Pending':'పెండింగ్','Pending review':'సమీక్ష పెండింగ్','Job title':'ఉద్యోగ శీర్షిక','Category':'వర్గం','Daily pay':'రోజువారీ వేతనం','Hourly pay':'గంట వేతనం','Duration':'వ్యవధి','Start date':'ప్రారంభ తేదీ','Workers needed':'అవసరమైన కార్మికులు','Candidate type':'అభ్యర్థి రకం','All candidates':'అన్ని అభ్యర్థులు','Verified only':'ధృవీకరించినవారు మాత్రమే','Unverified only':'ధృవీకరించని వారు మాత్రమే','Continue':'కొనసాగించు','Finish Posting':'పోస్టింగ్ పూర్తి చేయి','Location':'స్థానం','Use current GPS':'ప్రస్తుత GPS ఉపయోగించు','Change':'మార్చు','Full Name':'పూర్తి పేరు','Company Name':'కంపెనీ పేరు','Phone Number':'ఫోన్ నంబర్','Mobile OTP':'మొబైల్ OTP','Email':'ఇమెయిల్','Official email':'అధికారిక ఇమెయిల్','Industry':'పరిశ్రమ','Company address':'కంపెనీ చిరునామా','Address':'చిరునామా','Skills':'నైపుణ్యాలు','Experience':'అనుభవం','Expected wage':'అంచనా వేతనం','Bank Details':'బ్యాంక్ వివరాలు','Bank account':'బ్యాంక్ ఖాతా','IFSC':'IFSC','UPI':'UPI','Selfie verification':'సెల్ఫీ ధృవీకరణ','Profile Details':'ప్రొఫైల్ వివరాలు','Documents':'పత్రాలు','Subscription':'చందా','Subscribe to use this feature':'ఈ ఫీచర్ ఉపయోగించడానికి చందా తీసుకోండి','Applicants':'దరఖాస్తుదారులు','No applicants yet':'ఇంకా దరఖాస్తుదారులు లేరు','View Profile':'ప్రొఫైల్ చూడండి','Accept':'అంగీకరించు','Reject':'తిరస్కరించు','Logout':'లాగౌట్','Settings':'సెట్టింగులు','Language':'భాష','Worker Dashboard':'వర్కర్ డ్యాష్‌బోర్డ్','Employer Dashboard':'ఎంప్లాయర్ డ్యాష్‌బోర్డ్','Admin Dashboard':'అడ్మిన్ డ్యాష్‌బోర్డ్'
+  }
 };
 const tText = (text) => (trMap[localStorage.getItem('w2w-language') || 'en'] || {})[text] || text;
+
+
+const trWordMap = {
+  hi: {
+    'Dashboard':'डैशबोर्ड','Worker':'वर्कर','Employer':'एम्प्लॉयर','Admin':'एडमिन','Job':'नौकरी','Jobs':'नौकरियां','job':'नौकरी','jobs':'नौकरियां','Open':'खुला','open':'खुला','Closed':'बंद','Active':'सक्रिय','Inactive':'निष्क्रिय','Profile':'प्रोफाइल','Details':'विवरण','details':'विवरण','Name':'नाम','name':'नाम','Company':'कंपनी','Email':'ईमेल','Phone':'फोन','Mobile':'मोबाइल','OTP':'OTP','Address':'पता','Location':'स्थान','Search':'खोजें','Save':'सेव','Saved':'सेव हो गया','Verify':'सत्यापित करें','Verified':'सत्यापित','Unverified':'असत्यापित','Pending':'लंबित','Review':'समीक्षा','review':'समीक्षा','Submit':'सबमिट','Send':'भेजें','Upload':'अपलोड','Change':'बदलें','Edit':'संपादित करें','Delete':'हटाएं','Refresh':'रिफ्रेश','Back':'वापस','Continue':'जारी रखें','Finish':'पूरा करें','Posting':'पोस्टिंग','Post':'पोस्ट','Applicants':'आवेदक','Applicant':'आवेदक','applications':'आवेदन','Applications':'आवेदन','Hired':'नियुक्त','Chats':'चैट','Chat':'चैट','Notifications':'सूचनाएं','History':'इतिहास','Settings':'सेटिंग्स','Logout':'लॉगआउट','Subscription':'सदस्यता','Plan':'प्लान','Basic':'बेसिक','Growth':'ग्रोथ','Premium':'प्रीमियम','Starter':'स्टार्टर','Business':'बिजनेस','Enterprise':'एंटरप्राइज','Category':'श्रेणी','Pay':'वेतन','pay':'वेतन','Daily':'दैनिक','Hourly':'घंटे का','Duration':'अवधि','days':'दिन','Days':'दिन','hours':'घंटे','Hours':'घंटे','Start':'आरंभ','End':'समाप्त','Date':'तिथि','date':'तिथि','Workers':'कर्मचारी','needed':'आवश्यक','Needed':'आवश्यक','Candidate':'उम्मीदवार','type':'प्रकार','Type':'प्रकार','All':'सभी','only':'केवल','Only':'केवल','Food':'भोजन','Accommodation':'रहना','Travel':'यात्रा','Overtime':'ओवरटाइम','GPS':'GPS','current':'वर्तमान','Current':'वर्तमान','Use':'उपयोग करें','Custom':'कस्टम','Radius':'रेडियस','Manual':'मैनुअल','Attendance':'उपस्थिति','Automatic':'स्वचालित','Bank':'बैंक','Account':'खाता','IFSC':'IFSC','UPI':'UPI','Selfie':'सेल्फी','Documents':'दस्तावेज़','Document':'दस्तावेज़','Aadhaar':'आधार','PAN':'PAN','GST':'GST','Industry':'उद्योग','Skills':'कौशल','Experience':'अनुभव','Expected':'अपेक्षित','Wage':'वेतन','Language':'भाषा','Support':'सहायता','Nearby':'नजदीकी','Mail':'मेल','Alerts':'अलर्ट','Priority':'प्राथमिकता','Visibility':'दृश्यता','Badge':'बैज','Interview':'इंटरव्यू','Ranking':'रैंकिंग','Direct':'डायरेक्ट','Faster':'तेज','Matching':'मैचिंग','Top':'टॉप','High':'उच्च','Paying':'भुगतान','Access':'एक्सेस','Feature':'फीचर','feature':'फीचर','Subscribe':'सब्सक्राइब करें','Selected':'चयनित','Select':'चुनें','Confirm':'पुष्टि करें','Cancel':'रद्द करें','Accept':'स्वीकार करें','Reject':'अस्वीकार करें','View':'देखें','No':'कोई नहीं','new':'नया','New':'नया','Total':'कुल','Pending review':'समीक्षा लंबित','Full Name':'पूरा नाम','Company Name':'कंपनी का नाम','Phone Number':'फोन नंबर','Official email':'आधिकारिक ईमेल','Company address':'कंपनी पता','Profile Details':'प्रोफाइल विवरण','Bank Details':'बैंक विवरण','Selfie verification':'सेल्फी सत्यापन','Apply now':'अभी आवेदन करें','Post visible for':'पोस्ट दिखाई दे','All candidates':'सभी उम्मीदवार','Verified only':'केवल सत्यापित','Unverified only':'केवल असत्यापित','Use current GPS':'वर्तमान GPS उपयोग करें','Subscribe to use this feature':'इस सुविधा के लिए सदस्यता लें'
+  },
+  ta: {
+    'Dashboard':'டாஷ்போர்டு','Worker':'தொழிலாளர்','Employer':'நியமிப்பாளர்','Admin':'நிர்வாகி','Job':'வேலை','Jobs':'வேலைகள்','job':'வேலை','jobs':'வேலைகள்','Open':'திறந்த','open':'திறந்த','Closed':'மூடப்பட்டது','Active':'செயலில்','Inactive':'செயலில் இல்லை','Profile':'சுயவிவரம்','Details':'விவரங்கள்','details':'விவரங்கள்','Name':'பெயர்','name':'பெயர்','Company':'நிறுவனம்','Email':'மின்னஞ்சல்','Phone':'தொலைபேசி','Mobile':'மொபைல்','OTP':'OTP','Address':'முகவரி','Location':'இடம்','Search':'தேடு','Save':'சேமி','Saved':'சேமிக்கப்பட்டது','Verify':'சரிபார்','Verified':'சரிபார்க்கப்பட்டது','Unverified':'சரிபார்க்கப்படவில்லை','Pending':'நிலுவை','Review':'மதிப்பாய்வு','review':'மதிப்பாய்வு','Submit':'சமர்ப்பி','Send':'அனுப்பு','Upload':'பதிவேற்று','Change':'மாற்று','Edit':'திருத்து','Delete':'நீக்கு','Refresh':'புதுப்பி','Back':'பின்','Continue':'தொடரவும்','Finish':'முடிக்கவும்','Posting':'பதிவு','Post':'பதிவு','Applicants':'விண்ணப்பதாரர்கள்','Applicant':'விண்ணப்பதாரர்','applications':'விண்ணப்பங்கள்','Applications':'விண்ணப்பங்கள்','Hired':'நியமிக்கப்பட்டவர்','Chats':'அரட்டைகள்','Chat':'அரட்டை','Notifications':'அறிவிப்புகள்','History':'வரலாறு','Settings':'அமைப்புகள்','Logout':'வெளியேறு','Subscription':'சந்தா','Plan':'திட்டம்','Basic':'அடிப்படை','Growth':'வளர்ச்சி','Premium':'பிரீமியம்','Starter':'ஸ்டார்டர்','Business':'பிசினஸ்','Enterprise':'என்டர்பிரைஸ்','Category':'வகை','Pay':'சம்பளம்','pay':'சம்பளம்','Daily':'தினசரி','Hourly':'மணிநேர','Duration':'காலம்','days':'நாட்கள்','Days':'நாட்கள்','hours':'மணிநேரம்','Hours':'மணிநேரம்','Start':'தொடக்கம்','End':'முடிவு','Date':'தேதி','date':'தேதி','Workers':'தொழிலாளர்கள்','needed':'தேவை','Needed':'தேவை','Candidate':'வேட்பாளர்','type':'வகை','Type':'வகை','All':'அனைத்து','only':'மட்டும்','Only':'மட்டும்','Food':'உணவு','Accommodation':'தங்குமிடம்','Travel':'பயணம்','Overtime':'ஓவர்டைம்','GPS':'GPS','current':'தற்போதைய','Current':'தற்போதைய','Use':'பயன்படுத்து','Custom':'தனிப்பயன்','Radius':'சுற்றளவு','Manual':'கையேடு','Attendance':'வருகை','Automatic':'தானியங்கி','Bank':'வங்கி','Account':'கணக்கு','IFSC':'IFSC','UPI':'UPI','Selfie':'செல்ஃபி','Documents':'ஆவணங்கள்','Document':'ஆவணம்','Aadhaar':'ஆதார்','PAN':'PAN','GST':'GST','Industry':'துறை','Skills':'திறன்கள்','Experience':'அனுபவம்','Expected':'எதிர்பார்க்கும்','Wage':'சம்பளம்','Language':'மொழி','Support':'ஆதரவு','Nearby':'அருகில்','Mail':'மெயில்','Alerts':'அறிவிப்புகள்','Priority':'முன்னுரிமை','Visibility':'தெரிவுத்தன்மை','Badge':'பேட்ஜ்','Interview':'நேர்காணல்','Ranking':'தரவரிசை','Direct':'நேரடி','Faster':'வேகமான','Matching':'பொருத்தம்','Top':'மேல்','High':'உயர்','Paying':'சம்பள','Access':'அணுகல்','Feature':'அம்சம்','feature':'அம்சம்','Subscribe':'சந்தா செலுத்து','Selected':'தேர்ந்தெடுக்கப்பட்டது','Select':'தேர்வு','Confirm':'உறுதி','Cancel':'ரத்து','Accept':'ஏற்றுக்கொள்','Reject':'நிராகரி','View':'பார்','No':'இல்லை','new':'புதிய','New':'புதிய','Total':'மொத்தம்','Pending review':'மதிப்பாய்வு நிலுவை','Full Name':'முழு பெயர்','Company Name':'நிறுவன பெயர்','Phone Number':'தொலைபேசி எண்','Official email':'அதிகாரப்பூர்வ மின்னஞ்சல்','Company address':'நிறுவன முகவரி','Profile Details':'சுயவிவர விவரங்கள்','Bank Details':'வங்கி விவரங்கள்','Selfie verification':'செல்ஃபி சரிபார்ப்பு','Apply now':'விண்ணப்பிக்கவும்','Post visible for':'பதிவு தெரியும்','All candidates':'அனைத்து வேட்பாளர்கள்','Verified only':'சரிபார்க்கப்பட்டவர்கள் மட்டும்','Unverified only':'சரிபார்க்கப்படாதவர்கள் மட்டும்','Use current GPS':'தற்போதைய GPS பயன்படுத்து','Subscribe to use this feature':'இந்த அம்சத்தை பயன்படுத்த சந்தா செலுத்தவும்'
+  },
+  kn: {
+    'Dashboard':'ಡ್ಯಾಶ್‌ಬೋರ್ಡ್','Worker':'ಕಾರ್ಮಿಕ','Employer':'ನಿಯೋಜಕ','Admin':'ನಿರ್ವಾಹಕ','Job':'ಉದ್ಯೋಗ','Jobs':'ಉದ್ಯೋಗಗಳು','job':'ಉದ್ಯೋಗ','jobs':'ಉದ್ಯೋಗಗಳು','Open':'ತೆರೆದ','open':'ತೆರೆದ','Closed':'ಮುಚ್ಚಿದೆ','Active':'ಸಕ್ರಿಯ','Inactive':'ನಿಷ್ಕ್ರಿಯ','Profile':'ಪ್ರೊಫೈಲ್','Details':'ವಿವರಗಳು','details':'ವಿವರಗಳು','Name':'ಹೆಸರು','name':'ಹೆಸರು','Company':'ಕಂಪನಿ','Email':'ಇಮೇಲ್','Phone':'ಫೋನ್','Mobile':'ಮೊಬೈಲ್','OTP':'OTP','Address':'ವಿಳಾಸ','Location':'ಸ್ಥಳ','Search':'ಹುಡುಕಿ','Save':'ಉಳಿಸಿ','Saved':'ಉಳಿಸಲಾಗಿದೆ','Verify':'ಪರಿಶೀಲಿಸಿ','Verified':'ಪರಿಶೀಲಿಸಲಾಗಿದೆ','Unverified':'ಪರಿಶೀಲಿಸಿಲ್ಲ','Pending':'ಬಾಕಿ','Review':'ಪರಿಶೀಲನೆ','review':'ಪರಿಶೀಲನೆ','Submit':'ಸಲ್ಲಿಸಿ','Send':'ಕಳುಹಿಸಿ','Upload':'ಅಪ್‌ಲೋಡ್','Change':'ಬದಲಿಸಿ','Edit':'ತಿದ್ದು','Delete':'ಅಳಿಸಿ','Refresh':'ರಿಫ್ರೆಶ್','Back':'ಹಿಂದೆ','Continue':'ಮುಂದುವರಿಸಿ','Finish':'ಮುಗಿಸಿ','Posting':'ಪೋಸ್ಟ್','Post':'ಪೋಸ್ಟ್','Applicants':'ಅರ್ಜಿದಾರರು','Applicant':'ಅರ್ಜಿದಾರ','applications':'ಅರ್ಜಿಗಳು','Applications':'ಅರ್ಜಿಗಳು','Hired':'ನೇಮಕಗೊಂಡ','Chats':'ಚಾಟ್‌ಗಳು','Chat':'ಚಾಟ್','Notifications':'ಅಧಿಸೂಚನೆಗಳು','History':'ಇತಿಹಾಸ','Settings':'ಸೆಟ್ಟಿಂಗ್‌ಗಳು','Logout':'ಲಾಗ್ ಔಟ್','Subscription':'ಚಂದಾದಾರಿಕೆ','Plan':'ಯೋಜನೆ','Basic':'ಬೇಸಿಕ್','Growth':'ಗ್ರೋತ್','Premium':'ಪ್ರೀಮಿಯಂ','Starter':'ಸ್ಟಾರ್ಟರ್','Business':'ಬಿಸಿನೆಸ್','Enterprise':'ಎಂಟರ್‌ಪ್ರೈಸ್','Category':'ವರ್ಗ','Pay':'ವೇತನ','pay':'ವೇತನ','Daily':'ದಿನದ','Hourly':'ಗಂಟೆ','Duration':'ಅವಧಿ','days':'ದಿನಗಳು','Days':'ದಿನಗಳು','hours':'ಗಂಟೆಗಳು','Hours':'ಗಂಟೆಗಳು','Start':'ಪ್ರಾರಂಭ','End':'ಅಂತ್ಯ','Date':'ದಿನಾಂಕ','date':'ದಿನಾಂಕ','Workers':'ಕಾರ್ಮಿಕರು','needed':'ಬೇಕಾಗಿದೆ','Needed':'ಬೇಕಾಗಿದೆ','Candidate':'ಅಭ್ಯರ್ಥಿ','type':'ಪ್ರಕಾರ','Type':'ಪ್ರಕಾರ','All':'ಎಲ್ಲ','only':'ಮಾತ್ರ','Only':'ಮಾತ್ರ','Food':'ಆಹಾರ','Accommodation':'ವಸತಿ','Travel':'ಪ್ರಯಾಣ','Overtime':'ಓವರ್‌ಟೈಮ್','GPS':'GPS','current':'ಪ್ರಸ್ತುತ','Current':'ಪ್ರಸ್ತುತ','Use':'ಬಳಸಿ','Custom':'ಕಸ್ಟಮ್','Radius':'ಅಂತರ','Manual':'ಮ್ಯಾನುಯಲ್','Attendance':'ಹಾಜರಾತಿ','Automatic':'ಸ್ವಯಂಚಾಲಿತ','Bank':'ಬ್ಯಾಂಕ್','Account':'ಖಾತೆ','IFSC':'IFSC','UPI':'UPI','Selfie':'ಸೆಲ್ಫಿ','Documents':'ದಾಖಲೆಗಳು','Document':'ದಾಖಲೆ','Aadhaar':'ಆಧಾರ್','PAN':'PAN','GST':'GST','Industry':'ಉದ್ಯಮ','Skills':'ಕೌಶಲ್ಯಗಳು','Experience':'ಅನುಭವ','Expected':'ನಿರೀಕ್ಷಿತ','Wage':'ವೇತನ','Language':'ಭಾಷೆ','Support':'ಬೆಂಬಲ','Nearby':'ಹತ್ತಿರದ','Mail':'ಮೇಲ್','Alerts':'ಅಲರ್ಟ್‌ಗಳು','Priority':'ಆದ್ಯತೆ','Visibility':'ದೃಶ್ಯತೆ','Badge':'ಬ್ಯಾಡ್ಜ್','Interview':'ಸಂದರ್ಶನ','Ranking':'ರ್ಯಾಂಕಿಂಗ್','Direct':'ನೇರ','Faster':'ವೇಗದ','Matching':'ಹೊಂದಾಣಿಕೆ','Top':'ಟಾಪ್','High':'ಹೆಚ್ಚಿನ','Paying':'ಪಾವತಿ','Access':'ಪ್ರವೇಶ','Feature':'ವೈಶಿಷ್ಟ್ಯ','feature':'ವೈಶಿಷ್ಟ್ಯ','Subscribe':'ಚಂದಾದಾರರಾಗಿ','Selected':'ಆಯ್ಕೆಗೊಂಡಿದೆ','Select':'ಆಯ್ಕೆ','Confirm':'ದೃಢೀಕರಿಸಿ','Cancel':'ರದ್ದು','Accept':'ಸ್ವೀಕರಿಸಿ','Reject':'ನಿರಾಕರಿಸಿ','View':'ನೋಡಿ','No':'ಇಲ್ಲ','new':'ಹೊಸ','New':'ಹೊಸ','Total':'ಒಟ್ಟು','Pending review':'ಪರಿಶೀಲನೆ ಬಾಕಿ','Full Name':'ಪೂರ್ಣ ಹೆಸರು','Company Name':'ಕಂಪನಿ ಹೆಸರು','Phone Number':'ಫೋನ್ ಸಂಖ್ಯೆ','Official email':'ಅಧಿಕೃತ ಇಮೇಲ್','Company address':'ಕಂಪನಿ ವಿಳಾಸ','Profile Details':'ಪ್ರೊಫೈಲ್ ವಿವರಗಳು','Bank Details':'ಬ್ಯಾಂಕ್ ವಿವರಗಳು','Selfie verification':'ಸೆಲ್ಫಿ ಪರಿಶೀಲನೆ','Apply now':'ಅರ್ಜಿಸಲಿ','Post visible for':'ಪೋಸ್ಟ್ ಕಾಣುವ ಅವಧಿ','All candidates':'ಎಲ್ಲ ಅಭ್ಯರ್ಥಿಗಳು','Verified only':'ಪರಿಶೀಲಿಸಿದವರು ಮಾತ್ರ','Unverified only':'ಪರಿಶೀಲಿಸದವರು ಮಾತ್ರ','Use current GPS':'ಪ್ರಸ್ತುತ GPS ಬಳಸಿ','Subscribe to use this feature':'ಈ ವೈಶಿಷ್ಟ್ಯ ಬಳಸಲು ಚಂದಾದಾರರಾಗಿ'
+  },
+  te: {
+    'Dashboard':'డ్యాష్‌బోర్డ్','Worker':'కార్మికుడు','Employer':'ఎంప్లాయర్','Admin':'అడ్మిన్','Job':'ఉద్యోగం','Jobs':'ఉద్యోగాలు','job':'ఉద్యోగం','jobs':'ఉద్యోగాలు','Open':'తెరిచి ఉంది','open':'తెరిచి ఉంది','Closed':'మూసివేశారు','Active':'సక్రియం','Inactive':'నిష్క్రియం','Profile':'ప్రొఫైల్','Details':'వివరాలు','details':'వివరాలు','Name':'పేరు','name':'పేరు','Company':'కంపెనీ','Email':'ఇమెయిల్','Phone':'ఫోన్','Mobile':'మొబైల్','OTP':'OTP','Address':'చిరునామా','Location':'స్థానం','Search':'వెతుకు','Save':'సేవ్','Saved':'సేవ్ అయింది','Verify':'ధృవీకరించు','Verified':'ధృవీకరించబడింది','Unverified':'ధృవీకరించలేదు','Pending':'పెండింగ్','Review':'సమీక్ష','review':'సమీక్ష','Submit':'సమర్పించు','Send':'పంపు','Upload':'అప్‌లోడ్','Change':'మార్చు','Edit':'సవరించు','Delete':'తొలగించు','Refresh':'రిఫ్రెష్','Back':'వెనక్కి','Continue':'కొనసాగించు','Finish':'పూర్తి చేయి','Posting':'పోస్టింగ్','Post':'పోస్ట్','Applicants':'దరఖాస్తుదారులు','Applicant':'దరఖాస్తుదారు','applications':'దరఖాస్తులు','Applications':'దరఖాస్తులు','Hired':'నియమించబడిన','Chats':'చాట్లు','Chat':'చాట్','Notifications':'నోటిఫికేషన్లు','History':'చరిత్ర','Settings':'సెట్టింగులు','Logout':'లాగౌట్','Subscription':'చందా','Plan':'ప్లాన్','Basic':'బేసిక్','Growth':'గ్రోత్','Premium':'ప్రీమియం','Starter':'స్టార్టర్','Business':'బిజినెస్','Enterprise':'ఎంటర్‌ప్రైజ్','Category':'వర్గం','Pay':'వేతనం','pay':'వేతనం','Daily':'రోజువారీ','Hourly':'గంటకు','Duration':'వ్యవధి','days':'రోజులు','Days':'రోజులు','hours':'గంటలు','Hours':'గంటలు','Start':'ప్రారంభం','End':'ముగింపు','Date':'తేదీ','date':'తేదీ','Workers':'కార్మికులు','needed':'అవసరం','Needed':'అవసరం','Candidate':'అభ్యర్థి','type':'రకం','Type':'రకం','All':'అన్ని','only':'మాత్రమే','Only':'మాత్రమే','Food':'ఆహారం','Accommodation':'వసతి','Travel':'ప్రయాణం','Overtime':'ఓవర్‌టైమ్','GPS':'GPS','current':'ప్రస్తుత','Current':'ప్రస్తుత','Use':'ఉపయోగించు','Custom':'కస్టమ్','Radius':'రేడియస్','Manual':'మాన్యువల్','Attendance':'హాజరు','Automatic':'ఆటోమేటిక్','Bank':'బ్యాంక్','Account':'ఖాతా','IFSC':'IFSC','UPI':'UPI','Selfie':'సెల్ఫీ','Documents':'పత్రాలు','Document':'పత్రం','Aadhaar':'ఆధార్','PAN':'PAN','GST':'GST','Industry':'పరిశ్రమ','Skills':'నైపుణ్యాలు','Experience':'అనుభవం','Expected':'అంచనా','Wage':'వేతనం','Language':'భాష','Support':'సపోర్ట్','Nearby':'దగ్గరలో','Mail':'మెయిల్','Alerts':'అలర్ట్స్','Priority':'ప్రాధాన్యత','Visibility':'విజిబిలిటీ','Badge':'బ్యాడ్జ్','Interview':'ఇంటర్వ్యూ','Ranking':'ర్యాంకింగ్','Direct':'డైరెక్ట్','Faster':'త్వరిత','Matching':'మ్యాచింగ్','Top':'టాప్','High':'అధిక','Paying':'చెల్లించే','Access':'యాక్సెస్','Feature':'ఫీచర్','feature':'ఫీచర్','Subscribe':'సబ్‌స్క్రైబ్','Selected':'ఎంచుకున్నారు','Select':'ఎంచుకోండి','Confirm':'నిర్ధారించు','Cancel':'రద్దు','Accept':'అంగీకరించు','Reject':'తిరస్కరించు','View':'చూడండి','No':'లేదు','new':'కొత్త','New':'కొత్త','Total':'మొత్తం','Pending review':'సమీక్ష పెండింగ్','Full Name':'పూర్తి పేరు','Company Name':'కంపెనీ పేరు','Phone Number':'ఫోన్ నంబర్','Official email':'అధికారిక ఇమెయిల్','Company address':'కంపెనీ చిరునామా','Profile Details':'ప్రొఫైల్ వివరాలు','Bank Details':'బ్యాంక్ వివరాలు','Selfie verification':'సెల్ఫీ ధృవీకరణ','Apply now':'ఇప్పుడే దరఖాస్తు','Post visible for':'పోస్ట్ కనిపించే కాలం','All candidates':'అన్ని అభ్యర్థులు','Verified only':'ధృవీకరించినవారు మాత్రమే','Unverified only':'ధృవీకరించని వారు మాత్రమే','Use current GPS':'ప్రస్తుత GPS ఉపయోగించు','Subscribe to use this feature':'ఈ ఫీచర్ ఉపయోగించడానికి చందా తీసుకోండి'
+  }
+};
+
+const trExtraMap = {
+  hi: {
+    'Enter role name, e.g. TIG Welder, CNC Operator':'भूमिका नाम दर्ज करें, जैसे TIG वेल्डर, CNC ऑपरेटर',
+    'Enter company name':'कंपनी का नाम दर्ज करें',
+    'Enter your full name':'अपना पूरा नाम दर्ज करें',
+    'Enter phone number':'फोन नंबर दर्ज करें',
+    'Enter official email':'आधिकारिक ईमेल दर्ज करें',
+    'Enter address':'पता दर्ज करें',
+    'Enter company address':'कंपनी का पता दर्ज करें',
+    'Search location':'स्थान खोजें',
+    'Search company area':'कंपनी क्षेत्र खोजें',
+    'Search worker':'वर्कर खोजें',
+    'Search jobs':'नौकरियां खोजें',
+    'Search applicants':'आवेदक खोजें',
+    'Select category':'श्रेणी चुनें',
+    'Select industry':'उद्योग चुनें',
+    'Select skills':'कौशल चुनें',
+    'Select language':'भाषा चुनें',
+    'Select plan':'प्लान चुनें',
+    'Select candidate type':'उम्मीदवार प्रकार चुनें',
+    'Enter amount':'राशि दर्ज करें',
+    'Enter daily pay':'दैनिक वेतन दर्ज करें',
+    'Enter hourly pay':'घंटे का वेतन दर्ज करें',
+    'Enter duration':'अवधि दर्ज करें',
+    'Enter workers needed':'आवश्यक कर्मचारियों की संख्या दर्ज करें',
+    'Post visible for days':'पोस्ट कितने दिनों तक दिखेगी',
+    'Verify your active phone number':'अपना सक्रिय फोन नंबर सत्यापित करें',
+    'Open the camera and keep your full face inside the green frame. It will auto capture.':'कैमरा खोलें और अपना पूरा चेहरा हरे फ्रेम के अंदर रखें। यह अपने आप कैप्चर होगा।',
+    'Front face only. Camera auto captures when your face is clear inside the frame.':'केवल सामने का चेहरा। चेहरा फ्रेम में साफ होने पर कैमरा अपने आप कैप्चर करेगा।',
+    'Capture Selfie':'सेल्फी कैप्चर करें','Submit Selfie':'सेल्फी सबमिट करें','Retake':'फिर से लें','Camera':'कैमरा','Open Camera':'कैमरा खोलें',
+    'Account holder name':'खाता धारक का नाम','Bank name':'बैंक का नाम','Bank account number':'बैंक खाता नंबर','Branch name':'शाखा का नाम','UPI ID':'UPI आईडी','Upload QR':'QR अपलोड करें',
+    'Aadhaar number':'आधार नंबर','PAN number':'PAN नंबर','GST number':'GST नंबर','GST certificate':'GST प्रमाणपत्र','Skill certificate':'कौशल प्रमाणपत्र',
+    'Save Profile':'प्रोफाइल सेव करें','Send verification':'सत्यापन भेजें','Pending Approval':'अनुमोदन लंबित','Change location':'स्थान बदलें','Saved location':'सहेजा गया स्थान',
+    'No notifications':'कोई सूचना नहीं','Mark all read':'सभी पढ़ा हुआ करें','View details':'विवरण देखें','Move to profile':'प्रोफाइल पर जाएं','No jobs found':'कोई नौकरी नहीं मिली',
+    'Posted jobs':'पोस्ट की गई नौकरियां','Job details':'नौकरी विवरण','Applicants details':'आवेदक विवरण','Profile visibility':'प्रोफाइल दृश्यता','Direct chat':'डायरेक्ट चैट',
+    'Manual attendance':'मैनुअल उपस्थिति','GPS attendance':'GPS उपस्थिति','Custom GPS radius':'कस्टम GPS रेडियस','Automatic attendance by GPS radius':'GPS रेडियस से स्वचालित उपस्थिति',
+    'Subscribe now':'अभी सदस्यता लें','Current plan':'वर्तमान प्लान','Selected plan':'चयनित प्लान','Upgrade to use this feature':'इस सुविधा के लिए अपग्रेड करें'
+  },
+  ta: {
+    'Enter role name, e.g. TIG Welder, CNC Operator':'பணிப் பெயரை உள்ளிடவும், உதா. TIG வெல்டர், CNC ஆபரேட்டர்',
+    'Enter company name':'நிறுவன பெயரை உள்ளிடவும்','Enter your full name':'உங்கள் முழு பெயரை உள்ளிடவும்','Enter phone number':'தொலைபேசி எண்ணை உள்ளிடவும்','Enter official email':'அதிகாரப்பூர்வ மின்னஞ்சலை உள்ளிடவும்','Enter address':'முகவரியை உள்ளிடவும்','Enter company address':'நிறுவன முகவரியை உள்ளிடவும்',
+    'Search location':'இடம் தேடு','Search company area':'நிறுவன பகுதி தேடு','Search worker':'தொழிலாளரை தேடு','Search jobs':'வேலைகளை தேடு','Search applicants':'விண்ணப்பதாரர்களை தேடு',
+    'Select category':'வகையை தேர்வு','Select industry':'துறையை தேர்வு','Select skills':'திறன்களை தேர்வு','Select language':'மொழியை தேர்வு','Select plan':'திட்டத்தை தேர்வு','Select candidate type':'வேட்பாளர் வகையை தேர்வு',
+    'Enter amount':'தொகையை உள்ளிடவும்','Enter daily pay':'தினசரி சம்பளம் உள்ளிடவும்','Enter hourly pay':'மணிநேர சம்பளம் உள்ளிடவும்','Enter duration':'காலத்தை உள்ளிடவும்','Enter workers needed':'தேவையான தொழிலாளர் எண்ணிக்கை உள்ளிடவும்','Post visible for days':'பதிவு தெரியும் நாட்கள்',
+    'Verify your active phone number':'உங்கள் செயலில் உள்ள தொலைபேசி எண்ணை சரிபார்க்கவும்','Open the camera and keep your full face inside the green frame. It will auto capture.':'கேமராவை திறந்து உங்கள் முழு முகத்தையும் பச்சை கட்டத்துக்குள் வைத்திருங்கள். அது தானாகப் படம் பிடிக்கும்.','Front face only. Camera auto captures when your face is clear inside the frame.':'முன் முகம் மட்டும். முகம் தெளிவாக இருந்தால் கேமரா தானாகப் படம் பிடிக்கும்.',
+    'Capture Selfie':'செல்ஃபி எடு','Submit Selfie':'செல்ஃபி சமர்ப்பி','Retake':'மீண்டும் எடு','Camera':'கேமரா','Open Camera':'கேமரா திற',
+    'Account holder name':'கணக்கு வைத்திருப்பவர் பெயர்','Bank name':'வங்கி பெயர்','Bank account number':'வங்கி கணக்கு எண்','Branch name':'கிளை பெயர்','UPI ID':'UPI ஐடி','Upload QR':'QR பதிவேற்று',
+    'Aadhaar number':'ஆதார் எண்','PAN number':'PAN எண்','GST number':'GST எண்','GST certificate':'GST சான்றிதழ்','Skill certificate':'திறன் சான்றிதழ்',
+    'Save Profile':'சுயவிவரம் சேமி','Send verification':'சரிபார்ப்புக்கு அனுப்பு','Pending Approval':'ஒப்புதல் நிலுவை','Change location':'இடம் மாற்று','Saved location':'சேமித்த இடம்',
+    'No notifications':'அறிவிப்புகள் இல்லை','Mark all read':'அனைத்தையும் படித்ததாக குறி','View details':'விவரங்கள் பார்','Move to profile':'சுயவிவரத்துக்கு செல்','No jobs found':'வேலைகள் இல்லை',
+    'Posted jobs':'பதிவிட்ட வேலைகள்','Job details':'வேலை விவரங்கள்','Applicants details':'விண்ணப்பதாரர் விவரங்கள்','Profile visibility':'சுயவிவர தெரிவுத்தன்மை','Direct chat':'நேரடி அரட்டை',
+    'Manual attendance':'கையேடு வருகை','GPS attendance':'GPS வருகை','Custom GPS radius':'தனிப்பயன் GPS சுற்றளவு','Automatic attendance by GPS radius':'GPS சுற்றளவில் தானியங்கி வருகை',
+    'Subscribe now':'இப்போது சந்தா செலுத்து','Current plan':'தற்போதைய திட்டம்','Selected plan':'தேர்ந்தெடுத்த திட்டம்','Upgrade to use this feature':'இந்த அம்சத்துக்கு மேம்படுத்து'
+  },
+  kn: {
+    'Enter role name, e.g. TIG Welder, CNC Operator':'ಪಾತ್ರದ ಹೆಸರನ್ನು ನಮೂದಿಸಿ, ಉದಾ. TIG ವೆಲ್ಡರ್, CNC ಆಪರೇಟರ್','Enter company name':'ಕಂಪನಿ ಹೆಸರನ್ನು ನಮೂದಿಸಿ','Enter your full name':'ನಿಮ್ಮ ಪೂರ್ಣ ಹೆಸರನ್ನು ನಮೂದಿಸಿ','Enter phone number':'ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ','Enter official email':'ಅಧಿಕೃತ ಇಮೇಲ್ ನಮೂದಿಸಿ','Enter address':'ವಿಳಾಸ ನಮೂದಿಸಿ','Enter company address':'ಕಂಪನಿ ವಿಳಾಸ ನಮೂದಿಸಿ',
+    'Search location':'ಸ್ಥಳ ಹುಡುಕಿ','Search company area':'ಕಂಪನಿ ಪ್ರದೇಶ ಹುಡುಕಿ','Search worker':'ಕಾರ್ಮಿಕರನ್ನು ಹುಡುಕಿ','Search jobs':'ಉದ್ಯೋಗಗಳನ್ನು ಹುಡುಕಿ','Search applicants':'ಅರ್ಜಿದಾರರನ್ನು ಹುಡುಕಿ',
+    'Select category':'ವರ್ಗ ಆಯ್ಕೆಮಾಡಿ','Select industry':'ಉದ್ಯಮ ಆಯ್ಕೆಮಾಡಿ','Select skills':'ಕೌಶಲ್ಯ ಆಯ್ಕೆಮಾಡಿ','Select language':'ಭಾಷೆ ಆಯ್ಕೆಮಾಡಿ','Select plan':'ಯೋಜನೆ ಆಯ್ಕೆಮಾಡಿ','Select candidate type':'ಅಭ್ಯರ್ಥಿ ಪ್ರಕಾರ ಆಯ್ಕೆಮಾಡಿ',
+    'Enter amount':'ಮೊತ್ತ ನಮೂದಿಸಿ','Enter daily pay':'ದಿನದ ವೇತನ ನಮೂದಿಸಿ','Enter hourly pay':'ಗಂಟೆ ವೇತನ ನಮೂದಿಸಿ','Enter duration':'ಅವಧಿ ನಮೂದಿಸಿ','Enter workers needed':'ಬೇಕಾದ ಕಾರ್ಮಿಕರ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ','Post visible for days':'ಪೋಸ್ಟ್ ಕಾಣುವ ದಿನಗಳು',
+    'Verify your active phone number':'ನಿಮ್ಮ ಸಕ್ರಿಯ ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ಪರಿಶೀಲಿಸಿ','Open the camera and keep your full face inside the green frame. It will auto capture.':'ಕ್ಯಾಮೆರಾ ತೆರೆಯಿರಿ ಮತ್ತು ನಿಮ್ಮ ಪೂರ್ಣ ಮುಖವನ್ನು ಹಸಿರು ಫ್ರೇಮ್ ಒಳಗೆ ಇಡಿ. ಅದು ಸ್ವಯಂ ಕ್ಯಾಪ್ಚರ್ ಮಾಡುತ್ತದೆ.','Front face only. Camera auto captures when your face is clear inside the frame.':'ಮುಂಭಾಗದ ಮುಖ ಮಾತ್ರ. ಮುಖ ಸ್ಪಷ್ಟವಾಗಿದ್ದರೆ ಕ್ಯಾಮೆರಾ ಸ್ವಯಂ ಕ್ಯಾಪ್ಚರ್ ಮಾಡುತ್ತದೆ.',
+    'Capture Selfie':'ಸೆಲ್ಫಿ ತೆಗೆಯಿರಿ','Submit Selfie':'ಸೆಲ್ಫಿ ಸಲ್ಲಿಸಿ','Retake':'ಮತ್ತೆ ತೆಗೆಯಿರಿ','Camera':'ಕ್ಯಾಮೆರಾ','Open Camera':'ಕ್ಯಾಮೆರಾ ತೆರೆಯಿರಿ',
+    'Account holder name':'ಖಾತೆದಾರರ ಹೆಸರು','Bank name':'ಬ್ಯಾಂಕ್ ಹೆಸರು','Bank account number':'ಬ್ಯಾಂಕ್ ಖಾತೆ ಸಂಖ್ಯೆ','Branch name':'ಶಾಖೆ ಹೆಸರು','UPI ID':'UPI ಐಡಿ','Upload QR':'QR ಅಪ್‌ಲೋಡ್',
+    'Aadhaar number':'ಆಧಾರ್ ಸಂಖ್ಯೆ','PAN number':'PAN ಸಂಖ್ಯೆ','GST number':'GST ಸಂಖ್ಯೆ','GST certificate':'GST ಪ್ರಮಾಣಪತ್ರ','Skill certificate':'ಕೌಶಲ್ಯ ಪ್ರಮಾಣಪತ್ರ',
+    'Save Profile':'ಪ್ರೊಫೈಲ್ ಉಳಿಸಿ','Send verification':'ಪರಿಶೀಲನೆಗೆ ಕಳುಹಿಸಿ','Pending Approval':'ಅನುಮೋದನೆ ಬಾಕಿ','Change location':'ಸ್ಥಳ ಬದಲಿಸಿ','Saved location':'ಉಳಿಸಿದ ಸ್ಥಳ',
+    'No notifications':'ಅಧಿಸೂಚನೆಗಳಿಲ್ಲ','Mark all read':'ಎಲ್ಲ ಓದಿದಂತೆ ಗುರುತು','View details':'ವಿವರ ನೋಡಿ','Move to profile':'ಪ್ರೊಫೈಲ್‌ಗೆ ಹೋಗಿ','No jobs found':'ಉದ್ಯೋಗಗಳಿಲ್ಲ',
+    'Posted jobs':'ಪೋಸ್ಟ್ ಮಾಡಿದ ಉದ್ಯೋಗಗಳು','Job details':'ಉದ್ಯೋಗ ವಿವರಗಳು','Applicants details':'ಅರ್ಜಿದಾರರ ವಿವರಗಳು','Profile visibility':'ಪ್ರೊಫೈಲ್ ದೃಶ್ಯತೆ','Direct chat':'ನೇರ ಚಾಟ್',
+    'Manual attendance':'ಮ್ಯಾನುಯಲ್ ಹಾಜರಾತಿ','GPS attendance':'GPS ಹಾಜರಾತಿ','Custom GPS radius':'ಕಸ್ಟಮ್ GPS ಅಂತರ','Automatic attendance by GPS radius':'GPS ಅಂತರದಿಂದ ಸ್ವಯಂ ಹಾಜರಾತಿ',
+    'Subscribe now':'ಈಗ ಚಂದಾದಾರರಾಗಿ','Current plan':'ಪ್ರಸ್ತುತ ಯೋಜನೆ','Selected plan':'ಆಯ್ಕೆ ಮಾಡಿದ ಯೋಜನೆ','Upgrade to use this feature':'ಈ ವೈಶಿಷ್ಟ್ಯಕ್ಕೆ ಅಪ್‌ಗ್ರೇಡ್ ಮಾಡಿ'
+  },
+  te: {
+    'Enter role name, e.g. TIG Welder, CNC Operator':'పాత్ర పేరును నమోదు చేయండి, ఉదా. TIG వెల్డర్, CNC ఆపరేటర్','Enter company name':'కంపెనీ పేరు నమోదు చేయండి','Enter your full name':'మీ పూర్తి పేరు నమోదు చేయండి','Enter phone number':'ఫోన్ నంబర్ నమోదు చేయండి','Enter official email':'అధికారిక ఇమెయిల్ నమోదు చేయండి','Enter address':'చిరునామా నమోదు చేయండి','Enter company address':'కంపెనీ చిరునామా నమోదు చేయండి',
+    'Search location':'స్థానం వెతకండి','Search company area':'కంపెనీ ప్రాంతం వెతకండి','Search worker':'కార్మికుడిని వెతకండి','Search jobs':'ఉద్యోగాలు వెతకండి','Search applicants':'దరఖాస్తుదారులను వెతకండి',
+    'Select category':'వర్గం ఎంచుకోండి','Select industry':'పరిశ్రమ ఎంచుకోండి','Select skills':'నైపుణ్యాలు ఎంచుకోండి','Select language':'భాష ఎంచుకోండి','Select plan':'ప్లాన్ ఎంచుకోండి','Select candidate type':'అభ్యర్థి రకం ఎంచుకోండి',
+    'Enter amount':'మొత్తం నమోదు చేయండి','Enter daily pay':'రోజువారీ వేతనం నమోదు చేయండి','Enter hourly pay':'గంట వేతనం నమోదు చేయండి','Enter duration':'వ్యవధి నమోదు చేయండి','Enter workers needed':'అవసరమైన కార్మికుల సంఖ్య నమోదు చేయండి','Post visible for days':'పోస్ట్ కనిపించే రోజులు',
+    'Verify your active phone number':'మీ యాక్టివ్ ఫోన్ నంబర్‌ను ధృవీకరించండి','Open the camera and keep your full face inside the green frame. It will auto capture.':'కెమెరా తెరిచి మీ పూర్తి ముఖాన్ని ఆకుపచ్చ ఫ్రేమ్ లోపల ఉంచండి. ఇది ఆటో క్యాప్చర్ చేస్తుంది.','Front face only. Camera auto captures when your face is clear inside the frame.':'ముందు ముఖం మాత్రమే. ఫ్రేమ్‌లో ముఖం స్పష్టంగా ఉంటే కెమెరా ఆటో క్యాప్చర్ చేస్తుంది.',
+    'Capture Selfie':'సెల్ఫీ తీసుకోండి','Submit Selfie':'సెల్ఫీ సమర్పించండి','Retake':'మళ్లీ తీసుకోండి','Camera':'కెమెరా','Open Camera':'కెమెరా తెరవండి',
+    'Account holder name':'ఖాతాదారు పేరు','Bank name':'బ్యాంక్ పేరు','Bank account number':'బ్యాంక్ ఖాతా సంఖ్య','Branch name':'శాఖ పేరు','UPI ID':'UPI ఐడి','Upload QR':'QR అప్‌లోడ్',
+    'Aadhaar number':'ఆధార్ సంఖ్య','PAN number':'PAN సంఖ్య','GST number':'GST సంఖ్య','GST certificate':'GST సర్టిఫికేట్','Skill certificate':'నైపుణ్య సర్టిఫికేట్',
+    'Save Profile':'ప్రొఫైల్ సేవ్ చేయండి','Send verification':'ధృవీకరణకు పంపండి','Pending Approval':'ఆమోదం పెండింగ్','Change location':'స్థానం మార్చండి','Saved location':'సేవ్ చేసిన స్థానం',
+    'No notifications':'నోటిఫికేషన్లు లేవు','Mark all read':'అన్నీ చదివినట్లు గుర్తించు','View details':'వివరాలు చూడండి','Move to profile':'ప్రొఫైల్‌కు వెళ్ళండి','No jobs found':'ఉద్యోగాలు దొరకలేదు',
+    'Posted jobs':'పోస్ట్ చేసిన ఉద్యోగాలు','Job details':'ఉద్యోగ వివరాలు','Applicants details':'దరఖాస్తుదారుల వివరాలు','Profile visibility':'ప్రొఫైల్ విజిబిలిటీ','Direct chat':'డైరెక్ట్ చాట్',
+    'Manual attendance':'మాన్యువల్ హాజరు','GPS attendance':'GPS హాజరు','Custom GPS radius':'కస్టమ్ GPS రేడియస్','Automatic attendance by GPS radius':'GPS రేడియస్ ద్వారా ఆటోమేటిక్ హాజరు',
+    'Subscribe now':'ఇప్పుడే సబ్‌స్క్రైబ్ చేయండి','Current plan':'ప్రస్తుత ప్లాన్','Selected plan':'ఎంచుకున్న ప్లాన్','Upgrade to use this feature':'ఈ ఫీచర్‌కు అప్‌గ్రేడ్ చేయండి'
+  }
+};
+
+
+const shouldTranslateRawText = (text) => {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (t.length > 320) return false;
+  if (/[@]/.test(t)) return false;
+  if (/^[-+#₹0-9.,:/()\s]+$/.test(t)) return false;
+  return /[A-Za-z]/.test(t);
+};
+
+const translateExactText = (value, lang) => {
+  const map = trMap[lang] || {};
+  const extraMap = trExtraMap[lang] || {};
+  const wordMap = { ...(trWordMap[lang] || {}), ...extraMap, ...map };
+  if (!value || lang === 'en') return value;
+  const raw = String(value);
+  if (!shouldTranslateRawText(raw)) return value;
+  const leading = raw.match(/^\s*/)?.[0] || '';
+  const trailing = raw.match(/\s*$/)?.[0] || '';
+  const trimmed = raw.trim();
+  const star = /\*\s*$/.test(trimmed) ? ' *' : '';
+  const clean = trimmed.replace(/\s*\*\s*$/, '');
+  if (map[trimmed] || extraMap[trimmed]) return `${leading}${map[trimmed] || extraMap[trimmed]}${trailing}`;
+  if (map[clean] || extraMap[clean]) return `${leading}${map[clean] || extraMap[clean]}${star}${trailing}`;
+
+  let out = clean;
+  const entries = Object.entries(wordMap).sort((a, b) => b[0].length - a[0].length);
+  for (const [key, translated] of entries) {
+    if (!key || !translated || key === translated) continue;
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const hasAlphaNum = /^[A-Za-z0-9 ]+$/.test(key);
+    const re = hasAlphaNum
+      ? new RegExp(`(^|[^A-Za-z0-9])(${escaped})(?=$|[^A-Za-z0-9])`, 'gi')
+      : new RegExp(escaped, 'g');
+    out = out.replace(re, (m, prefix='') => `${prefix}${translated}`);
+  }
+  return `${leading}${out}${star}${trailing}`;
+};
+
+function applyDashboardLanguage(lang) {
+  if (typeof window === 'undefined' || !document?.body) return;
+  const map = trMap[lang] || {};
+  const extraMap = trExtraMap[lang] || {};
+  const skipTags = new Set(['SCRIPT', 'STYLE', 'TEXTAREA']);
+  const translateNode = (node) => {
+    if (!node || !node.parentElement || skipTags.has(node.parentElement.tagName)) return;
+    if (node.parentElement.closest('[data-no-translate]')) return;
+    if (!node.__w2wOriginalText) node.__w2wOriginalText = node.nodeValue;
+    const original = node.__w2wOriginalText;
+    const translated = translateExactText(original, lang);
+    if (translated !== node.nodeValue) node.nodeValue = translated;
+  };
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walk.nextNode()) nodes.push(walk.currentNode);
+  nodes.forEach(translateNode);
+
+  document.querySelectorAll('[placeholder], [title], [aria-label]').forEach((el) => {
+    ['placeholder', 'title', 'aria-label'].forEach((attr) => {
+      if (!el.hasAttribute(attr)) return;
+      const dataKey = `w2wOriginal${attr.replace(/[^a-z]/gi, '')}`;
+      if (!el.dataset[dataKey]) el.dataset[dataKey] = el.getAttribute(attr) || '';
+      const original = el.dataset[dataKey];
+      el.setAttribute(attr, lang === 'en' ? original : (map[original] || extraMap[original] || translateExactText(original, lang)));
+    });
+  });
+}
 
 function applyAppTheme(next) {
   if (typeof window === 'undefined') return;
@@ -382,12 +613,30 @@ const [lang, setLang] = useState('en');
     const saved = localStorage.getItem('w2w-language') || 'en';
     setLang(saved);
     document.documentElement.lang = saved;
+    const run = () => applyDashboardLanguage(saved);
+    setTimeout(run, 50);
+    setTimeout(run, 500);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !document?.body) return;
+    const run = () => applyDashboardLanguage(lang);
+    setTimeout(run, 50);
+    setTimeout(run, 300);
+    const observer = new MutationObserver(() => {
+      window.clearTimeout(window.__w2wLangTimer);
+      window.__w2wLangTimer = window.setTimeout(run, 80);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'title', 'aria-label'] });
+    return () => observer.disconnect();
+  }, [lang]);
   const change = (next) => {
     setLang(next);
     localStorage.setItem('w2w-language', next);
     document.documentElement.lang = next;
     window.dispatchEvent(new CustomEvent('w2w-language-change', { detail: next }));
+    setTimeout(() => applyDashboardLanguage(next), 50);
+    setTimeout(() => applyDashboardLanguage(next), 300);
     toast.success(`Language: ${next.toUpperCase()}`);
   };
   return (
@@ -663,7 +912,7 @@ function AdminAccessButton({ onAuthed }) {
             <Label>Password</Label>
             <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
           </div>
-          <Button type="submit" disabled={busy} className="w-full bg-slate-900 hover:bg-slate-800 text-white">
+          <Button type="submit" disabled={busy} className="w-full bg-sky-600 hover:bg-sky-700 text-white">
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Verify Admin <ArrowRight className="w-4 h-4 ml-2" /></>}
           </Button>
         </form>
@@ -1102,7 +1351,7 @@ function AdminApp({ auth, onLogout }) {
                   rows={(selected.jobs || []).map(j => ({
                     id: j.id,
                     main: j.title,
-                    sub: `${j.category || 'Job'} · ₹${j.daily_pay || 0}/day · ${j.status || 'open'}`,
+                    sub: `${j.category || 'Job'} · ${jobPayLabel(j)} · ${j.status || 'open'}`,
                     meta: `${(j.applications || []).length} applicants · ${j.location_text || 'No location'}`
                   }))}
                 />
@@ -1116,7 +1365,7 @@ function AdminApp({ auth, onLogout }) {
                   rows={(selected.applications || []).map(a => ({
                     id: a.id,
                     main: a.jobs?.title || 'Job application',
-                    sub: `${a.status || 'pending'} · ₹${a.jobs?.daily_pay || 0}/day`,
+                    sub: `${a.status || 'pending'} · ${jobPayLabel(a.jobs)}`,
                     meta: `${a.jobs?.category || 'Job'} · ${a.jobs?.location_text || 'No location'}`
                   }))}
                 />
@@ -1679,7 +1928,7 @@ function SignupForm({ data, onChange, onSent, onBack }) {
                 {data.password && (
                   <div className="mt-2">
                     <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full transition-all duration-[1000ms] ${strength.color}`} style={{ width: strength.width }} />
+                      <div className={`h-full transition-all duration-1000 ${strength.color}`} style={{ width: strength.width }} />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Strength: <b>{strength.label}</b></p>
                   </div>
@@ -1833,1033 +2082,354 @@ function OAuthRolePicker({ ctx, onPick }) {
 
 
 function NotificationCenter({
- token,
- userId,
- channelKey = 'worker',
- accent = 'indigo',
- onNavigate = null
+  token,
+  userId,
+  channelKey = 'worker',
+  accent = 'indigo',
+  onNavigate = null
 }) {
+  const [open, setOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-const [open,setOpen]=useState(false);
-const [notifications,setNotifications]=useState([]);
-const [selected,setSelected]=useState(null);
-const [loading,setLoading]=useState(false);
+  const accentClasses = accent === 'emerald'
+    ? {
+        soft: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        ring: 'ring-emerald-100',
+        icon: 'from-emerald-500 to-teal-600',
+        button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+        line: 'bg-emerald-500',
+      }
+    : accent === 'amber'
+      ? {
+          soft: 'bg-amber-50 text-amber-700 border-amber-200',
+          ring: 'ring-amber-100',
+          icon: 'from-amber-500 to-orange-600',
+          button: 'bg-amber-600 hover:bg-amber-700 text-white',
+          line: 'bg-amber-500',
+        }
+      : {
+          soft: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+          ring: 'ring-indigo-100',
+          icon: 'from-indigo-600 to-sky-600',
+          button: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+          line: 'bg-indigo-500',
+        };
 
-useEffect(()=>{
+  const timeAgo = (dateValue) => {
+    if (!dateValue) return 'Recently';
+    const now = new Date();
+    const then = new Date(dateValue);
+    const diffMs = now - then;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
 
-loadNotifications();
-
-},[]);
-
-useEffect(() => {
-  if (typeof window === 'undefined') return;
-
-  const handleNotificationBack = (event) => {
-    if (!open && !selected) return;
-
-    // Close notification UI first. Do not also change dashboard tabs.
-    event?.stopImmediatePropagation?.();
-
-    if (selected) {
-      setSelected(null);
-      setOpen(true);
-      return;
+  const loadNotifications = async () => {
+    if (!token) return;
+    try {
+      setLoading(true);
+      const data = await api(`notifications?user_id=${userId}`, { token });
+      setNotifications(data.notifications || []);
+    } catch (e) {
+      toast.error('Unable to load notifications');
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
+    loadNotifications();
+  }, [token, userId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleNotificationBack = (event) => {
+      if (!open && !selected) return;
+      event?.stopImmediatePropagation?.();
+
+      if (selected) {
+        setSelected(null);
+        setOpen(true);
+        return;
+      }
+
+      setOpen(false);
+    };
+
+    window.addEventListener('popstate', handleNotificationBack);
+    return () => window.removeEventListener('popstate', handleNotificationBack);
+  }, [open, selected]);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const closePanel = () => {
+    setSelected(null);
     setOpen(false);
   };
 
-  window.addEventListener('popstate', handleNotificationBack);
-  return () => window.removeEventListener('popstate', handleNotificationBack);
-}, [open, selected]);
+  const openPanel = () => {
+    setOpen(true);
+    if (typeof window !== 'undefined') {
+      window.history.pushState(
+        { w2wInternal: true, panel: 'notifications', channelKey },
+        '',
+        window.location.href
+      );
+    }
+  };
 
+  const handleNotificationClick = (item) => {
+    setNotifications(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
+    api(`notifications/${item.id}/read`, { method: 'POST', token }).catch(() => null);
 
-async function loadNotifications(){
+    const target = {
+      ...item,
+      type: item.type,
+      reference_id: item.reference_id || item.source_id || item.target_id || item.related_id,
+      target_route: item.target_route || item.target_page || item.route,
+      peer_id: item.peer_id,
+      peer_name: item.peer_name,
+      peer_photo: item.peer_photo,
+      peer_role: item.peer_role,
+    };
 
-if(!token) return;
+    if (onNavigate) {
+      onNavigate(target);
+      closePanel();
+      toast.success('Opening related page');
+      return;
+    }
 
-try{
+    if (typeof window !== 'undefined') {
+      window.history.pushState(
+        { w2wInternal: true, panel: 'notification-detail', notificationId: item.id },
+        '',
+        window.location.href
+      );
+    }
+    setSelected(item);
+  };
 
-setLoading(true);
+  return (
+    <>
+      <Button
+        size="icon"
+        variant="outline"
+        className="relative rounded-full bg-white/95 text-slate-800 border-white/70 shadow-sm hover:bg-white"
+        onClick={openPanel}
+      >
+        <Bell className="w-5 h-5" />
+        {unreadCount > 0 && (
+          <div className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-white">
+            {unreadCount}
+          </div>
+        )}
+      </Button>
 
-const data=await api(
-`notifications?user_id=${userId}`,
-{token}
-);
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+        {open && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[99998] bg-slate-950/30 backdrop-blur-[2px]"
+              onClick={closePanel}
+            />
 
-setNotifications(
-data.notifications || []
-);
+            <motion.div
+              initial={{ x: 420, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 420, opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+              onClick={(e) => e.stopPropagation()}
+              className="fixed top-3 right-3 bottom-3 w-[min(430px,94vw)] rounded-[28px] border border-white/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] z-[99999] flex flex-col overflow-hidden"
+            >
+              <div className="relative overflow-hidden border-b border-slate-100 bg-gradient-to-br from-white via-slate-50 to-sky-50 p-4 shrink-0">
+                <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-sky-200/40 blur-2xl" />
+                <div className="relative flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => selected ? setSelected(null) : closePanel()}
+                      className="h-10 w-10 rounded-2xl bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 shrink-0"
+                      title={selected ? 'Back to notifications' : 'Close notifications'}
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <div className="min-w-0">
+                      <h2 className="font-extrabold text-lg text-slate-950 truncate">
+                        {selected ? 'Notification Details' : 'Notifications'}
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {selected ? 'Review the selected update' : `${notifications.length} total · ${unreadCount} new`}
+                      </p>
+                    </div>
+                  </div>
 
-}catch(e){
+                  {!selected && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      {unreadCount > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+                            toast.success('All marked as read');
+                          }}
+                          className="h-9 rounded-xl text-xs text-slate-700 hover:bg-white"
+                        >
+                          Mark read
+                        </Button>
+                      )}
+                      <Badge className={`${accentClasses.soft} border`}>{unreadCount} new</Badge>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-toast.error(
-"Unable to load notifications"
-);
+              {selected ? (
+                <div className="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-4">
+                  <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-5">
+                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${accentClasses.icon} text-white flex items-center justify-center shadow-lg mb-4`}>
+                      <Bell className="w-7 h-7" />
+                    </div>
+                    <h3 className="text-xl font-extrabold text-slate-950 leading-tight">
+                      {selected?.title || 'Notification'}
+                    </h3>
+                    <p className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {selected?.message || 'No details'}
+                    </p>
+                  </div>
 
-}
-finally{
+                  <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Type</p>
+                        <Badge variant="outline" className={`mt-2 capitalize ${accentClasses.soft} border`}>
+                          {selected?.type || 'notification'}
+                        </Badge>
+                      </div>
+                      <Badge className={selected?.read ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-500 text-white'}>
+                        {selected?.read ? 'Read' : 'New'}
+                      </Badge>
+                    </div>
 
-setLoading(false);
+                    <Separator />
 
-}
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Received</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {selected?.created_at ? new Date(selected.created_at).toLocaleString() : 'Unknown'}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">{timeAgo(selected?.created_at)}</p>
+                    </div>
+                  </div>
 
-}
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-2xl bg-white"
+                      onClick={() => setSelected(null)}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    </Button>
+                    <Button
+                      type="button"
+                      className={`h-11 rounded-2xl ${accentClasses.button}`}
+                      onClick={() => {
+                        setSelected(null);
+                        closePanel();
+                      }}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Done
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto bg-slate-50/80 p-3 space-y-3">
+                  {loading ? (
+                    <div className="h-full min-h-64 flex items-center justify-center text-slate-500">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className="h-full min-h-72 flex flex-col items-center justify-center text-center p-6">
+                      <div className="w-16 h-16 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-4">
+                        <Bell className="w-8 h-8 text-slate-400" />
+                      </div>
+                      <p className="font-bold text-slate-900">No notifications</p>
+                      <p className="text-sm text-slate-500 mt-1">Updates will appear here when available.</p>
+                    </div>
+                  ) : (
+                    notifications.map(item => (
+                      <motion.div
+                        key={item.id}
+                        whileHover={{ y: -2 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => handleNotificationClick(item)}
+                        className={`relative rounded-3xl border bg-white p-4 shadow-sm hover:shadow-xl cursor-pointer transition-all overflow-hidden ${!item.read ? `${accentClasses.ring} ring-2 border-white` : 'border-slate-200'}`}
+                      >
+                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${!item.read ? accentClasses.line : 'bg-slate-200'}`} />
+                        <div className="flex gap-3">
+                          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${accentClasses.icon} text-white flex items-center justify-center shadow-md shrink-0`}>
+                            <Bell className="w-5 h-5" />
+                          </div>
 
-const unreadCount=
-notifications.filter(
-n=>!n.read
-).length;
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="font-extrabold text-sm text-slate-950 truncate">
+                                  {item.title || 'Notification'}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <Badge variant="outline" className={`text-[10px] py-0 px-1.5 capitalize ${accentClasses.soft} border`}>
+                                    {item.type || 'system'}
+                                  </Badge>
+                                  {!item.read && (
+                                    <Badge className="text-[10px] py-0 px-1.5 bg-red-500 text-white animate-pulse">
+                                      New
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              <ArrowRight className="w-4 h-4 text-slate-400 shrink-0 mt-1" />
+                            </div>
 
+                            <p className="text-xs text-slate-600 mt-2 line-clamp-2 leading-snug">
+                              {item.message || 'Tap to open related page'}
+                            </p>
 
-return(
-
-<>
-
-{/* Bell Button */}
-
-<Button
-size="icon"
-variant="outline"
-className="
-relative
-rounded-full
-"
-
-onClick={()=>{
-setOpen(true);
-if (typeof window !== 'undefined') {
-  window.history.pushState(
-    { w2wInternal: true, panel: 'notifications', channelKey },
-    '',
-    window.location.href
+                            <p className="text-[11px] text-slate-500 mt-3 flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {timeAgo(item.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>,
+        document.body
+      )}
+    </>
   );
-}
-}}
-
->
-
-<Bell className="w-5 h-5"/>
-
-{unreadCount>0 && (
-
-<div
-className="
-absolute
--top-1
--right-1
-w-5
-h-5
-rounded-full
-bg-red-500
-text-white
-text-xs
-flex
-items-center
-justify-center
-"
->
-
-{unreadCount}
-
-</div>
-
-)}
-
-</Button>
-
-
-
-<AnimatePresence>
-
-{open && (
-
-<>
-
-{/* No page overlay: notification panel stays separate and will not dim/cover other cards */}
-
-{/* Right Panel */}
-
-<motion.div
-
-initial={{
-x:350
-}}
-
-animate={{
-x:0
-}}
-
-exit={{
-x:350
-}}
-
-transition={{
-type:"spring",
-damping:25
-}}
-
-className="
-fixed
-top-[64px]
-right-3
-w-[min(360px,92vw)]
-h-[calc(100vh-76px)]
-rounded-3xl
-border border-slate-200/80
-bg-gradient-to-b from-white via-slate-50 to-indigo-50
-dark:bg-slate-900
-shadow-2xl
-z-[60]
-flex
-flex-col
-overflow-hidden
-"
-
->
-
-{/* Header */}
-
-<div
-className="
-p-4
-border-b
-flex
-items-center
-justify-between
-"
->
-
-{selected ? (
-
-<Button
-variant="ghost"
-size="sm"
-onClick={()=>{
-setSelected(null)
-}}
-className="
-gap-2
-"
->
-
-<ChevronLeft
-className="
-w-4
-h-4
-"
-/>
-
-Back
-
-</Button>
-
-)
-
-:
-
-<>
-
-<div>
-
-<h2
-className="
-font-bold
-text-lg
-"
->
-
-Notifications
-
-</h2>
-
-<p
-className="
-text-xs
-text-gray-500
-mt-0.5
-"
->
-
-{notifications.length} total
-
-</p>
-
-</div>
-
-<div
-className="
-flex
-items-center
-gap-2
-"
->
-
-{unreadCount > 0 && (
-
-<Button
-variant="ghost"
-size="sm"
-onClick={() => {
-  setNotifications(prev =>
-    prev.map(n => ({ ...n, read: true }))
-  );
-  toast.success('All marked as read');
-}}
-className="
-text-xs
-h-auto
-py-1
-px-2
-"
->
-
-Mark all read
-
-</Button>
-
-)}
-
-<div
-className="
-px-2
-py-1
-rounded-full
-bg-green-100
-dark:bg-green-950
-text-green-700
-dark:text-green-300
-text-xs
-font-semibold
-"
->
-
-{unreadCount} new
-
-</div>
-
-</div>
-
-</>
-
-}
-
-</div>
-
-
-
-{/* Details */}
-
-{selected ? (
-
-<div
-className="
-flex-1
-overflow-y-auto
-p-4
-space-y-4
-"
->
-
-{/* Hero Card */}
-
-<div
-className="
-rounded-3xl
-bg-gradient-to-br
-from-green-500
-to-emerald-700
-text-white
-p-6
-"
->
-
-<div
-className="
-w-14
-h-14
-rounded-xl
-bg-white/20
-flex
-items-center
-justify-center
-mb-4
-"
->
-
-<Bell className="w-7 h-7"/>
-
-</div>
-
-
-<h2
-className="
-font-bold
-text-2xl
-mb-2
-"
->
-
-{selected?.title ||
-"Notification"}
-
-</h2>
-
-<p
-className="
-mt-3
-text-sm
-leading-relaxed
-"
->
-
-{selected?.message ||
-"No details"}
-
-</p>
-
-</div>
-
-
-{/* Metadata Section */}
-
-<div
-className="
-rounded-2xl
-border
-bg-slate-50
-dark:bg-slate-800
-p-4
-space-y-4
-"
->
-
-<div className="space-y-3">
-
-<div
-className="
-flex
-justify-between
-items-start
-"
->
-
-<div>
-
-<p
-className="
-text-xs
-font-semibold
-text-gray-500
-dark:text-gray-400
-uppercase
-tracking-wider
-"
->
-
-Type
-
-</p>
-
-<div
-className="
-mt-2
-flex
-gap-2
-flex-wrap
-"
->
-
-<Badge
-variant="outline"
-className="
-capitalize
-bg-green-50
-dark:bg-green-950
-text-green-700
-dark:text-green-300
-border-green-200
-dark:border-green-800
-"
->
-
-{selected?.type || 'notification'}
-
-</Badge>
-
-{selected?.read ? (
-
-<Badge
-variant="outline"
-className="
-bg-gray-100
-dark:bg-gray-800
-text-gray-600
-dark:text-gray-300
-border-gray-200
-dark:border-gray-700
-"
->
-
-✓ Read
-
-</Badge>
-
-) : (
-
-<Badge
-className="
-bg-red-500
-hover:bg-red-600
-"
->
-
-New
-
-</Badge>
-
-)}
-
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-
-<Separator className="my-3"/>
-
-
-<div className="space-y-3">
-
-<div>
-
-<p
-className="
-text-xs
-font-semibold
-text-gray-500
-dark:text-gray-400
-uppercase
-tracking-wider
-"
->
-
-Received
-
-</p>
-
-<p
-className="
-mt-2
-text-sm
-font-medium
-"
->
-
-{selected?.created_at
-?
-new Date(
-selected.created_at
-).toLocaleString()
-
-:
-"Unknown"}
-
-</p>
-
-<p
-className="
-text-xs
-text-gray-400
-mt-1
-"
->
-
-{selected?.created_at
-?
-(() => {
-  const now = new Date();
-  const then = new Date(selected.created_at);
-  const diffMs = now - then;
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-})()
-:
-''
-}
-
-</p>
-
-</div>
-
-</div>
-
-
-<Separator className="my-3"/>
-
-
-<div>
-
-<p
-className="
-text-xs
-font-semibold
-text-gray-500
-dark:text-gray-400
-uppercase
-tracking-wider
-"
->
-
-Reference ID
-
-</p>
-
-<div
-className="
-mt-2
-flex
-items-center
-gap-2
-bg-slate-100
-dark:bg-slate-700
-p-3
-rounded-lg
-font-mono
-text-xs
-"
->
-
-<span>
-
-#{selected?.id}
-
-</span>
-
-<Button
-size="sm"
-variant="ghost"
-onClick={() => {
-  navigator.clipboard.writeText(selected?.id);
-  toast.success('ID copied!');
-}}
-className="ml-auto h-6"
->
-
-<Copy className="w-3 h-3"/>
-
-</Button>
-
-</div>
-
-</div>
-
-</div>
-
-
-{/* Action Buttons */}
-
-<div
-className="
-pt-2
-flex
-gap-2
-"
->
-
-<Button
-variant="default"
-className="
-flex-1
-bg-green-600
-hover:bg-green-700
-"
-onClick={() => {
-  setSelected(null);
-  toast.success('Notification marked as handled');
-}}
->
-
-<CheckCircle2 className="w-4 h-4 mr-2"/>
-
-Done
-
-</Button>
-
-
-<Button
-variant="outline"
-onClick={() => {
-  setNotifications(prev => prev.filter(n => n.id !== selected.id));
-  setSelected(null);
-  toast.success('Notification deleted');
-}}
->
-
-<Trash2 className="w-4 h-4"/>
-
-</Button>
-
-</div>
-
-</div>
-
-)
-
-:
-
-<div
-className="
-flex-1
-overflow-y-auto
-p-3
-space-y-3
-"
->
-
-{loading ? (
-
-<div
-className="
-flex
-justify-center
-p-6
-"
->
-
-<Loader2
-className="
-animate-spin
-"
-/>
-
-</div>
-
-)
-
-:
-
-notifications.length===0
-
-?
-
-<div
-className="
-h-full
-flex
-items-center
-justify-center
-text-gray-400
-"
->
-
-No Notifications
-
-</div>
-
-:
-
-notifications.map(item=>(
-
-<motion.div
-
-key={item.id}
-
-whileHover={{
-scale:1.02
-}}
-
-onClick={()=>{
-
-setNotifications(
-prev=>
-prev.map(n=>
-
-n.id===item.id
-
-?
-
-{
-...n,
-read:true
-}
-
-:n
-
-)
-
-);
-api(`notifications/${item.id}/read`, { method: 'POST', token }).catch(() => null);
-
-const target = {
-  ...item,
-  type: item.type,
-  reference_id: item.reference_id || item.source_id || item.target_id || item.related_id,
-  target_route: item.target_route || item.target_page || item.route,
-  peer_id: item.peer_id,
-  peer_name: item.peer_name,
-  peer_photo: item.peer_photo,
-  peer_role: item.peer_role,
-};
-
-if (onNavigate) {
-  onNavigate(target);
-  setOpen(false);
-  setSelected(null);
-  toast.success('Opening related page');
-} else {
-  if (typeof window !== 'undefined') {
-    window.history.pushState(
-      { w2wInternal: true, panel: 'notification-detail', notificationId: item.id },
-      '',
-      window.location.href
-    );
-  }
-  setSelected(item);
-}
-
-}}
-
-className="
-relative
-rounded-3xl
-border border-white/70
-bg-gradient-to-br from-white via-indigo-50/80 to-emerald-50/60
-dark:bg-slate-800
-shadow-lg shadow-indigo-100/70
-hover:shadow-2xl hover:-translate-y-0.5
-cursor-pointer
-p-4
-overflow-hidden
-"
-
->
-
-<div
-className="
-absolute
-left-0
-top-0
-bottom-0
-w-1
-bg-green-500
-"
-/>
-
-<div
-className="
-flex
-gap-3
-"
->
-
-<div
-className="
-w-12
-h-12
-rounded-2xl
-bg-gradient-to-br from-[#061a4d] to-[#21b7ff]
-text-white
-flex
-items-center
-justify-center
-"
->
-
-<Bell
-className="
-w-5
-h-5
-"
-/>
-
-</div>
-
-
-<div className="flex-1">
-
-<div
-className="
-flex
-justify-between
-items-start
-gap-2
-"
->
-
-<div className="flex-1">
-
-<p
-className="
-font-semibold
-text-sm
-"
->
-
-{item.title ||
-"Notification"}
-
-</p>
-
-<div
-className="
-flex
-items-center
-gap-2
-mt-1
-flex-wrap
-"
->
-
-<Badge
-variant="outline"
-className="
-text-[10px]
-capitalize
-py-0
-px-1.5
-bg-blue-50
-dark:bg-blue-950
-text-blue-700
-dark:text-blue-300
-border-blue-200
-dark:border-blue-800
-"
->
-
-{item.type || 'system'}
-
-</Badge>
-
-{!item.read && (
-
-<Badge
-className="
-text-[10px]
-py-0
-px-1.5
-bg-red-500
-hover:bg-red-600
-animate-pulse
-"
->
-
-New
-
-</Badge>
-
-)}
-
-</div>
-
-</div>
-
-{!item.read && (
-
-<div
-className="
-w-2
-h-2
-rounded-full
-bg-red-500
-animate-pulse
-mt-1
-flex-shrink-0
-"
-/>
-
-)}
-
-</div>
-
-
-<p
-className="
-text-xs
-text-gray-500
-dark:text-gray-400
-mt-2
-line-clamp-2
-leading-snug
-"
->
-
-{item.message}
-
-</p>
-
-<p
-className="
-text-[11px]
-text-gray-400
-mt-2
-flex
-items-center
-gap-1
-"
->
-
-<Clock className="w-3 h-3"/>
-
-{
-item.created_at
-?
-
-(() => {
-  const now = new Date();
-  const then = new Date(item.created_at);
-  const diffMs = now - then;
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-})()
-
-:
-
-"Recently"
-
-}
-
-</p>
-
-</div>
-
-</div>
-
-</motion.div>
-
-))
-
-}
-
-</div>
-
-}
-
-</motion.div>
-
-</>
-
-)}
-
-</AnimatePresence>
-
-</>
-
-);
-
 }
 
 
@@ -3083,7 +2653,6 @@ function WorkerApp({ auth, onLogout }) {
           <div className="flex items-center gap-1">
             <NotificationCenter token={token} userId={me?.profile?.id} channelKey="worker" accent="indigo" onNavigate={handleNotificationNavigate} />
             <GlobalLanguageSelect />
-            <ThemeToggle />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button type="button" variant="ghost" size="icon" className="rounded-xl text-sky-100 hover:bg-white/10 hover:text-white" onClick={() => setTab('profile')} title="Profile">
                 <UserCircle className="w-5 h-5" />
@@ -3569,8 +3138,8 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
   const lngNum = Number(lng);
   const hasPin = Number.isFinite(latNum) && Number.isFinite(lngNum);
   const mapSrc = hasPin
-    ? `https://www.google.com/maps?q=${encodeURIComponent(`${latNum},${lngNum}`)}&z=16&output=embed`
-    : `https://www.google.com/maps?q=${encodeURIComponent(value || 'India')}&z=12&output=embed`;
+    ? `https://www.google.com/maps?q=${encodeURIComponent(`${latNum},${lngNum}`)}&z=17&output=embed`
+    : `https://www.google.com/maps?q=${encodeURIComponent(value || 'India')}&z=13&output=embed`;
   const savePin = async () => {
     if (!hasPin) return toast.error('Enter valid latitude and longitude');
     let text = value || `Pin: ${formatCoordinates(latNum, lngNum)}`;
@@ -3593,24 +3162,68 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
         <Map className="w-4 h-4" /><span className="hidden sm:inline ml-1">Pin</span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-[92vw] max-w-5xl rounded-3xl p-0 overflow-hidden">
-          <DialogHeader className={`p-5 text-white ${'bg-gradient-to-r from-sky-700 via-blue-600 to-cyan-500'}`}>
-            <DialogTitle>Pin exact location</DialogTitle>
-            <DialogDescription className="text-white/80">Use current GPS or enter latitude and longitude. The map preview updates before saving.</DialogDescription>
-          </DialogHeader>
-          <div className="p-4 space-y-3">
-            <div className="rounded-3xl overflow-hidden border bg-slate-100 h-[48vh] min-h-[320px] max-h-[560px]">
-              <iframe title="Location map preview" src={mapSrc} className="w-full h-full border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+        <DialogContent
+          className="!fixed !inset-0 !left-0 !top-0 !translate-x-0 !translate-y-0 !w-screen !max-w-none !h-screen !max-h-none rounded-none p-0 overflow-hidden border-0 bg-white shadow-none"
+          style={{ width: '100vw', maxWidth: '100vw', height: '100vh', maxHeight: '100vh' }}
+        >
+          <div className="h-screen w-screen overflow-hidden bg-white flex flex-col rounded-none">
+            <div className="relative z-30 h-16 shrink-0 bg-white/95 backdrop-blur-xl border-b border-slate-200 shadow-sm px-4 flex items-center justify-between gap-3">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-10 rounded-xl bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back
+              </Button>
+              <div className="text-center min-w-0">
+                <DialogTitle className="text-base sm:text-lg font-extrabold text-slate-900 truncate">Select Location</DialogTitle>
+                <DialogDescription className="text-xs text-slate-500 truncate">Use GPS or enter coordinates, then confirm the pin.</DialogDescription>
+              </div>
+              <Button type="button" onClick={savePin} className={`h-10 rounded-xl text-white ${isEmerald ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-indigo-700 hover:bg-indigo-800'}`}>
+                Confirm <Check className="w-4 h-4 ml-2" />
+              </Button>
             </div>
-            <div className="grid sm:grid-cols-3 gap-2">
-              <Input type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude" className="rounded-xl" />
-              <Input type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} placeholder="Longitude" className="rounded-xl" />
-              <Button type="button" variant="outline" onClick={useGps} className="rounded-xl"><MapPin className="w-4 h-4 mr-2" />Use GPS</Button>
+
+            <div className="relative flex-1 min-h-0 w-full bg-slate-100 overflow-hidden">
+              <iframe
+                title="Location map preview"
+                src={mapSrc}
+                className="absolute inset-0 block w-full h-full border-0"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+
+              <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-full">
+                <motion.div
+                  animate={{ y: [0, -8, 0], scale: [1, 1.05, 1] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                  className={`w-14 h-14 rounded-full grid place-items-center shadow-2xl ring-8 ring-white/40 ${isEmerald ? 'bg-emerald-600' : 'bg-indigo-600'}`}
+                >
+                  <MapPin className="w-8 h-8 text-white" />
+                </motion.div>
+                <div className="mx-auto mt-1 h-6 w-1 rounded-full bg-slate-900/40" />
+              </div>
+
+              <div className="absolute right-4 top-4 z-30 flex flex-col gap-2">
+                <Button type="button" onClick={useGps} className="h-10 rounded-xl bg-white text-slate-900 hover:bg-slate-50 border border-slate-200 shadow-lg">
+                  <MapPin className="w-4 h-4 mr-2 text-emerald-600" /> My Location
+                </Button>
+                <Button type="button" variant="outline" className="h-10 rounded-xl bg-white text-slate-900 hover:bg-slate-50 border-slate-200 shadow-lg" onClick={() => toast.info('Use mouse/touch zoom controls on the map')}>
+                  <Map className="w-4 h-4 mr-2 text-sky-600" /> Map Controls
+                </Button>
+              </div>
+
+              <div className="absolute left-4 right-4 bottom-4 z-30 rounded-3xl border border-white/50 bg-white/95 backdrop-blur-xl shadow-2xl p-4">
+                <div className="grid lg:grid-cols-[1fr_180px_180px_180px] gap-3 items-end">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Selected Location</p>
+                    <p className="mt-1 text-sm sm:text-base font-bold text-slate-900 truncate">{value || (hasPin ? formatCoordinates(latNum, lngNum) : 'Choose your exact location')}</p>
+                    {hasPin && <p className="text-xs text-slate-500 mt-0.5">{formatCoordinates(latNum, lngNum)}</p>}
+                  </div>
+                  <Input type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude" className="h-11 rounded-xl bg-white" />
+                  <Input type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} placeholder="Longitude" className="h-11 rounded-xl bg-white" />
+                  <Button type="button" onClick={savePin} className={`h-11 rounded-xl text-white ${isEmerald ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-indigo-700 hover:bg-indigo-800'}`}>
+                    Confirm Location
+                  </Button>
+                </div>
+              </div>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="button" onClick={savePin} className={isEmerald ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-indigo-700 hover:bg-indigo-800'}>Save pin</Button>
-            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -3857,14 +3470,13 @@ function LocationSearchBox({
             }}
             placeholder={placeholder}
             autoComplete="off"
-            className="pl-9 pr-40 sm:pr-56 border-0 shadow-none focus-visible:ring-0 h-11 rounded-xl bg-transparent"
+            className="pl-9 pr-24 sm:pr-32 border-0 shadow-none focus-visible:ring-0 h-11 rounded-xl bg-transparent"
           />
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
             <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-7 px-2" title="Search typed address">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">Search</span>
             </Button>
-            <MapPinPicker value={query} latitude={latitude} longitude={longitude} color={activeColor} onPick={(loc) => applyLocation(loc, 'Map pin saved')} />
             <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={useCurrent} disabled={gpsLoading} className={`h-7 px-2 text-white ${buttonClass}`} title="Use current GPS">
               {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">GPS</span>
@@ -3929,6 +3541,16 @@ function WorkerHome({ token, me, onChat }) {
   const [customRadius, setCustomRadius] = useState('');
   const [selected, setSelected] = useState(null);
   const [profileView, setProfileView] = useState(null);
+  const workerSubscription = getSubscriptionFeatures('worker', me?.profile || me);
+  const workerPlan = workerSubscription.plan;
+  const workerApplicationMonthKey = `w2w-worker-applications-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}-${new Date().toISOString().slice(0, 7)}`;
+  const workerIsVerified = !!(me?.verified || me?.extra?.verified || me?.verification_status === 'verified' || me?.extra?.verification_status === 'verified');
+  const jobAllowsCurrentWorker = (job = {}) => {
+    const required = String(job.candidate_verification || job.extra?.candidate_verification || 'all').toLowerCase();
+    if (required === 'verified') return workerIsVerified;
+    if (required === 'unverified') return !workerIsVerified;
+    return true;
+  };
 
   const load = async () => {
     setLoading(true);
@@ -3940,6 +3562,7 @@ function WorkerHome({ token, me, onChat }) {
       const d = await api(`jobs${params.toString() ? `?${params.toString()}` : ''}`, { token });
       let list = d.jobs || [];
       if (benefitFilter !== 'all') list = list.filter(j => jobBenefits(j).map(x => x.toLowerCase()).includes(benefitFilter));
+      list = list.filter(jobAllowsCurrentWorker);
       setJobs(list);
     } catch (e) { toast.error(e.message); } finally { setLoading(false); }
   };
@@ -3969,6 +3592,7 @@ function WorkerHome({ token, me, onChat }) {
           return { ...job, distance_km: distance };
         })
         .filter((job) => job.distance_km !== null && Number(job.distance_km.toFixed(3)) <= limitKm)
+        .filter(jobAllowsCurrentWorker)
         .sort((a, b) => a.distance_km - b.distance_km);
 
       setNearbyJobs(filtered);
@@ -4024,7 +3648,20 @@ function WorkerHome({ token, me, onChat }) {
 
   const apply = async (jobId) => {
     try {
+      if (selected && !jobAllowsCurrentWorker(selected)) {
+        const required = String(selected.candidate_verification || selected.extra?.candidate_verification || '').toLowerCase();
+        toast.error(required === 'verified' ? 'Only verified candidates can apply for this job' : 'Only unverified candidates can apply for this job');
+        return;
+      }
+      const applicationsThisMonth = Number(localStorage.getItem(workerApplicationMonthKey) || 0);
+      if (Number.isFinite(workerSubscription.maxApplicationsPerMonth) && applicationsThisMonth >= workerSubscription.maxApplicationsPerMonth) {
+        showSubscriptionRequired('unlimited job applications', 'Growth');
+        return;
+      }
       await api(`jobs/${jobId}/apply`, { method: 'POST', token, body: {} });
+      if (Number.isFinite(workerSubscription.maxApplicationsPerMonth)) {
+        localStorage.setItem(workerApplicationMonthKey, String(applicationsThisMonth + 1));
+      }
       const bumpApplicantCount = (list) => list.map(j =>
         j.id === jobId ? { ...j, applicants_count: Number(j.applicants_count || 0) + 1, pending_count: Number(j.pending_count || 0) + 1 } : j
       );
@@ -4159,8 +3796,8 @@ function WorkerHome({ token, me, onChat }) {
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between mt-3 text-sm">
-                  <span className="font-bold text-emerald-700">{fmtMoney(job.daily_pay)}/day</span>
-                  <span className="text-muted-foreground">{job.duration_days} day(s)</span>
+                  <span className="font-bold text-emerald-700">{jobPayLabel(job)}</span>
+                  <span className="text-muted-foreground">{jobDurationLabel(job)}</span>
                 </div>
               </button>
             ))}
@@ -4197,8 +3834,8 @@ function WorkerHome({ token, me, onChat }) {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-3">
-                <div className="p-3 rounded-2xl border bg-emerald-50 text-emerald-700"><p className="text-xs">Daily pay</p><p className="font-bold">{fmtMoney(selected.daily_pay)}</p></div>
-                <div className="p-3 rounded-2xl border bg-indigo-50 text-indigo-700"><p className="text-xs">Duration</p><p className="font-bold">{selected.duration_days} day(s)</p></div>
+                <div className="p-3 rounded-2xl border bg-emerald-50 text-emerald-700"><p className="text-xs">Daily pay</p><p className="font-bold">{jobPayLabel(selected)}</p></div>
+                <div className="p-3 rounded-2xl border bg-indigo-50 text-indigo-700"><p className="text-xs">Duration</p><p className="font-bold">{jobDurationLabel(selected)}</p></div>
                 <div className="p-3 rounded-2xl border bg-slate-50 text-slate-700"><p className="text-xs">Workers</p><p className="font-bold">{selected.workers_needed || 1}</p></div>
                 <div className="p-3 rounded-2xl border bg-amber-50 text-amber-700"><p className="text-xs">Shift</p><p className="font-bold capitalize">{selected.shift_timing || 'day'}</p></div>
                 <div className="p-3 rounded-2xl border bg-rose-50 text-rose-700"><p className="text-xs">Applied</p><p className="font-bold">{Number(selected.applicants_count || 0)} worker(s)</p></div>
@@ -4214,7 +3851,10 @@ function WorkerHome({ token, me, onChat }) {
               </div>
               <DialogFooter className="flex-col sm:flex-row gap-2 mt-3">
                 <Button variant="outline" className="w-full sm:w-auto" onClick={() => openProfileDetails(selected.employer_id)}><Building2 className="w-4 h-4 mr-2" /> Company profile</Button>
-                <Button variant="outline" className="w-full sm:w-auto"><Phone className="w-4 h-4 mr-2" /> Call employer</Button>
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => {
+                  if (!workerSubscription.directEmployerContact) return showSubscriptionRequired('direct employer contact', 'Premium');
+                  if (selected.contact_number) window.location.href = `tel:${selected.contact_number}`;
+                }}><Phone className="w-4 h-4 mr-2" /> Call employer</Button>
                 <Button onClick={() => apply(selected.id)} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700">
                   <Send className="w-4 h-4 mr-2" /> Apply now
                 </Button>
@@ -4260,8 +3900,8 @@ function JobCard({ job, onClick, onProfile }) {
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs mt-4">
         <span className="rounded-xl border bg-slate-50 px-2.5 py-2 truncate"><MapPin className="w-3 h-3 mr-1 inline" />{job.location_text || 'Location not added'}</span>
-        <span className="rounded-xl border bg-slate-50 px-2.5 py-2"><Clock className="w-3 h-3 mr-1 inline" />{job.duration_days || 1} day(s)</span>
-        <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 py-2 text-emerald-700 font-bold"><Banknote className="w-3 h-3 mr-1 inline" />{fmtMoney(job.daily_pay)}/day</span>
+        <span className="rounded-xl border bg-slate-50 px-2.5 py-2"><Clock className="w-3 h-3 mr-1 inline" />{jobDurationLabel(job)}</span>
+        <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 py-2 text-emerald-700 font-bold"><Banknote className="w-3 h-3 mr-1 inline" />{jobPayLabel(job)}</span>
         <span className="rounded-xl border bg-slate-50 px-2.5 py-2"><Users className="w-3 h-3 mr-1 inline" />{job.workers_needed || 1} worker(s)</span>
         <span className={`rounded-xl border px-2.5 py-2 font-semibold ${Number(job.applicants_count || 0) > 0 ? 'border-rose-100 bg-rose-50 text-rose-700' : 'bg-slate-50 text-slate-500'}`}><Users className="w-3 h-3 mr-1 inline" />{Number(job.applicants_count || 0)} applied</span>
       </div>
@@ -4438,9 +4078,9 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                 <Badge variant={a.status === 'accepted' ? 'default' : 'secondary'} className={`shrink-0 ${a.status === 'rejected' ? 'bg-red-100 text-red-700' : a.status === 'accepted' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}>{a.status}</Badge>
               </div>
               <div className="mt-2 flex gap-2 text-xs text-muted-foreground">
-                <span>{fmtMoney(a.jobs?.daily_pay)}/day</span>
+                <span>{jobPayLabel(a.jobs)}</span>
                 <span>·</span>
-                <span>{a.jobs?.duration_days}d</span>
+                <span>{jobDurationLabel(a.jobs)}</span>
                 <span>·</span>
                 <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
               </div>
@@ -4503,7 +4143,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                       </div>
                       <div>
                         <p className="text-[9px] text-slate-600 dark:text-slate-400">Duration</p>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{a.jobs?.duration_days}d</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{jobDurationLabel(a.jobs)}</p>
                       </div>
                       <div>
                         <p className="text-[9px] text-slate-600 dark:text-slate-400">Shift</p>
@@ -4511,7 +4151,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                       </div>
                       <div>
                         <p className="text-[9px] text-slate-600 dark:text-slate-400">Daily Pay</p>
-                        <p className="text-sm font-bold text-emerald-600">{fmtMoney(a.jobs?.daily_pay)}</p>
+                        <p className="text-sm font-bold text-emerald-600">{jobPayLabel(a.jobs)}</p>
                       </div>
                     </div>
                   </div>
@@ -4553,8 +4193,8 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                       </>
                     ) : (
                       <SubscriptionLock
-                        title="Manual attendance on Free plan"
-                        description="GPS auto attendance unlocks from Starter plan. Ask the employer to mark manual attendance for Free plan workers."
+                        title="Manual attendance on Basic plan"
+                        description="GPS auto attendance unlocks from Growth plan. Ask the employer to mark manual attendance for Basic plan workers."
                       />
                     )}
                   </div>
@@ -4672,7 +4312,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
               <div className="rounded-3xl border border-indigo-100 bg-indigo-50/60 p-4">
                 <h3 className="font-bold mb-3 flex items-center gap-2 text-indigo-900"><ClipboardList className="w-4 h-4" /> Work timeline</h3>
                 {activeHires.length === 0 ? <p className="text-sm text-muted-foreground">No accepted or completed work records yet.</p> : (
-                  <div className="space-y-2">{activeHires.map((a) => <div key={a.id} className="bg-white rounded-2xl border p-3 text-sm"><div className="flex justify-between gap-2"><b>{a.jobs?.title}</b><Badge variant="secondary">{a.status}</Badge></div><p className="text-xs text-muted-foreground">{a.jobs?.employers?.company_name} · {a.jobs?.location_text} · {fmtMoney(a.jobs?.daily_pay)}/day</p></div>)}</div>
+                  <div className="space-y-2">{activeHires.map((a) => <div key={a.id} className="bg-white rounded-2xl border p-3 text-sm"><div className="flex justify-between gap-2"><b>{a.jobs?.title}</b><Badge variant="secondary">{a.status}</Badge></div><p className="text-xs text-muted-foreground">{a.jobs?.employers?.company_name} · {a.jobs?.location_text} · {jobPayLabel(a.jobs)}</p></div>)}</div>
                 )}
               </div>
             )}
@@ -4681,7 +4321,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
               <div className="rounded-3xl border border-emerald-100 bg-emerald-50/60 p-4">
                 <h3 className="font-bold mb-3 flex items-center gap-2 text-emerald-900"><Briefcase className="w-4 h-4" /> Recent job posts</h3>
                 {postedJobs.length === 0 ? <p className="text-sm text-muted-foreground">No public job posts yet.</p> : (
-                  <div className="space-y-2">{postedJobs.map((j) => <div key={j.id} className="bg-white rounded-2xl border p-3 text-sm"><div className="flex justify-between gap-2"><b>{j.title}</b><Badge variant="secondary">{j.status}</Badge></div><p className="text-xs text-muted-foreground">{j.category || 'Job'} · {j.location_text} · {fmtMoney(j.daily_pay)}/day</p></div>)}</div>
+                  <div className="space-y-2">{postedJobs.map((j) => <div key={j.id} className="bg-white rounded-2xl border p-3 text-sm"><div className="flex justify-between gap-2"><b>{j.title}</b><Badge variant="secondary">{j.status}</Badge></div><p className="text-xs text-muted-foreground">{j.category || 'Job'} · {j.location_text} · {jobPayLabel(j)}</p></div>)}</div>
                 )}
               </div>
             )}
@@ -4714,6 +4354,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
   const [savedKey, setSavedKey] = useState(locationKey);
   const [editingLocation, setEditingLocation] = useState(!hasSaved);
   const [locationEditUnlocked, setLocationEditUnlocked] = useState(false);
+  const userTouchedLocationRef = useRef(false);
   const lastLoadedLocationKeyRef = useRef(locationKey);
 
   useEffect(() => {
@@ -4722,20 +4363,21 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
     if (!hasSaved) {
       setEditingLocation(true);
       setLocationEditUnlocked(false);
+      userTouchedLocationRef.current = false;
       lastLoadedLocationKeyRef.current = '';
       return;
     }
 
-    // Saved locations must stay closed after refresh/login.
-    // While the editor is open, typing/selecting a new location must NOT auto-save
-    // or auto-close. It should close only after the user clicks Save Location.
-    if (!locationEditUnlocked && !editingLocation) {
+    // When a saved profile location loads from the server/local session, keep the
+    // card closed. Do not auto-close while the user is actively selecting a new
+    // location after pressing Change.
+    if (!locationEditUnlocked && !userTouchedLocationRef.current) {
       lastLoadedLocationKeyRef.current = locationKey;
       setSavedKey(locationKey);
       setEditingLocation(false);
       setLocationEditUnlocked(false);
     }
-  }, [hasSaved, locationKey, locationEditUnlocked, editingLocation]);
+  }, [hasSaved, locationKey, locationEditUnlocked]);
 
   const isEmerald = color === 'emerald';
   const wrapClass = isEmerald
@@ -4760,6 +4402,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
       setSavedKey(locationKey);
       setEditingLocation(false);
       setLocationEditUnlocked(false);
+      userTouchedLocationRef.current = false;
       toast.success('Location ready. Press Save profile to store it.');
       return;
     }
@@ -4775,6 +4418,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
       setSavedKey(locationKey);
       setEditingLocation(false);
       setLocationEditUnlocked(false);
+      userTouchedLocationRef.current = false;
       toast.success('Location saved');
     } catch (e) {
       toast.error(e.message || 'Location save failed');
@@ -4801,7 +4445,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
               <Button type="button" variant="outline" disabled className={savedButtonClass}>
                 <CheckCircle2 className="w-4 h-4 mr-2" /> Saved
               </Button>
-              <Button type="button" variant="outline" className={changeButtonClass} onClick={() => { setLocationEditUnlocked(true); setEditingLocation(true); }}>
+              <Button type="button" variant="outline" className={changeButtonClass} onClick={() => { userTouchedLocationRef.current = true; setLocationEditUnlocked(true); setEditingLocation(true); }}>
                 Change
               </Button>
             </>
@@ -4828,7 +4472,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
             color={color}
             placeholder={placeholder}
             helper={helper}
-            onChange={onChange}
+            onChange={(loc) => { userTouchedLocationRef.current = true; onChange?.(loc); }}
           />
           <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
             {canSaveLocation ? 'Exact GPS selected. Click Save to store it.' : 'Search/select one exact place or use current GPS before saving.'}
@@ -4878,17 +4522,14 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
   const submitVerification = async () => {
     const pan = cleanPan(form.pan_number);
 
-    if (!pan || !isValidPan(pan)) return toast.error('Enter valid PAN format, e.g. ABCDE1234F');
-
     if (isEmployer) {
-      const gst = cleanGst(form.gst_number);
       if (!form.company_address?.trim()) return toast.error('Enter company address');
-      if (!gst || !isValidGst(gst)) return toast.error('Enter valid 15-character GST number');
       if (!form.pan_image_url || !form.pan_back_url || !form.gst_certificate_url) {
         return toast.error('Upload PAN front, PAN back and GST certificate');
       }
     } else {
       const aadhaar = cleanAadhaar(form.aadhaar_number);
+      if (!pan || !isValidPan(pan)) return toast.error('Enter valid PAN format, e.g. ABCDE1234F');
       if (!form.address?.trim()) return toast.error('Enter full address');
       if (!aadhaar || !isValidAadhaar(aadhaar)) return toast.error('Aadhaar must be exactly 12 digits');
       if (!form.aadhaar_front_url || !form.aadhaar_back_url || !form.pan_image_url || !form.pan_back_url) {
@@ -4901,8 +4542,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
       const body = isEmployer
         ? {
             company_address: form.company_address,
-            gst_number: cleanGst(form.gst_number),
-            pan_number: pan,
             pan_image_url: form.pan_image_url,
             pan_back_url: form.pan_back_url,
             gst_certificate_url: form.gst_certificate_url,
@@ -4979,33 +4618,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
       <CardContent className="p-4 sm:p-5 space-y-5 bg-slate-50/40" onKeyDown={(e) => { if (e.key === 'Enter' && e.target?.tagName !== 'TEXTAREA') { e.preventDefault(); if (!busy && !lockedVerified) submitVerification(); } }}>
         {isEmployer ? (
           <>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <Label>GST number</Label>
-                <Input
-                  value={form.gst_number || ''}
-                  maxLength={15}
-                  onChange={(e) => setForm((s) => ({ ...s, gst_number: cleanGst(e.target.value) }))}
-                  placeholder="22AAAAA0000A1Z5"
-                  className={inputClass}
-                />
-                <p className="text-xs text-muted-foreground mt-1">15 characters. Example: 22AAAAA0000A1Z5</p>
-                {form.gst_number && !isValidGst(form.gst_number) && <p className="text-xs text-red-500 mt-1">Invalid GST format</p>}
-              </div>
-              <div>
-                <Label>Company PAN number</Label>
-                <Input
-                  value={form.pan_number || ''}
-                  maxLength={10}
-                  onChange={(e) => setForm((s) => ({ ...s, pan_number: cleanPan(e.target.value) }))}
-                  placeholder="ABCDE1234F"
-                  className={inputClass}
-                />
-                <p className="text-xs text-muted-foreground mt-1">Format: 5 letters + 4 digits + 1 letter</p>
-                {form.pan_number && !isValidPan(form.pan_number) && <p className="text-xs text-red-500 mt-1">Invalid PAN format</p>}
-              </div>
-            </div>
-
             <div>
               <Label>Company address</Label>
               <Textarea
@@ -5037,6 +4649,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
                   className={inputClass}
                 />
                 <p className="text-xs text-muted-foreground mt-1">Exactly 12 digits</p>
+                <p className="text-xs text-muted-foreground mt-1">{String(form.aadhaar_number || '').length}/12 digits</p>
                 {form.aadhaar_number && !isValidAadhaar(form.aadhaar_number) && <p className="text-xs text-red-500 mt-1">Aadhaar must be 12 digits</p>}
               </div>
               <div>
@@ -5044,11 +4657,13 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
                 <Input
                   value={form.pan_number || ''}
                   maxLength={10}
-                  onChange={(e) => setForm((s) => ({ ...s, pan_number: cleanPan(e.target.value) }))}
+                  onChange={(e) => setForm((s) => ({ ...s, pan_number: cleanPan(e.target.value).slice(0, 10) }))}
+                  maxLength={10}
                   placeholder="ABCDE1234F"
                   className={inputClass}
                 />
                 <p className="text-xs text-muted-foreground mt-1">Format: ABCDE1234F</p>
+                <p className="text-xs text-muted-foreground mt-1">{String(form.pan_number || '').length}/10 characters</p>
                 {form.pan_number && !isValidPan(form.pan_number) && <p className="text-xs text-red-500 mt-1">Invalid PAN format</p>}
               </div>
             </div>
@@ -5454,10 +5069,17 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   const [supportOpen, setSupportOpen] = useState(false);
   const [finalSaved, setFinalSaved] = useState(false);
   const verified = !!me?.extra?.verified;
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0);
+  const workerSubscription = useMemo(() => getSubscriptionFeatures('worker', me?.profile || me), [me, subscriptionRefreshKey]);
+  useEffect(() => {
+    const refresh = () => setSubscriptionRefreshKey((v) => v + 1);
+    window.addEventListener('w2w-subscription-updated', refresh);
+    return () => window.removeEventListener('w2w-subscription-updated', refresh);
+  }, []);
   useEffect(() => {
     if (me) setForm({
       full_name: me.profile?.full_name || '',
-      phone: me.profile?.phone || '',
+      phone: cleanIndianPhone10(me.profile?.phone) || '',
       age: me.extra?.age || '',
       skills: (me.extra?.skills || []).join(', '),
       experience_years: me.extra?.experience_years || 0,
@@ -5465,10 +5087,10 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       expected_daily_wage: me.extra?.expected_daily_wage || 0,
       gender: me.extra?.gender || '',
       languages_known: Array.isArray(me.extra?.languages_known) ? me.extra.languages_known.join(', ') : (me.extra?.languages_known || ''),
-      bank_account: me.extra?.bank_account || '',
+      bank_account: cleanBankAccount(me.extra?.bank_account) || '',
       account_holder_name: me.extra?.account_holder_name || '',
       bank_name: me.extra?.bank_name || '',
-      ifsc_code: me.extra?.ifsc_code || '',
+      ifsc_code: cleanIfscCode(me.extra?.ifsc_code) || '',
       branch_name: me.extra?.branch_name || '',
       upi_id: me.extra?.upi_id || '',
       bank_qr_url: me.extra?.bank_qr_url || '',
@@ -5511,7 +5133,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
   const buildWorkerProfilePayload = () => ({
     full_name: form.full_name || '',
-    phone: form.phone || '',
+    phone: cleanIndianPhone10(form.phone) || '',
     age: form.age ? Number(form.age) : null,
     gender: form.gender || '',
     skills: typeof form.skills === 'string' ? form.skills.split(',').map(s => s.trim()).filter(Boolean) : (form.skills || []),
@@ -5559,7 +5181,9 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     if (!form.account_holder_name?.trim()) return 'Enter account holder name';
     if (!form.bank_name?.trim()) return 'Enter bank name';
     if (!form.bank_account?.trim()) return 'Enter account number';
+    if (!isValidBankAccount(form.bank_account)) return 'Account number must be 9 to 18 digits';
     if (!form.ifsc_code?.trim()) return 'Enter IFSC code';
+    if (!isValidIfscCode(form.ifsc_code)) return 'Enter valid IFSC code';
     return '';
   };
 
@@ -5722,8 +5346,8 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
             <Field label="Account holder name" v={form.account_holder_name} on={(v) => setForm(f => ({ ...f, account_holder_name: v }))} />
             <Field label="Bank name" v={form.bank_name} on={(v) => setForm(f => ({ ...f, bank_name: v }))} />
-            <Field label="Account number" v={form.bank_account} on={(v) => setForm(f => ({ ...f, bank_account: v.replace(/\D/g, '') }))} />
-            <Field label="IFSC code" v={form.ifsc_code} on={(v) => setForm(f => ({ ...f, ifsc_code: v.toUpperCase().replace(/\s/g, '') }))} />
+            <Field label="Account number" v={form.bank_account} on={(v) => setForm(f => ({ ...f, bank_account: cleanBankAccount(v) }))} inputMode="numeric" maxLength={18} helper="9 to 18 digits only" />
+            <Field label="IFSC code" v={form.ifsc_code} on={(v) => setForm(f => ({ ...f, ifsc_code: cleanIfscCode(v) }))} maxLength={11} helper="Format: ABCD0123456" />
             <Field label="Branch name" v={form.branch_name} on={(v) => setForm(f => ({ ...f, branch_name: v }))} />
             <Field label="UPI ID" v={form.upi_id} on={(v) => setForm(f => ({ ...f, upi_id: v }))} />
           </div>
@@ -5763,7 +5387,9 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               if (!String(form.account_holder_name || '').trim()) return 'Enter account holder name';
               if (!String(form.bank_name || '').trim()) return 'Enter bank name';
               if (!String(form.bank_account || '').trim()) return 'Enter account number';
+              if (!isValidBankAccount(form.bank_account)) return 'Account number must be 9 to 18 digits';
               if (!String(form.ifsc_code || '').trim()) return 'Enter IFSC code';
+              if (!isValidIfscCode(form.ifsc_code)) return 'Enter valid IFSC code';
               if (!String(form.branch_name || '').trim()) return 'Enter branch name';
               return '';
             }}
@@ -5785,10 +5411,10 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
         <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Edit profile</CardTitle><CardDescription>Personal, skill and availability information.</CardDescription></div></div></CardHeader>
         <CardContent className="grid sm:grid-cols-2 gap-3">
           <Field label="Full name"  v={form.full_name}           on={(v) => setForm(f => ({ ...f, full_name: v }))} />
-          <Field label="Phone"      v={form.phone}               on={(v) => setForm(f => ({ ...f, phone: v }))} />
+          <Field label="Phone"      v={cleanIndianPhone10(form.phone)}               on={(v) => setForm(f => ({ ...f, phone: cleanIndianPhone10(v) }))} inputMode="numeric" maxLength={10} prefix="+91" helper="Enter 10-digit Indian mobile number" />
           <Field label="Age"        v={form.age}                 on={(v) => setForm(f => ({ ...f, age: v }))} type="number" />
           <div>
-            <Label>Gender</Label>
+            <Label>Gender<span className="text-red-500 ml-0.5">*</span></Label>
             <Select value={form.gender || ''} onValueChange={(v) => setForm(f => ({ ...f, gender: v }))}>
               <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
               <SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent>
@@ -5796,7 +5422,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           </div>
           <Field label="Experience (years)" v={form.experience_years} on={(v) => setForm(f => ({ ...f, experience_years: v }))} type="number" />
           <div>
-            <Label>Experience level</Label>
+            <Label>Experience level<span className="text-red-500 ml-0.5">*</span></Label>
             <Select value={form.experience_level || 'beginner'} onValueChange={(v) => setForm(f => ({ ...f, experience_level: v }))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="beginner">Beginner</SelectItem><SelectItem value="skilled">Skilled</SelectItem><SelectItem value="experienced">Experienced</SelectItem><SelectItem value="expert">Expert</SelectItem></SelectContent>
@@ -5804,7 +5430,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           </div>
           <Field label="Expected daily wage (₹)" v={form.expected_daily_wage} on={(v) => setForm(f => ({ ...f, expected_daily_wage: v }))} type="number" />
           <div>
-            <Label>Availability</Label>
+            <Label>Availability<span className="text-red-500 ml-0.5">*</span></Label>
             <Select value={String(form.available ?? true)} onValueChange={(v) => setForm(f => ({ ...f, available: v === 'true', badge_immediate_joiner: v === 'true' }))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="true">Available now</SelectItem><SelectItem value="false">Not available</SelectItem></SelectContent>
@@ -5825,12 +5451,12 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               />
           </div>
           <div className="sm:col-span-2">
-            <Label>Skills (comma-separated)</Label>
-            <Input value={form.skills || ''} onChange={(e) => setForm(f => ({ ...f, skills: e.target.value }))} placeholder="TIG welding, CNC, Fitter, Helper" />
+            <Label>Skills (comma-separated)<span className="text-red-500 ml-0.5">*</span></Label>
+            <Input required value={form.skills || ''} onChange={(e) => setForm(f => ({ ...f, skills: e.target.value }))} placeholder="TIG welding, CNC, Fitter, Helper" />
           </div>
           <div className="sm:col-span-2">
-            <Label>Languages known</Label>
-            <Input value={form.languages_known || ''} onChange={(e) => setForm(f => ({ ...f, languages_known: e.target.value }))} placeholder="Tamil, English, Kannada, Hindi" />
+            <Label>Languages known<span className="text-red-500 ml-0.5">*</span></Label>
+            <Input required value={form.languages_known || ''} onChange={(e) => setForm(f => ({ ...f, languages_known: e.target.value }))} placeholder="Tamil, English, Kannada, Hindi" />
           </div>
           <div className="sm:col-span-2">
             <Card className="profile-section-card overflow-hidden">
@@ -5850,8 +5476,8 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                   <div className="rounded-2xl border bg-white p-4 min-h-[132px]">
                     <Label>Admin approved badges</Label>
                     <div className="flex flex-wrap gap-2 mt-3">
-                      <AnimatedWorkerBadge show={!!me.extra?.badge_verified_worker} label="Verified Worker" tone="emerald" />
-                      <AnimatedWorkerBadge show={!!me.extra?.badge_skilled_worker} label="Skilled Worker" tone="blue" />
+                      <AnimatedWorkerBadge show={!!me.extra?.badge_verified_worker || !!workerSubscription.verifiedBadge} label="Verified Worker" tone="emerald" />
+                      <AnimatedWorkerBadge show={!!me.extra?.badge_skilled_worker || !!workerSubscription.skillBadge} label="Skilled Worker" tone="blue" />
                       <AnimatedWorkerBadge show={!!me.extra?.badge_experienced} label="Experienced" tone="violet" />
                       <AnimatedWorkerBadge show={!!me.extra?.badge_immediate_joiner} label="Immediate Joiner" tone="amber" />
                       {!me.extra?.badge_verified_worker && !me.extra?.badge_skilled_worker && !me.extra?.badge_experienced && !me.extra?.badge_immediate_joiner && <span className="text-xs text-muted-foreground">Admin badges appear after approval. Immediate Joiner appears automatically when available.</span>}
@@ -5862,12 +5488,12 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             </Card>
           </div>
           <div className="sm:col-span-2">
-            <Label>Previous employer reference</Label>
-            <Textarea rows={2} value={form.previous_employer_reference || ''} onChange={(e) => setForm(f => ({ ...f, previous_employer_reference: e.target.value }))} placeholder="Company/person name and contact if available" />
+            <Label>Previous employer reference<span className="text-red-500 ml-0.5">*</span></Label>
+            <Textarea required rows={2} value={form.previous_employer_reference || ''} onChange={(e) => setForm(f => ({ ...f, previous_employer_reference: e.target.value }))} placeholder="Company/person name and contact if available" />
           </div>
           <div className="sm:col-span-2">
-            <Label>Bio</Label>
-            <Textarea rows={3} value={form.bio || ''} onChange={(e) => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="Tell employers about yourself" />
+            <Label>Bio<span className="text-red-500 ml-0.5">*</span></Label>
+            <Textarea required rows={3} value={form.bio || ''} onChange={(e) => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="Tell employers about yourself" />
           </div>
           <div className="sm:col-span-2">
             <SectionVerificationAction
@@ -5883,6 +5509,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               validate={() => {
                 if (!String(form.full_name || '').trim()) return 'Enter full name';
                 if (!String(form.phone || '').trim()) return 'Enter phone number';
+                if (!isValidIndianPhone10(form.phone)) return 'Enter valid 10-digit Indian mobile number';
                 return '';
               }}
               payloadBuilder={buildWorkerProfilePayload}
@@ -6009,6 +5636,8 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
   const [faceMessage, setFaceMessage] = useState('Open camera and keep your full front face inside the green frame. It will auto capture when the face is clear.');
   const [capturedPreview, setCapturedPreview] = useState(frontUrl || url || '');
   const [capturedBlob, setCapturedBlob] = useState(null);
+  const [changeMode, setChangeMode] = useState(false);
+  const allowSelfieUpdate = !verified || changeMode;
   const capturedBlobRef = useRef(null);
   const autoCaptureLockRef = useRef(false);
 
@@ -6045,7 +5674,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
   };
 
   const captureFrontFace = async () => {
-    if (!videoRef.current || !canvasRef.current || verified || busy || autoCaptureLockRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !allowSelfieUpdate || busy || autoCaptureLockRef.current) return;
     autoCaptureLockRef.current = true;
     const video = videoRef.current;
     if (!video.videoWidth || !video.videoHeight) return;
@@ -6259,7 +5888,14 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
   };
 
   const openVerification = () => {
-    if (verified) return;
+    if (verified && !changeMode) return;
+    setOpen(true);
+    setTimeout(startCamera, 250);
+  };
+
+  const openSelfieChange = () => {
+    setChangeMode(true);
+    resetAutoCapture();
     setOpen(true);
     setTimeout(startCamera, 250);
   };
@@ -6267,10 +5903,11 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
   const closeVerification = () => {
     stopCamera();
     setOpen(false);
+    if (verified) setChangeMode(false);
   };
 
   const submitFaceCheck = async () => {
-    if (verified) return;
+    if (!allowSelfieUpdate) return;
     if (!capturedBlob) return toast.error('Keep your front face in camera until auto capture completes.');
     setBusy(true);
     try {
@@ -6320,7 +5957,11 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
         )}
       </div>
 
-      {!verified && (
+      {verified ? (
+        <Button type="button" variant="outline" className="mt-4 border-emerald-200 text-emerald-700 hover:bg-emerald-50" disabled={disabled || busy} onClick={openSelfieChange}>
+          <Camera className="w-4 h-4 mr-2" /> Change
+        </Button>
+      ) : (
         <Button type="button" className="w2w-verify-button w2w-verify-idle mt-4 !bg-rose-600 hover:!bg-rose-700 !text-white disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100" style={{ backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' }} disabled={disabled || busy} onClick={openVerification}>
           <Camera className="w-4 h-4 mr-2" /> Send for Verification
         </Button>
@@ -6379,9 +6020,9 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
           <style>{`@keyframes selfieParticleMove { 0% { transform: translate3d(0, 0, 0); opacity: .18; } 50% { transform: translate3d(16px, -24px, 0); opacity: .65; } 100% { transform: translate3d(-8px, -52px, 0); opacity: .18; } } @keyframes selfieScan { 0% { transform: translateY(0); opacity:.45; } 50% { transform: translateY(370px); opacity:1; } 100% { transform: translateY(0); opacity:.45; } }`}</style>
 
           <DialogFooter className="gap-2 sm:gap-2 shrink-0 flex-wrap">
-            <Button type="button" variant="outline" disabled={busy || disabled || verified} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop camera' : 'Start camera'}</Button>
-            <Button type="button" variant="outline" disabled={busy || disabled || verified || cameraOn} onClick={startCamera}>Retake</Button>
-            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || verified || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for review'}</Button>
+            <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop camera' : 'Start camera'}</Button>
+            <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate || cameraOn} onClick={startCamera}>Retake</Button>
+            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || !allowSelfieUpdate || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for review'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -6406,8 +6047,10 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
   const [countdown, setCountdown] = useState(0);
   const timerRef = useRef(null);
   const [editing, setEditing] = useState(false);
+  const [localVerified, setLocalVerified] = useState(!!verified);
 
   useEffect(() => setMobile(phone || ''), [phone]);
+  useEffect(() => setLocalVerified(!!verified), [verified]);
 
   useEffect(() => {
     if (countdown <= 0) {
@@ -6436,7 +6079,8 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
     };
   }, [countdown]);
 
-  const canEdit = !verified || editing;
+  const isVerified = !!(verified || localVerified);
+  const canEdit = !isVerified || editing;
   const normalized = normalizeIndianMobile(mobile);
 
   const sendOtp = async () => {
@@ -6462,9 +6106,11 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
       if (!otp) throw new Error('Enter OTP');
       await api('auth/mobile-verify-otp', { method: 'POST', token, body: { phone: normalized, otp } });
       await api('me/profile', { method: 'PATCH', token, body: { phone: normalized, mobile_verified: true } });
+      setLocalVerified(true);
       onVerified?.(normalized);
       setSent(false);
       setOtp('');
+      setCountdown(0);
       setEditing(false);
       toast.success('Mobile number verified');
     } catch (err) {
@@ -6477,38 +6123,44 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
   
 
   return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${verified && !editing ? 'border-emerald-200 bg-emerald-50/50' : 'bg-white'}`}>
+    <div className={`rounded-2xl border p-4 shadow-sm ${isVerified && !editing ? 'border-emerald-200 bg-emerald-50/50' : 'bg-white'}`}>
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
           <p className="font-semibold flex items-center gap-2"><Phone className="w-4 h-4" /> Mobile OTP</p>
           <p className="text-xs text-muted-foreground mt-0.5">Verify your active phone number.</p>
         </div>
-        {verified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>}
+        {isVerified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>}
       </div>
 
-      {verified && !editing && (
-        <div className="mb-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4" /> Just verified
+      {isVerified && !editing && (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-600 px-3 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 opacity-100 shadow-sm">
+            <ShieldCheck className="w-4 h-4" /> Done
+          </div>
+          <Button type="button" variant="outline" className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => { setEditing(true); setSent(false); setOtp(''); }}>Change</Button>
         </div>
       )}
 
-      <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2">
-        <Input value={mobile} onChange={(e) => setMobile(e.target.value.replace(/[^0-9+ ]/g, '').slice(0, 16))} placeholder="9876543210 or +919876543210" disabled={!canEdit} inputMode="tel" />
-        <Button
-          type="button"
-          variant="outline"
-          onClick={sendOtp}
-          disabled={busy || !canEdit || countdown > 0}
-          className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700"
-        >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Resend in ${countdown}s` : (sent ? 'Resend OTP' : 'Send OTP')}
-        </Button>
-        {verified && !editing ? (
-          <Button type="button" variant="outline" onClick={() => { setEditing(true); setSent(false); setOtp(''); }}>Edit mobile</Button>
-        ) : verified && editing ? (
-          <Button type="button" variant="ghost" onClick={() => { setEditing(false); setMobile(phone || ''); setOtp(''); setSent(false); setCountdown(0); }}>Cancel</Button>
-        ) : null}
-      </div>
+      {canEdit && (
+        <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2">
+          <div className="flex overflow-hidden rounded-md border bg-white">
+            <select className="w-24 border-r bg-slate-50 px-2 text-sm outline-none" defaultValue="+91" disabled={!canEdit}><option value="+91">🇮🇳 +91</option><option value="+1">🇺🇸 +1</option><option value="+44">🇬🇧 +44</option><option value="+971">🇦🇪 +971</option></select>
+            <Input value={cleanIndianPhone10(mobile)} onChange={(e) => setMobile(cleanIndianPhone10(e.target.value))} placeholder="9876543210" disabled={!canEdit} inputMode="numeric" maxLength={10} className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={sendOtp}
+            disabled={busy || !canEdit || countdown > 0}
+            className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700"
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Resend in ${countdown}s` : (sent ? 'Resend OTP' : 'Send OTP')}
+          </Button>
+          {isVerified && editing ? (
+            <Button type="button" variant="ghost" onClick={() => { setEditing(false); setMobile(phone || ''); setOtp(''); setSent(false); setCountdown(0); }}>Cancel</Button>
+          ) : null}
+        </div>
+      )}
 
       {sent && (
         <div className="mt-3 text-sm text-slate-600">
@@ -6526,11 +6178,90 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
   );
 }
 
-function Field({ label, v, on, type = 'text' }) {
+function cleanIndianPhone10(value) {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('91') && digits.length > 10) digits = digits.slice(2);
+  if (digits.startsWith('0') && digits.length > 10) digits = digits.slice(1);
+  return digits.slice(0, 10);
+}
+
+function isValidIndianPhone10(value) {
+  return /^[6-9]\d{9}$/.test(cleanIndianPhone10(value));
+}
+
+function cleanGstNumber(value) {
+  return String(value || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15);
+}
+
+function isValidGstNumber(value) {
+  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(cleanGstNumber(value));
+}
+
+function cleanEmailValue(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidEmailValue(value) {
+  return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(cleanEmailValue(value));
+}
+
+function cleanPanNumber(value) {
+  return String(value || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 10);
+}
+
+function cleanIfscCode(value) {
+  return String(value || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 11);
+}
+
+function isValidIfscCode(value) {
+  return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(cleanIfscCode(value));
+}
+
+function cleanBankAccount(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 18);
+}
+
+function isValidBankAccount(value) {
+  const digits = cleanBankAccount(value);
+  return digits.length >= 9 && digits.length <= 18;
+}
+
+function Field({ label, v, on, type = 'text', required = true, maxLength, inputMode, helper, prefix }) {
+  const value = v ?? '';
+  const isEmail = type === 'email';
   return (
     <div>
-      <Label>{label}</Label>
-      <Input type={type} value={v ?? ''} onChange={(e) => on(e.target.value)} />
+      <Label>{label}{required ? <span className="text-red-500 ml-0.5">*</span> : null}</Label>
+      {prefix ? (
+        <div className="flex h-11 w-full items-center overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+          <span className="inline-flex h-full shrink-0 items-center whitespace-nowrap border-r bg-slate-50 px-3 text-sm font-semibold leading-none text-slate-700">{prefix}</span>
+          <Input
+            type={type}
+            value={value}
+            required={required}
+            maxLength={maxLength}
+            inputMode={inputMode}
+            onChange={(e) => on(e.target.value)}
+            className="h-full min-w-0 flex-1 border-0 bg-white px-3 text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+      ) : (
+        <Input
+          type={type}
+          value={value}
+          required={required}
+          maxLength={maxLength}
+          inputMode={inputMode}
+          pattern={isEmail ? '[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$' : undefined}
+          onChange={(e) => on(isEmail ? cleanEmailValue(e.target.value) : e.target.value)}
+        />
+      )}
+      {(helper || maxLength || isEmail) && (
+        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>{helper || (isEmail ? 'Enter valid email format' : '')}</span>
+          {maxLength ? <span className="font-medium">{String(value || '').length}/{maxLength}</span> : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -6680,7 +6411,6 @@ function EmployerApp({ auth, onLogout }) {
           <div className="flex items-center gap-1">
             <NotificationCenter token={token} userId={me?.profile?.id} channelKey="employer" accent="emerald" onNavigate={handleNotificationNavigate} />
             <GlobalLanguageSelect />
-            <ThemeToggle />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button type="button" variant="ghost" size="icon" className="rounded-xl text-sky-100 hover:bg-white/10 hover:text-white" onClick={() => setTab('profile')} title="Profile">
                 <UserCircle className="w-5 h-5" />
@@ -6743,6 +6473,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
   const [loadingApp, setLoadingApp] = useState(false);
   const [decidingId, setDecidingId] = useState(null);
   const [deletingJobId, setDeletingJobId] = useState(null);
+  const [refreshingJobs, setRefreshingJobs] = useState(false);
 
   const totalApplicants = jobs.reduce((s, j) => s + (j.applicants_count || 0), 0);
   const totalPending    = jobs.reduce((s, j) => s + (j.pending_count || 0), 0);
@@ -6794,6 +6525,19 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
     finally { setDecidingId(null); }
   };
 
+  const refreshPostedJobs = async () => {
+    if (refreshingJobs) return;
+    try {
+      setRefreshingJobs(true);
+      await reload?.();
+      toast.success('Posted jobs refreshed');
+    } catch (e) {
+      toast.error(e.message || 'Unable to refresh posted jobs');
+    } finally {
+      setRefreshingJobs(false);
+    }
+  };
+
   const deletePostedJob = async (job) => {
     if (!job?.id) return;
     const ok = confirm(`Delete "${job.title || 'this job'}"? This also removes its applications and cannot be undone.`);
@@ -6821,7 +6565,10 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
 
       <div className="flex items-center justify-between">
         <h2 className="font-bold text-lg">Posted jobs</h2>
-        <Button size="sm" variant="outline" onClick={reload}>Refresh</Button>
+        <Button size="sm" variant="outline" onClick={refreshPostedJobs} disabled={refreshingJobs}>
+          {refreshingJobs ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+          Refresh
+        </Button>
       </div>
 
       {jobs.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No jobs yet. Tap “Post job” to start hiring.</p>}
@@ -6832,7 +6579,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold truncate">{j.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">{j.location_text} · {j.duration_days}d</p>
+                  <p className="text-xs text-muted-foreground truncate">{j.location_text} · {jobDurationLabel(j)}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   {Number(j.pending_count || 0) > 0 && <Badge className="bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">New {Number(j.pending_count || 0)}</Badge>}
@@ -6840,18 +6587,15 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <span className="rounded-xl bg-emerald-50 text-emerald-700 px-2 py-2 font-bold"><Banknote className="w-3 h-3 inline mr-1" />{fmtMoney(j.daily_pay)}/day</span>
+                <span className="rounded-xl bg-emerald-50 text-emerald-700 px-2 py-2 font-bold"><Banknote className="w-3 h-3 inline mr-1" />{jobPayLabel(j)}</span>
                 <span className="rounded-xl bg-slate-50 px-2 py-2"><Users className="w-3 h-3 inline mr-1" />{j.workers_needed || 1} needed</span>
                 <span className="rounded-xl bg-indigo-50 text-indigo-700 px-2 py-2">{j.applicants_count || 0} applicants</span>
               </div>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Button type="button" size="sm" variant="outline" className="rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={(e) => { e.stopPropagation(); onEditJob?.(j); }}>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button type="button" size="sm" variant="outline" className="w-full rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={(e) => { e.stopPropagation(); onEditJob?.(j); }}>
                   <Edit3 className="w-3.5 h-3.5 mr-1" /> Edit
                 </Button>
-                <Button type="button" size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={(e) => { e.stopPropagation(); openApplicants(j); }}>
-                  <Users className="w-3.5 h-3.5 mr-1" /> Applicants
-                </Button>
-                <Button type="button" size="sm" variant="outline" disabled={deletingJobId === j.id} className="rounded-xl border-red-200 text-red-600 hover:bg-red-50" onClick={(e) => { e.stopPropagation(); deletePostedJob(j); }}>
+                <Button type="button" size="sm" disabled={deletingJobId === j.id} className="w-full rounded-xl bg-red-600 text-white hover:bg-red-700" onClick={(e) => { e.stopPropagation(); deletePostedJob(j); }}>
                   {deletingJobId === j.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 mr-1" />} Delete
                 </Button>
               </div>
@@ -6861,42 +6605,63 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
       </div>
 
       {openJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 py-4" onClick={() => setOpenJob(null)}>
-          <div className="w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-white px-4 py-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => setOpenJob(null)}>
-                  <ArrowLeft className="w-4 h-4 mr-1" /> Back
-                </Button>
-                <div className="min-w-0">
-                  <h3 className="font-bold text-base truncate">Applicants — {openJob?.title}</h3>
-                  <p className="text-xs text-muted-foreground">Review applicants and track invitation status</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 backdrop-blur-sm px-3 py-4" onClick={() => setOpenJob(null)}>
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-[2rem] bg-slate-50 shadow-2xl border border-white/70" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 border-b border-emerald-100 bg-gradient-to-r from-emerald-700 via-emerald-600 to-sky-700 px-4 sm:px-5 py-4 text-white">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Button type="button" size="sm" variant="outline" className="rounded-xl bg-white/95 text-emerald-800 border-white hover:bg-white" onClick={() => setOpenJob(null)}>
+                    <ArrowLeft className="w-4 h-4 mr-1" /> Back
+                  </Button>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">Applicants dashboard</p>
+                    <h3 className="font-extrabold text-xl truncate">{openJob?.title}</h3>
+                    <p className="text-xs text-emerald-50">{applicants.length} applicant(s) · Review details and track invitation status</p>
+                  </div>
                 </div>
+                <Button type="button" size="sm" variant="ghost" className="rounded-xl text-white hover:bg-white/15 hover:text-white" onClick={() => setOpenJob(null)}>
+                  <XCircle className="w-4 h-4 mr-1" /> Close
+                </Button>
               </div>
-              <Button type="button" size="sm" variant="ghost" className="rounded-xl" onClick={() => setOpenJob(null)}>
-                <XCircle className="w-4 h-4 mr-1" /> Close
-              </Button>
             </div>
 
-            <div className="max-h-[76vh] overflow-y-auto p-3 sm:p-4">
-              {loadingApp && <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin" /></div>}
-              {!loadingApp && applicants.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No applicants yet.</p>}
-              <div className="space-y-3">
+            <div className="max-h-[76vh] overflow-y-auto p-3 sm:p-5 space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[11px] text-slate-500 font-semibold">Total applicants</p><p className="text-2xl font-extrabold text-slate-900">{applicants.length}</p></div>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm"><p className="text-[11px] text-amber-700 font-semibold">Pending</p><p className="text-2xl font-extrabold text-amber-800">{applicants.filter(a => a.status === 'pending').length}</p></div>
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 shadow-sm"><p className="text-[11px] text-indigo-700 font-semibold">Invited</p><p className="text-2xl font-extrabold text-indigo-800">{applicants.filter(a => a.status === 'accepted').length}</p></div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm"><p className="text-[11px] text-emerald-700 font-semibold">Ongoing</p><p className="text-2xl font-extrabold text-emerald-800">{applicants.filter(a => a.status === 'ongoing').length}</p></div>
+              </div>
+              {loadingApp && <div className="py-12 grid place-items-center rounded-3xl border border-slate-200 bg-white shadow-sm"><Loader2 className="w-6 h-6 animate-spin text-emerald-700" /></div>}
+              {!loadingApp && applicants.length === 0 && (
+                <div className="rounded-3xl border border-dashed border-emerald-200 bg-white p-10 text-center shadow-sm">
+                  <Users className="w-10 h-10 mx-auto text-emerald-600" />
+                  <p className="mt-3 font-extrabold text-slate-900">No applicants yet</p>
+                  <p className="text-sm text-slate-500">Waiting for workers to apply for this job.</p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {applicants.map(a => {
                   const up = a.workers?.user_profiles || {};
                   return (
-                  <div key={a.id} className="border border-slate-200 rounded-2xl p-3 bg-white shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="cursor-pointer h-12 w-12" onClick={() => openProfileDetails(a.worker_id)}><AvatarImage src={up.photo_url} /><AvatarFallback>{initials(up.full_name || up.email)}</AvatarFallback></Avatar>
+                  <div key={a.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.08)] hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] transition-all">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="cursor-pointer h-14 w-14 ring-4 ring-emerald-50" onClick={() => openProfileDetails(a.worker_id)}><AvatarImage src={up.photo_url} /><AvatarFallback>{initials(up.full_name || up.email)}</AvatarFallback></Avatar>
                       <div className="flex-1 min-w-0">
-                        <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-semibold truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
-                        <p className="text-xs text-muted-foreground truncate">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
-                        <p className="text-[11px] text-muted-foreground">Wage ₹{a.workers?.expected_daily_wage || 0}/day · {a.workers?.experience_years || 0}y exp</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-extrabold text-slate-900 truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
+                          <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : a.status === 'pending' ? 'bg-amber-100 text-amber-800 border border-amber-200' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
+                        </div>
+                        <p className="text-xs text-slate-600 truncate mt-1">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">₹{a.workers?.expected_daily_wage || 0}/day</span>
+                          <span className="rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">{a.workers?.experience_years || 0}y exp</span>
+                          {up.verified && <span className="rounded-full bg-indigo-50 px-2.5 py-1 font-semibold text-indigo-700">Verified</span>}
+                        </div>
                       </div>
-                      <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
                     </div>
                     {a.status === 'pending' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
                         <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => openProfileDetails(a.worker_id)}>
                           <UserCircle className="w-4 h-4 mr-1" /> Profile
                         </Button>
@@ -6945,7 +6710,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                         </Button>
                       </div>
                     )}
-                    <Button size="sm" variant="ghost" className="w-full mt-3 text-emerald-700 hover:bg-emerald-50"
+                    <Button size="sm" variant="ghost" className="w-full mt-3 rounded-xl text-emerald-700 hover:bg-emerald-50"
                             onClick={() => onChat?.({ peer_id: a.worker_id, peer_name: up.full_name || up.email, peer_photo: up.photo_url, peer_role: 'worker' })}>
                       <MessageSquare className="w-4 h-4 mr-1" /> Message worker
                     </Button>
@@ -6957,6 +6722,8 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
           </div>
         </div>
       )}
+
+      <ProfileDetailsDialog data={profileView} onClose={() => setProfileView(null)} onChat={(peer) => onChat?.(peer)} />
     </div>
   );
 }
@@ -6988,26 +6755,71 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
   const [step, setStep] = useState(1);
   const [f, setF] = useState({
     title: '', category: 'general', description: '', location_text: '', latitude: '', longitude: '',
-    daily_pay: 1000, duration_days: 1, start_date: '', workers_needed: 1,
+    daily_pay: 1000, hourly_pay: 100, pay_type: 'daily', duration_days: 1, duration_hours: 8, work_duration_type: 'days', start_date: '', end_date: '', start_time: '', start_meridiem: 'AM', end_time: '', end_meridiem: 'PM', workers_needed: 1,
     shift_timing: 'day', experience: 'beginner', contact_number: '',
     skill_needed: '', accommodation_available: 'no', food_included: 'no', urgent_hiring: false,
-    overtime_available: false, transportation_provided: false, post_valid_days: 5, attendance_radius_meters: 20,
+    overtime_available: false, transportation_provided: false, post_valid_days: 5, candidate_verification: 'all', attendance_radius_meters: 20,
   });
   const [busy, setBusy] = useState(false);
+  const fixedRadiusOptions = ['10', '20', '25', '50', '100', '200'];
+  const [radiusMode, setRadiusMode] = useState('20');
+  const [sameDayTimeOpen, setSameDayTimeOpen] = useState(false);
 
   useEffect(() => {
     if (initialJob?.id) {
-      setF((s) => ({ ...s, ...initialJob, post_valid_days: initialJob.post_valid_days || initialJob.valid_days || 5 }));
+      const savedRadius = String(initialJob.attendance_radius_meters || 20);
+      setF((s) => ({
+        ...s,
+        ...initialJob,
+        hourly_pay: initialJob.hourly_pay || initialJob.extra?.hourly_pay || s.hourly_pay,
+        pay_type: initialJob.pay_type || initialJob.extra?.pay_type || s.pay_type,
+        duration_hours: initialJob.duration_hours || initialJob.extra?.duration_hours || s.duration_hours,
+        work_duration_type: initialJob.work_duration_type || initialJob.extra?.work_duration_type || s.work_duration_type,
+        end_date: initialJob.end_date || initialJob.extra?.end_date || initialJob.start_date || s.end_date,
+        start_time: initialJob.start_time || initialJob.extra?.start_time || s.start_time,
+        start_meridiem: initialJob.start_meridiem || initialJob.extra?.start_meridiem || s.start_meridiem,
+        end_time: initialJob.end_time || initialJob.extra?.end_time || s.end_time,
+        end_meridiem: initialJob.end_meridiem || initialJob.extra?.end_meridiem || s.end_meridiem,
+        post_valid_days: initialJob.post_valid_days || initialJob.valid_days || 5,
+        candidate_verification: initialJob.candidate_verification || initialJob.extra?.candidate_verification || 'all',
+      }));
+      setRadiusMode(fixedRadiusOptions.includes(savedRadius) ? savedRadius : 'custom');
       setStep(1);
     }
   }, [initialJob?.id]);
 
   const categories = ['general','construction','electrical','plumbing','painting','carpentry','cleaning','delivery','farming','warehouse','welding','machining','fabrication','metalworking','assembly'];
+  const payNeedsDaily = f.pay_type === 'daily' || f.pay_type === 'both';
+  const payNeedsHourly = f.pay_type === 'hourly' || f.pay_type === 'both';
+  const isHourWorkOnly = f.work_duration_type === 'hours';
+  const getInclusiveDays = (start, end) => {
+    if (!start) return 1;
+    const startDate = new Date(start);
+    const endDate = new Date(end || start);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 1;
+    const diff = Math.floor((endDate.setHours(0,0,0,0) - startDate.setHours(0,0,0,0)) / 86400000) + 1;
+    return Math.max(1, diff);
+  };
+  const calculateEndDateFromDuration = (start, days) => {
+    if (!start) return '';
+    const d = new Date(start);
+    if (Number.isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + Math.max(1, Number(days) || 1) - 1);
+    return d.toISOString().slice(0, 10);
+  };
+  const timeRangeReady = () => Boolean(f.start_time && f.end_time && f.start_meridiem && f.end_meridiem);
 
   const nextStep = (e) => {
     e.preventDefault();
-    if (!f.title?.trim() || !f.category || !f.daily_pay || !f.duration_days || !f.start_date || !f.workers_needed) {
+    if (!f.title?.trim() || !f.category || !f.start_date || !f.workers_needed) {
       toast.error('Please fill all required fields before continuing');
+      return;
+    }
+    if (payNeedsDaily && !Number(f.daily_pay)) return toast.error('Enter daily pay');
+    if (payNeedsHourly && !Number(f.hourly_pay)) return toast.error('Enter hourly pay');
+    if (f.work_duration_type === 'hours' && !Number(f.duration_hours)) return toast.error('Select working hours');
+    if (isHourWorkOnly && !timeRangeReady()) {
+      setSameDayTimeOpen(true);
       return;
     }
     setStep(2);
@@ -7039,7 +6851,12 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
     if (busy) return;
     const activeJobCount = (currentJobs || []).filter((j) => !['completed','closed','deleted'].includes(String(j.status || '').toLowerCase())).length;
     if (!initialJob?.id && Number.isFinite(employerSubscription.maxActiveJobs) && activeJobCount >= employerSubscription.maxActiveJobs) {
-      toast.error(`${employerPlan} plan allows only ${employerSubscription.maxActiveJobs} active job posts. Upgrade plan to post more jobs.`);
+      toast.error(`${employerPlan} plan allows only ${employerSubscription.maxActiveJobs} active job posts. Subscribe to Business plan to post unlimited jobs.`);
+      return;
+    }
+    const workersNeeded = Number(f.workers_needed || 1);
+    if (Number.isFinite(employerSubscription.maxWorkersPerJob) && workersNeeded > employerSubscription.maxWorkersPerJob) {
+      showSubscriptionRequired(`posting more than ${employerSubscription.maxWorkersPerJob} workers in one job`, 'Enterprise');
       return;
     }
     if (!f.description?.trim() || !f.shift_timing || !f.experience || !f.contact_number?.trim()) {
@@ -7048,13 +6865,22 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
     }
     setBusy(true);
     try {
+      const calculatedDays = f.work_duration_type === 'hours' ? 1 : Math.max(1, Number(f.duration_days) || 1);
+      const calculatedEndDate = f.work_duration_type === 'hours' ? f.start_date : calculateEndDateFromDuration(f.start_date, calculatedDays);
       const payload = {
         ...f,
         daily_pay: Number(f.daily_pay) || 0,
-        duration_days: Number(f.duration_days) || 1,
+        hourly_pay: Number(f.hourly_pay) || 0,
+        pay_type: f.pay_type || 'daily',
+        duration_days: calculatedDays,
+        duration_hours: Number(f.duration_hours) || 0,
+        work_duration_type: f.work_duration_type || 'days',
+        end_date: calculatedEndDate,
+        work_time_range: timeRangeReady() ? `${f.start_time} ${f.start_meridiem} - ${f.end_time} ${f.end_meridiem}` : null,
         workers_needed: Number(f.workers_needed) || 1,
         post_valid_days: Number(f.post_valid_days) || 5,
         attendance_radius_meters: Number(f.attendance_radius_meters) || 20,
+        candidate_verification: f.candidate_verification || 'all',
       };
       await api(initialJob?.id ? `jobs/${initialJob.id}` : 'jobs', { method: initialJob?.id ? 'PATCH' : 'POST', token, body: payload });
       toast.success(initialJob?.id ? 'Job updated successfully!' : 'Job posted successfully!');
@@ -7063,9 +6889,9 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
   };
 
   return (
-    <div className="h-full min-h-0 overflow-hidden bg-slate-50 flex items-center justify-center px-1">
-      <Card className="w-full max-w-[1320px] h-full max-h-full overflow-hidden rounded-3xl premium-card shadow-xl flex flex-col bg-white">
-        <CardHeader className="shrink-0 border-b px-3 py-2 md:px-5 md:py-3 bg-gradient-to-r from-emerald-50 via-white to-indigo-50">
+    <div className="h-full min-h-0 overflow-hidden bg-slate-50 flex items-start justify-center px-1 pt-1 pb-1">
+      <Card className="w-full max-w-[1320px] h-[calc(100vh-132px)] max-h-[calc(100vh-132px)] overflow-hidden rounded-3xl premium-card shadow-xl flex flex-col bg-white">
+        <CardHeader className="shrink-0 border-b px-4 py-2 md:px-5 md:py-2 bg-gradient-to-r from-emerald-50 via-white to-indigo-50">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <Button variant="ghost" size="icon" onClick={onPosted} className="h-8 w-8 shrink-0 rounded-full">
@@ -7085,7 +6911,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
           </div>
         </CardHeader>
 
-        <CardContent className="flex-1 min-h-0 overflow-hidden p-2 md:p-3 bg-white text-sm">
+        <CardContent className="flex-1 min-h-0 overflow-hidden p-3 bg-white text-sm">
           <AnimatePresence mode="wait">
             {step === 1 && (
               <motion.form
@@ -7094,51 +6920,113 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 18 }}
                 onSubmit={nextStep}
-                className="h-full min-h-0 flex flex-col justify-between gap-1.5"
+                className="h-full min-h-0 flex flex-col gap-2"
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
+                <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-2 content-start pr-1">
                   <div className="md:col-span-2 space-y-1">
-                    <Label className="text-sm">Job title *</Label>
-                    <Input className="h-9" value={f.title} onChange={e => setF(s => ({ ...s, title: e.target.value }))} placeholder="Enter role name, e.g. TIG Welder, CNC Operator" required />
+                    <Label className="text-xs font-semibold">Job title<span className="text-red-500 ml-0.5">*</span></Label>
+                    <Input className="h-10 text-sm rounded-xl" value={f.title} onChange={e => setF(s => ({ ...s, title: e.target.value }))} placeholder="Enter role name, e.g. TIG Welder, CNC Operator" required />
                   </div>
 
                   <div className="md:col-span-2 space-y-1">
-                    <Label className="text-sm">Category *</Label>
+                    <Label className="text-xs font-semibold">Category<span className="text-red-500 ml-0.5">*</span></Label>
                     <Select value={f.category} onValueChange={(v) => setF(s => ({ ...s, category: v }))}>
-                      <SelectTrigger className="h-9"><SelectValue placeholder="Select work category" /></SelectTrigger>
+                      <SelectTrigger className="h-10 text-sm rounded-xl"><SelectValue placeholder="Select work category" /></SelectTrigger>
                       <SelectContent>{categories.map(c => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-sm">Daily pay (₹) *</Label>
-                    <Input className="h-9" type="number" value={f.daily_pay} onChange={e => setF(s => ({ ...s, daily_pay: e.target.value }))} min="1" required />
+                    <Label className="text-xs font-semibold">Pay type<span className="text-red-500 ml-0.5">*</span></Label>
+                    <Select value={f.pay_type} onValueChange={(v) => setF(s => ({ ...s, pay_type: v }))}>
+                      <SelectTrigger className="h-10 text-sm rounded-xl"><SelectValue placeholder="Pay type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily pay</SelectItem>
+                        <SelectItem value="hourly">Hour pay</SelectItem>
+                        <SelectItem value="both">Daily + Hour pay</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-sm">Duration (days) *</Label>
-                    <Input className="h-9" type="number" value={f.duration_days} onChange={e => setF(s => ({ ...s, duration_days: e.target.value }))} min="1" required />
+                    <Label className="text-xs font-semibold">Post visible for (days)<span className="text-red-500 ml-0.5">*</span></Label>
+                    <Input className="h-10 text-sm rounded-xl" type="number" value={f.post_valid_days} onChange={e => setF(s => ({ ...s, post_valid_days: e.target.value }))} min="1" max="60" required />
                   </div>
 
-                  <div className="space-y-1">
-                    <Label className="text-sm">Start date *</Label>
-                    <Input className="h-9" type="date" value={f.start_date} onChange={e => setF(s => ({ ...s, start_date: e.target.value }))} required />
+                  {payNeedsDaily && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Daily pay (₹)<span className="text-red-500 ml-0.5">*</span></Label>
+                      <Input className="h-10 text-sm rounded-xl" type="number" value={f.daily_pay} onChange={e => setF(s => ({ ...s, daily_pay: e.target.value }))} min="1" required />
+                    </div>
+                  )}
+
+                  {payNeedsHourly && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Hour pay (₹)<span className="text-red-500 ml-0.5">*</span></Label>
+                      <Input className="h-10 text-sm rounded-xl" type="number" value={f.hourly_pay} onChange={e => setF(s => ({ ...s, hourly_pay: e.target.value }))} min="1" required />
+                    </div>
+                  )}
+
+                  {f.work_duration_type === 'hours' ? (
+                    <>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">Duration (hours)<span className="text-red-500 ml-0.5">*</span></Label>
+                        <Select value={String(f.duration_hours || '')} onValueChange={(v) => setF(s => ({ ...s, duration_hours: Number(v), duration_days: 1, end_date: s.start_date }))}>
+                          <SelectTrigger className="h-10 text-sm rounded-xl"><SelectValue placeholder="Select hours" /></SelectTrigger>
+                          <SelectContent>
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map((hour) => (
+                              <SelectItem key={hour} value={String(hour)}>{hour} hour{hour > 1 ? 's' : ''}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">From - to<span className="text-red-500 ml-0.5">*</span></Label>
+                        <Button type="button" variant="outline" onClick={() => setSameDayTimeOpen(true)} className="w-full h-9 justify-start rounded-xl border-sky-200 bg-white text-sky-700 hover:bg-sky-50 hover:text-sky-800 text-sm px-3">
+                          <Clock className="w-4 h-4 mr-2" /> <span className="truncate">{timeRangeReady() ? `${f.start_time} ${f.start_meridiem} - ${f.end_time} ${f.end_meridiem}` : 'Select working time'}</span>
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Duration (days)<span className="text-red-500 ml-0.5">*</span></Label>
+                      <Input className="h-10 text-sm rounded-xl" type="number" value={f.duration_days} onChange={e => setF(s => ({ ...s, duration_days: e.target.value, end_date: calculateEndDateFromDuration(s.start_date, e.target.value) }))} min="1" required />
+                    </div>
+                  )}
+
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3 items-end w-full">
+                    <div className="space-y-1 w-full">
+                      <Label className="text-xs font-semibold">Start date<span className="text-red-500 ml-0.5">*</span></Label>
+                      <Input className="h-10 text-sm rounded-xl" type="date" value={f.start_date} onChange={e => setF(s => ({ ...s, start_date: e.target.value, end_date: s.work_duration_type === 'hours' ? e.target.value : calculateEndDateFromDuration(e.target.value, s.duration_days) }))} required />
+                    </div>
+
+                    <div className="space-y-1 w-full">
+                      <Label className="text-xs font-semibold">Workers needed<span className="text-red-500 ml-0.5">*</span></Label>
+                      <Input className="h-10 text-sm rounded-xl" type="number" value={f.workers_needed} onChange={e => setF(s => ({ ...s, workers_needed: e.target.value }))} min="1" required />
+                    </div>
+
+                    <div className="space-y-1 w-full">
+                      <Label className="text-xs font-semibold">Candidate type<span className="text-red-500 ml-0.5">*</span></Label>
+                      <Select value={f.candidate_verification || 'all'} onValueChange={(v) => setF(s => ({ ...s, candidate_verification: v }))}>
+                        <SelectTrigger className="h-10 text-sm rounded-xl"><SelectValue placeholder="Candidate type" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All candidates</SelectItem>
+                          <SelectItem value="verified">Verified only</SelectItem>
+                          <SelectItem value="unverified">Unverified only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <Label className="text-sm">Workers needed *</Label>
-                    <Input className="h-9" type="number" value={f.workers_needed} onChange={e => setF(s => ({ ...s, workers_needed: e.target.value }))} min="1" required />
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label className="text-sm">Post visible for (days) *</Label>
-                    <Input className="h-9" type="number" value={f.post_valid_days} onChange={e => setF(s => ({ ...s, post_valid_days: e.target.value }))} min="1" max="60" required />
+                  <div className="md:col-span-2 mt-1 pb-2">
+                    <Button
+                      type="submit"
+                      className="w-full h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold shadow-sm"
+                    >
+                      Continue <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
                   </div>
                 </div>
-
-                <Button type="submit" className="w-full h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
-                  Continue <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
               </motion.form>
             )}
 
@@ -7149,21 +7037,24 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -18 }}
                 onSubmit={submit}
-                className="h-full min-h-0 flex flex-col justify-between gap-1.5"
+                className="h-full min-h-0 flex flex-col justify-between gap-2"
               >
-                <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-12 gap-1.5 md:gap-2 pr-0">
-                  <div className="md:col-span-12 space-y-1">
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-1.5 flex flex-col gap-1.5">
+                <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-12 gap-2 pr-0 content-start">
+                  <div className="md:col-span-12 space-y-0.5">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-1.5 flex flex-col gap-1">
                       <div className="min-w-0">
-                        <p className="text-xs md:text-sm font-bold text-emerald-900 flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Attendance GPS point</p>
-                        <p className="hidden sm:block text-[10px] md:text-[11px] text-emerald-700 mt-0.5 leading-tight">Use current GPS only when you are at the company/site. Worker daily attendance will be marked automatically when their GPS is within the allowed distance.</p>
+                        <p className="text-xs font-bold text-emerald-900 flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Attendance GPS point</p>
+                        <p className="hidden lg:block text-[10px] text-emerald-700 mt-0.5 leading-tight">Use current GPS only when you are at the company/site. Worker daily attendance will be marked automatically when their GPS is within the allowed distance.</p>
                         <p className="text-[10px] md:text-[11px] text-emerald-800 mt-0.5 truncate">{f.latitude && f.longitude ? `Saved GPS: ${formatCoordinates(f.latitude, f.longitude)} · Radius ${f.attendance_radius_meters || 20}m` : 'No exact GPS saved yet. Use current GPS while standing at the company/site.'}</p>
                       </div>
-                      <div className="flex flex-row items-center gap-1.5 flex-wrap">
+                      <div className="grid grid-cols-[auto_auto_auto_1fr] items-center gap-1.5">
                         <Button type="button" size="sm" disabled={!employerSubscription.gpsAttendance} className="h-8 px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shrink-0 text-xs font-semibold disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100" onClick={useCurrentJobGps}>
                           <MapPin className="w-4 h-4 mr-2" /> {employerSubscription.gpsAttendance ? 'Use current GPS' : 'GPS Locked'}
                         </Button>
-                        <Select disabled={!employerSubscription.radiusControl} value={String(f.attendance_radius_meters || 20)} onValueChange={(v) => setF(s => ({ ...s, attendance_radius_meters: Number(v) }))}>
+                        <Select disabled={!employerSubscription.radiusControl} value={radiusMode} onValueChange={(v) => {
+                          setRadiusMode(v);
+                          if (v !== 'custom') setF(s => ({ ...s, attendance_radius_meters: Number(v) }));
+                        }}>
                           <SelectTrigger className="h-8 rounded-lg border-emerald-200 bg-white w-32 sm:w-40 text-xs">
                             <SelectValue placeholder="Radius" />
                           </SelectTrigger>
@@ -7174,22 +7065,37 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                             <SelectItem value="50">50 meters</SelectItem>
                             <SelectItem value="100">100 meters</SelectItem>
                             <SelectItem value="200">200 meters</SelectItem>
+                            <SelectItem value="custom">Custom</SelectItem>
                           </SelectContent>
                         </Select>
-                        <p className="hidden md:block text-[10px] text-emerald-700 leading-snug flex-1">{employerSubscription.gpsAttendance ? 'Auto attendance uses this selected radius. Manual attendance marking is not required.' : 'Free plan uses manual attendance. Upgrade to Business or higher to enable GPS attendance and radius control.'}</p>
+                        {radiusMode === 'custom' ? (
+                          <Input
+                            type="number"
+                            min="1"
+                            max="1000"
+                            value={f.attendance_radius_meters || ''}
+                            onChange={(e) => setF(s => ({ ...s, attendance_radius_meters: e.target.value }))}
+                            placeholder="Meters"
+                            className="h-8 w-24 rounded-lg border-emerald-200 bg-white text-xs"
+                            disabled={!employerSubscription.radiusControl}
+                          />
+                        ) : (
+                          <div className="w-24" />
+                        )}
+                        <p className="hidden md:block text-[10px] text-emerald-700 leading-snug truncate">{employerSubscription.gpsAttendance ? 'Auto attendance uses this selected radius. Manual attendance marking is not required.' : 'Starter plan uses manual attendance. Subscribe to Business or higher to enable GPS attendance and radius control.'}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="md:col-span-12 space-y-1">
-                    <Label className="text-sm">Description *</Label>
-                    <Textarea className="min-h-[38px] h-[38px] resize-none text-sm" value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="Work details, materials, shift timing, tools, safety rules and worker requirements." required />
+                  <div className="md:col-span-12 space-y-0.5">
+                    <Label className="text-xs">Description<span className="text-red-500 ml-0.5">*</span></Label>
+                    <Textarea className="min-h-[32px] h-[32px] resize-none text-xs" value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} placeholder="Work details, materials, shift timing, tools, safety rules and worker requirements." required />
                   </div>
 
-                  <div className="md:col-span-6 space-y-1">
-                    <Label className="text-sm">Shift timing *</Label>
+                  <div className="md:col-span-6 space-y-0.5">
+                    <Label className="text-xs">Shift timing<span className="text-red-500 ml-0.5">*</span></Label>
                     <Select value={f.shift_timing} onValueChange={(v) => setF(s => ({ ...s, shift_timing: v }))}>
-                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="day">Day Shift (8AM-5PM)</SelectItem>
                         <SelectItem value="night">Night Shift (8PM-5AM)</SelectItem>
@@ -7198,10 +7104,10 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                     </Select>
                   </div>
 
-                  <div className="md:col-span-6 space-y-1">
-                    <Label className="text-sm">Experience needed *</Label>
+                  <div className="md:col-span-6 space-y-0.5">
+                    <Label className="text-xs">Experience needed<span className="text-red-500 ml-0.5">*</span></Label>
                     <Select value={f.experience} onValueChange={(v) => setF(s => ({ ...s, experience: v }))}>
-                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="beginner">Beginner (0-1 year)</SelectItem>
                         <SelectItem value="intermediate">Intermediate (1-3 years)</SelectItem>
@@ -7211,17 +7117,17 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                     </Select>
                   </div>
 
-                  <div className="md:col-span-6 space-y-1">
-                    <Label className="text-sm">Skill needed</Label>
-                    <Input className="h-8 text-sm" value={f.skill_needed} onChange={e => setF(s => ({ ...s, skill_needed: e.target.value }))} placeholder="TIG welding, CNC, helper, fitter" />
+                  <div className="md:col-span-6 space-y-0.5">
+                    <Label className="text-xs">Skill needed</Label>
+                    <Input className="h-7 text-xs" value={f.skill_needed} onChange={e => setF(s => ({ ...s, skill_needed: e.target.value }))} placeholder="TIG welding, CNC, helper, fitter" />
                   </div>
 
-                  <div className="md:col-span-6 space-y-1">
-                    <Label className="text-sm">Contact number *</Label>
-                    <Input className="h-8 text-sm" type="tel" value={f.contact_number} onChange={e => setF(s => ({ ...s, contact_number: e.target.value }))} placeholder="Workers can contact this number directly" required />
+                  <div className="md:col-span-6 space-y-0.5">
+                    <Label className="text-xs">Contact number<span className="text-red-500 ml-0.5">*</span></Label>
+                    <Input className="h-7 text-xs" type="tel" value={f.contact_number} onChange={e => setF(s => ({ ...s, contact_number: e.target.value }))} placeholder="Workers can contact this number directly" required />
                   </div>
 
-                  <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-5 gap-1">
+                  <div className="md:col-span-12 grid grid-cols-5 gap-1">
                     {[
                       ['accommodation_available', 'Accommodation'],
                       ['food_included', 'Food'],
@@ -7233,26 +7139,66 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                         type="button"
                         key={key}
                         onClick={() => setF(s => ({ ...s, [key]: typeof s[key] === 'boolean' ? !s[key] : (s[key] === 'yes' ? 'no' : 'yes') }))}
-                        className={`h-7 rounded-lg border text-[11px] font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
+                        className={`h-8 rounded-lg border text-[10px] font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1 shrink-0 border-t bg-white">
-                  <Button type="button" variant="outline" onClick={prevStep} className="h-9 rounded-xl border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold">
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                  </Button>
-                  <Button type="submit" disabled={busy} className="h-9 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
-                    {busy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                    {initialJob?.id ? 'Update Job' : 'Publish Job'}
-                  </Button>
+                  <div className="md:col-span-12 grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" onClick={prevStep} className="h-8 rounded-lg border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold text-xs">
+                      <ArrowLeft className="w-4 h-4 mr-1" /> Back
+                    </Button>
+                    <Button type="submit" disabled={busy} className="h-8 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs">
+                      {busy ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+                      {initialJob?.id ? 'Update Job' : 'Publish Job'}
+                    </Button>
+                  </div>
                 </div>
               </motion.form>
             )}
           </AnimatePresence>
+          <Dialog open={sameDayTimeOpen} onOpenChange={setSameDayTimeOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Set working hours</DialogTitle>
+                <DialogDescription>Choose from what time to what time. Attendance will still be marked as one day only.</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>From time</Label>
+                  <Input value={f.start_time} onChange={(e) => setF(s => ({ ...s, start_time: e.target.value }))} placeholder="09:00" />
+                </div>
+                <div className="space-y-1">
+                  <Label>AM/PM</Label>
+                  <Select value={f.start_meridiem} onValueChange={(v) => setF(s => ({ ...s, start_meridiem: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="AM">AM</SelectItem><SelectItem value="PM">PM</SelectItem></SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>To time</Label>
+                  <Input value={f.end_time} onChange={(e) => setF(s => ({ ...s, end_time: e.target.value }))} placeholder="06:00" />
+                </div>
+                <div className="space-y-1">
+                  <Label>AM/PM</Label>
+                  <Select value={f.end_meridiem} onValueChange={(v) => setF(s => ({ ...s, end_meridiem: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="AM">AM</SelectItem><SelectItem value="PM">PM</SelectItem></SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setSameDayTimeOpen(false)}>Cancel</Button>
+                <Button type="button" className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => {
+                  if (!timeRangeReady()) return toast.error('Enter from time and to time');
+                  setSameDayTimeOpen(false);
+                  if (step === 1) setStep(2);
+                }}>Done</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
     </div>
@@ -7436,7 +7382,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                 <div className="flex-1">
                   <h2 className="text-2xl font-bold">{selectedJob.title}</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {selectedJob.location_text} · {selectedJob.duration_days} days · {fmtMoney(selectedJob.daily_pay)}/day
+                    {selectedJob.location_text} · {jobDurationLabel(selectedJob)} · {jobPayLabel(selectedJob)}
                   </p>
                   <div className="mt-3 flex items-center gap-4">
                     <div className="flex items-center gap-2">
@@ -7445,7 +7391,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-indigo-600" />
-                      <span className="text-sm font-medium">{selectedJob.duration_days} working days</span>
+                      <span className="text-sm font-medium">{jobDurationLabel(selectedJob)}</span>
                     </div>
                   </div>
                 </div>
@@ -7729,7 +7675,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                         <div className="min-w-0">
                           <p className="font-semibold truncate">{job.title}</p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {job.location_text} · {job.duration_days}d
+                            {job.location_text} · {jobDurationLabel(job)}
                           </p>
                         </div>
                         <Badge className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
@@ -7739,7 +7685,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <span className="rounded-xl bg-emerald-50 text-emerald-700 px-2 py-2 font-bold">
                           <Banknote className="w-3 h-3 inline mr-1" />
-                          {fmtMoney(job.daily_pay)}/day
+                          {jobPayLabel(job)}
                         </span>
                         <span className="rounded-xl bg-slate-50 px-2 py-2">
                           <Users className="w-3 h-3 inline mr-1" />
@@ -7788,16 +7734,16 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                 <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mb-3">Payment Calculation</p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-emerald-600 dark:text-emerald-400">Daily Rate:</span>
-                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{fmtMoney(selectedJob?.daily_pay || 0)}</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">Pay Rate:</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{jobPayLabel(selectedJob)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-emerald-600 dark:text-emerald-400">Total Days:</span>
-                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{selectedJob?.duration_days || 0}d</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">Total Time:</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{jobDurationLabel(selectedJob)}</span>
                   </div>
                   <div className="border-t border-emerald-200 dark:border-emerald-700 pt-2 flex justify-between">
                     <span className="font-bold text-emerald-700 dark:text-emerald-300">Total Payment:</span>
-                    <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{fmtMoney((selectedJob?.daily_pay || 0) * (selectedJob?.duration_days || 0))}</span>
+                    <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{fmtMoney(jobTotalPay(selectedJob))}</span>
                   </div>
                 </div>
               </div>
@@ -8012,14 +7958,14 @@ if (changed && finalSaved) {
 
   const buildEmployerProfilePayload = () => ({
     full_name: f.full_name || '',
-    phone: f.phone || '',
+    phone: cleanIndianPhone10(f.phone) || '',
     company_name: f.company_name || '',
     industry: f.industry || '',
     company_size: f.company_size || '',
     hr_contact: f.hr_contact || '',
-    official_email: f.official_email || '',
+    official_email: cleanEmailValue(f.official_email) || '',
     company_address: f.company_address || '',
-    gst_number: f.gst_number || '',
+    gst_number: cleanGstNumber(f.gst_number) || '',
     pan_number: f.pan_number || '',
     location_text: f.location_text || '',
     latitude: f.latitude || null,
@@ -8031,7 +7977,7 @@ if (changed && finalSaved) {
 
   const buildEmployerDocumentPayload = () => ({
     pan_number: f.pan_number || '',
-    gst_number: f.gst_number || '',
+    gst_number: cleanGstNumber(f.gst_number) || '',
     pan_image_url: f.pan_image_url || '',
     pan_back_url: f.pan_back_url || '',
     gst_certificate_url: f.gst_certificate_url || '',
@@ -8051,13 +7997,42 @@ if (changed && finalSaved) {
     if (!f.account_holder_name?.trim()) return 'Enter account holder name';
     if (!f.bank_name?.trim()) return 'Enter bank name';
     if (!f.bank_account?.trim()) return 'Enter account number';
+    if (!isValidBankAccount(f.bank_account)) return 'Account number must be 9 to 18 digits';
     if (!f.ifsc_code?.trim()) return 'Enter IFSC code';
+    if (!isValidIfscCode(f.ifsc_code)) return 'Enter valid IFSC code';
     return '';
   };
 
   const requireEmployerDocuments = () => {
     if (!f.pan_image_url || !f.pan_back_url) return 'Upload company PAN front and back';
     if (!f.gst_certificate_url) return 'Upload GST certificate';
+    return '';
+  };
+
+  const requireEmployerProfile = () => {
+    const requiredFields = [
+      ['full_name', 'Enter your name'],
+      ['phone', 'Enter phone number'],
+      ['company_name', 'Enter company name'],
+      ['industry', 'Enter industry type'],
+      ['hr_contact', 'Enter HR contact person'],
+      ['official_email', 'Enter official email'],
+      ['company_size', 'Select company size'],
+      ['gst_number', 'Enter GST number'],
+      ['company_address', 'Enter office / registered address'],
+      ['location_text', 'Save company GPS location'],
+      ['description', 'Enter about company details'],
+    ];
+
+    for (const [key, message] of requiredFields) {
+      if (!String(f?.[key] || '').trim()) return message;
+    }
+
+    if (!isValidIndianPhone10(f.phone)) return 'Enter valid 10-digit Indian mobile number';
+    if (!isValidEmailValue(f.official_email)) return 'Enter valid official email address';
+    if (!isValidGstNumber(f.gst_number)) return 'Enter valid 15-character GST number';
+
+    if (!f.latitude || !f.longitude) return 'Save company GPS location';
     return '';
   };
 
@@ -8095,6 +8070,11 @@ if (changed && finalSaved) {
   }, [employerAllProfileCardsVerified, finalSaved, me]);
 
   const save = async () => {
+    const profileValidationMessage = requireEmployerProfile();
+    if (profileValidationMessage) {
+      toast.error(profileValidationMessage);
+      return;
+    }
     if (!employerAllProfileCardsVerified) {
       toast.error('Verify all required profile cards before final save');
       return;
@@ -8255,24 +8235,23 @@ if (changed && finalSaved) {
       <Card className="profile-section-card overflow-hidden">
         <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Company profile</CardTitle><CardDescription>Company details, address and hiring information.</CardDescription></div></div></CardHeader>
         <CardContent className="grid sm:grid-cols-2 gap-3">
-          <Field label="Your name"   v={f.full_name}    on={(v) => setF(s => ({ ...s, full_name: v }))} />
-          <Field label="Phone"       v={f.phone}        on={(v) => setF(s => ({ ...s, phone: v }))} />
-          <Field label="Company"     v={f.company_name} on={(v) => setF(s => ({ ...s, company_name: v }))} />
-          <Field label="Industry type"    v={f.industry}     on={(v) => setF(s => ({ ...s, industry: v }))} />
-          <Field label="HR contact person" v={f.hr_contact} on={(v) => setF(s => ({ ...s, hr_contact: v }))} />
-          <Field label="Official email" v={f.official_email} on={(v) => setF(s => ({ ...s, official_email: v }))} type="email" />
+          <Field label="Your name"   v={f.full_name}    on={(v) => setF(s => ({ ...s, full_name: v }))} required />
+          <Field label="Phone"       v={cleanIndianPhone10(f.phone)}        on={(v) => setF(s => ({ ...s, phone: cleanIndianPhone10(v) }))} inputMode="numeric" maxLength={10} prefix="+91" helper="Enter 10-digit Indian mobile number" required />
+          <Field label="Company"     v={f.company_name} on={(v) => setF(s => ({ ...s, company_name: v }))} required />
+          <Field label="Industry type"    v={f.industry}     on={(v) => setF(s => ({ ...s, industry: v }))} required />
+          <Field label="HR contact person" v={f.hr_contact} on={(v) => setF(s => ({ ...s, hr_contact: v }))} required />
+          <Field label="Official email" v={f.official_email} on={(v) => setF(s => ({ ...s, official_email: cleanEmailValue(v) }))} type="email" required />
           <div>
-            <Label>Company size</Label>
-            <Select value={f.company_size || ''} onValueChange={(v) => setF(s => ({ ...s, company_size: v }))}>
+            <Label>Company size<span className="text-red-500 ml-0.5">*</span></Label>
+            <Select value={f.company_size || ''} required onValueChange={(v) => setF(s => ({ ...s, company_size: v }))}>
               <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
               <SelectContent><SelectItem value="1-10">1-10 employees</SelectItem><SelectItem value="11-50">11-50 employees</SelectItem><SelectItem value="51-200">51-200 employees</SelectItem><SelectItem value="200+">200+ employees</SelectItem></SelectContent>
             </Select>
           </div>
-          <Field label="GST number" v={f.gst_number} on={(v) => setF(s => ({ ...s, gst_number: v }))} />
-          <Field label="Company PAN" v={f.pan_number} on={(v) => setF(s => ({ ...s, pan_number: v }))} />
+          <Field label="GST number" v={cleanGstNumber(f.gst_number)} on={(v) => setF(s => ({ ...s, gst_number: cleanGstNumber(v) }))} maxLength={15} helper="Format: 29ABCDE1234F1Z5" required />
           <div className="sm:col-span-2">
-            <Label>Office address / registered address</Label>
-            <Textarea rows={3} value={f.company_address || ''} onChange={(e) => setF(s => ({ ...s, company_address: e.target.value }))} placeholder="Manual typing only: door no, street, area, city, state, pincode" />
+            <Label>Office address / registered address<span className="text-red-500 ml-0.5">*</span></Label>
+            <Textarea rows={3} required value={f.company_address || ''} onChange={(e) => setF(s => ({ ...s, company_address: e.target.value }))} placeholder="Manual typing only: door no, street, area, city, state, pincode" />
             <p className="text-xs text-muted-foreground mt-1">This address field is manual only. GPS is selected separately below.</p>
           </div>
           <div className="sm:col-span-2 space-y-3">
@@ -8290,8 +8269,8 @@ if (changed && finalSaved) {
             />
           </div>
           <div className="sm:col-span-2">
-            <Label>About</Label>
-            <Textarea rows={3} value={f.description || ''} onChange={(e) => setF(s => ({ ...s, description: e.target.value }))} />
+            <Label>About<span className="text-red-500 ml-0.5">*</span></Label>
+            <Textarea rows={3} required value={f.description || ''} onChange={(e) => setF(s => ({ ...s, description: e.target.value }))} />
           </div>
           <div className="sm:col-span-2">
             <Card className="profile-section-card overflow-hidden border-emerald-100">
@@ -8305,7 +8284,7 @@ if (changed && finalSaved) {
               </CardHeader>
               <CardContent className="p-4 grid lg:grid-cols-2 gap-4 items-stretch">
                 <MobileOtpVerificationBox token={token} phone={f.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setF(s => ({ ...s, phone: phone || s.phone, mobile_verified: true })); onSaved?.(); }} />
-                <SelfieVerificationBox token={token} url={f.selfie_url || me.extra?.selfie_url} frontUrl={f.selfie_front_url || me.extra?.selfie_front_url} leftUrl={f.selfie_left_url || me.extra?.selfie_left_url} rightUrl={f.selfie_right_url || me.extra?.selfie_right_url} verified={!!(f.selfie_verified || me.extra?.selfie_verified)} disabled={busy} onUploaded={(payload) => { setF(s => ({ ...s, ...(typeof payload === 'string' ? { selfie_url: payload, selfie_verified: true } : { selfie_url: payload.selfie_url || payload.selfie_front_url || payload.url || '', selfie_verified: true }), selfie_verified: true, verification_status: 'verified' })); setFinalSaved(false); onSaved?.(); }} />
+                <SelfieVerificationBox token={token} url={f.selfie_url || me.extra?.selfie_url} frontUrl={f.selfie_front_url || me.extra?.selfie_front_url} leftUrl={f.selfie_left_url || me.extra?.selfie_left_url} rightUrl={f.selfie_right_url || me.extra?.selfie_right_url} verified={!!(f.selfie_verified || me.extra?.selfie_verified)} disabled={busy} onUploaded={(payload) => { const uploadedUrl = typeof payload === 'string' ? payload : (payload?.selfie_url || payload?.selfie_front_url || payload?.url || ''); const nextSelfie = { ...(typeof payload === 'object' && payload ? payload : {}), selfie_url: uploadedUrl, selfie_front_url: uploadedUrl || (typeof payload === 'object' ? payload?.selfie_front_url : ''), selfie_verified: true, selfie_verified_at: (typeof payload === 'object' && payload?.selfie_verified_at) ? payload.selfie_verified_at : new Date().toISOString(), verification_status: 'verified' }; setF(s => ({ ...s, ...nextSelfie })); setSavedData(s => ({ ...s, ...nextSelfie })); setFinalSaved(false); onSaved?.(); }} />
               </CardContent>
             </Card>
           </div>
@@ -8319,13 +8298,8 @@ if (changed && finalSaved) {
               color="emerald"
               setForm={setF}
               onSaved={onSaved}
-              disabled={!String(f.full_name || '').trim() || !String(f.company_name || '').trim() || !String(f.phone || '').trim()}
-              validate={() => {
-                if (!String(f.full_name || '').trim()) return 'Enter your name';
-                if (!String(f.company_name || '').trim()) return 'Enter company name';
-                if (!String(f.phone || '').trim()) return 'Enter phone number';
-                return '';
-              }}
+              disabled={!!requireEmployerProfile()}
+              validate={requireEmployerProfile}
               payloadBuilder={buildEmployerProfilePayload}
               modified={employerProfileChangedAfterReview}
             />
@@ -8427,13 +8401,19 @@ if (changed && finalSaved) {
 function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const isEmployer = role === 'employer';
   const planStorageKey = `w2w-subscription-plan-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`;
-  const defaultPlan = 'Free';
+  const defaultPlan = isEmployer ? 'Starter' : 'Basic';
   const [currentPlan, setCurrentPlan] = useState(defaultPlan);
 
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    const localPlan = (() => { try { return localStorage.getItem(planStorageKey) || defaultPlan; } catch { return defaultPlan; } })();
+    const localPlan = (() => {
+      try {
+        const savedPlan = localStorage.getItem(planStorageKey) || defaultPlan;
+        if (isEmployer && (savedPlan === 'Free' || savedPlan === 'Premium Employer')) return savedPlan === 'Premium Employer' ? 'Business' : 'Starter';
+        return savedPlan;
+      } catch { return defaultPlan; }
+    })();
     setCurrentPlan(localPlan);
     api('subscription/current').then((d) => {
       if (!alive) return;
@@ -8447,33 +8427,40 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   }, [open, planStorageKey]);
 
   const employeePlans = [
-    { name: 'Free', price: '₹0', highlight: false, features: ['Manual attendance only', 'Apply to 10 jobs/month', 'Basic worker profile', 'Standard notifications'] },
-    { name: 'Starter', price: '₹99/month', highlight: false, features: ['GPS auto attendance', 'Unlimited applications', 'Verified profile highlight', 'Faster job alerts'] },
-    { name: 'Pro Worker', price: '₹299/month', highlight: true, features: ['Featured worker profile', 'Higher employer search rank', 'Advanced job recommendations', 'Attendance analytics'] },
-    { name: 'Elite Worker', price: '₹599/month', highlight: false, features: ['Premium worker badge', 'Top search ranking', 'Priority employer invitations', 'Dedicated support'] },
+    { name: 'Basic', price: '₹0', highlight: false, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
+    { name: 'Growth', price: '₹299/month', highlight: true, features: ['Unlimited job applications', 'Priority-based visibility', 'Skill badge', 'Interview notifications', 'Better search ranking'] },
+    { name: 'Premium', price: '₹599/month', highlight: false, features: ['Verified badge', 'Direct chat with employers', 'Faster matching', 'Top visibility', 'High-paying jobs access'] },
   ];
 
   const employerPlans = [
-    { name: 'Free', price: '₹0', highlight: false, features: ['3 active job posts/month', 'Manual attendance marking', 'Basic candidate search', 'Standard notifications'] },
-    { name: 'Business', price: '₹499/month', highlight: false, features: ['Unlimited job posts', 'GPS auto attendance', 'Attendance radius control', 'Candidate filtering'] },
-    { name: 'Premium Employer', price: '₹999/month', highlight: true, features: ['Featured job posts', 'Verified employer badge', 'Top search visibility', 'Advanced analytics'] },
-    { name: 'Enterprise', price: '₹2499/month', highlight: false, features: ['Multi-location attendance', 'Bulk hiring tools', 'Company branding page', 'Advanced reports'] },
+    { name: 'Starter', price: '₹999/month', highlight: false, features: ['Post up to 5 jobs', '5 job cards limit', 'Limited worker database access', 'Mail alerts', 'Basic support', 'Manual attendance'] },
+    { name: 'Business', price: '₹4999/month', highlight: true, features: ['Unlimited job posting', 'Full worker database access', 'Direct chat with employees', 'Company branding', 'GPS radius auto attendance', 'Priority support', 'Includes Starter features'] },
+    { name: 'Enterprise', price: '₹8999/month', highlight: false, features: ['Featured company badge', 'Urgent hiring boost', 'Bulk hiring up to 20 workers per job', 'Multi-user access', 'Dedicated support', 'Includes Business and Starter features'] },
   ];
 
   const plans = isEmployer ? employerPlans : employeePlans;
   const planTitle = isEmployer ? 'Employer Subscription Plans' : 'Employee Subscription Plans';
   const planDescription = isEmployer
     ? 'Employer plans are separate for this employer account only.'
-    : 'Employee plans are separate for this employee account only.';
+    : 'Worker plans are separate for this worker account only.';
+
+  const workerPlanOrder = ['Basic', 'Growth', 'Premium'];
+  const employerPlanOrder = ['Starter', 'Business', 'Enterprise'];
+  const activePlanIndex = (planName) => (isEmployer ? employerPlanOrder : workerPlanOrder).indexOf(planName);
+  const isPlanIncluded = (planName) => activePlanIndex(planName) <= activePlanIndex(currentPlan);
 
   const choosePlan = async (planName) => {
-    try { localStorage.setItem(planStorageKey, planName); } catch {}
+    try {
+      localStorage.setItem(planStorageKey, planName);
+      localStorage.setItem(`w2w-subscription-plan-${isEmployer ? 'employer' : 'worker'}-current`, planName);
+      window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: isEmployer ? 'employer' : 'worker', plan: planName } }));
+    } catch {}
     setCurrentPlan(planName);
     try {
       await api('subscription/select', { method: 'POST', body: { plan_name: planName, role: isEmployer ? 'employer' : 'worker' } });
       toast.success(`${planName} selected for this ${isEmployer ? 'employer' : 'employee'} account`);
     } catch (e) {
-      toast.success(`${planName} selected locally. Run the subscription SQL to save it permanently.`);
+      toast.success(`${planName} selected for this ${isEmployer ? 'employer' : 'employee'} account`);
     }
   };
 
@@ -8500,13 +8487,13 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className={`mt-5 grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch`}>
           {plans.map((plan) => {
             const isCurrent = currentPlan === plan.name;
             return (
               <div
                 key={plan.name}
-                className={`relative flex h-full min-h-[360px] flex-col rounded-3xl border p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl ${plan.highlight ? 'border-sky-500 bg-white ring-2 ring-sky-200' : 'border-sky-100 bg-white/90'}`}
+                className={`relative flex h-full min-h-[340px] flex-col rounded-3xl border p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl ${plan.highlight ? 'border-sky-500 bg-white ring-2 ring-sky-200' : 'border-sky-100 bg-white/90'}`}
               >
                 {plan.highlight && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-sky-700 px-3 py-1 text-xs font-bold text-white shadow">
@@ -8537,7 +8524,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
                   onClick={() => choosePlan(plan.name)}
                 >
                   {isCurrent ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                  {isCurrent ? 'Current Plan' : 'Upgrade'}
+                  {isCurrent ? 'Current Plan' : isPlanIncluded(plan.name) ? 'Included' : 'Select Plan'}
                 </Button>
               </div>
             );

@@ -59,8 +59,18 @@ create table if not exists public.jobs (
   latitude double precision,
   longitude double precision,
   daily_pay numeric not null default 0,
+  hourly_pay numeric default 0,
+  pay_type text default 'daily',
   duration_days int default 1,
+  duration_hours int default 0,
+  work_duration_type text default 'days',
   start_date date,
+  end_date date,
+  start_time text,
+  start_meridiem text,
+  end_time text,
+  end_meridiem text,
+  work_time_range text,
   status text not null default 'open' check (status in ('open','closed','filled')),
   created_at timestamptz default now()
 );
