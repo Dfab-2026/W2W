@@ -3405,6 +3405,18 @@ function LocationSearchBox({
     }
   };
 
+  const openGoogleMapsSearch = () => {
+    const q = (query || inputRef.current?.value || '').trim();
+    if (q.length < 3) {
+      toast.error('Type at least 3 characters for location');
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+    toast.success('Opening Google Maps. Search/select the exact location there, then copy/paste or save the address here.');
+  };
+
   const useCurrent = () => {
     if (!navigator.geolocation) {
       toast.error('Location is not supported on this device');
@@ -3473,7 +3485,7 @@ function LocationSearchBox({
             className="pl-9 pr-24 sm:pr-32 border-0 shadow-none focus-visible:ring-0 h-11 rounded-xl bg-transparent"
           />
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
-            <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-7 px-2" title="Search typed address">
+            <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={openGoogleMapsSearch} disabled={loading} className="h-7 px-2" title="Open this location in Google Maps">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">Search</span>
             </Button>
@@ -4101,16 +4113,21 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                   <Button size="sm" variant="outline" className="flex-1"
                           onClick={() => {
                             // Open feedback dialog
-                            const rating = prompt('Rate the company (1-5):');
-                            const feedback = prompt('Feedback for the company:');
+                            const rating = prompt('Rate the company (1-5 stars):');
+                            const feedback = prompt('Write feedback about the company/employer:');
                             if (rating && feedback) {
-                              api('feedback/company', { method: 'POST', token, body: { application_id: a.id, rating: parseInt(rating), feedback_text: feedback } })
+                              api('feedback/company', { method: 'POST', token, body: { application_id: a.id, rating: Number(rating), feedback_text: feedback } })
                                 .then(() => { load(); toast.success('Feedback submitted!'); })
                                 .catch(e => toast.error(e.message));
                             }
                           }}>
                     <Star className="w-4 h-4 mr-1" /> Give Feedback
                   </Button>
+                )}
+                {a.status === 'completed' && a.feedback_given && (
+                  <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-sm font-semibold text-emerald-700">
+                    Feedback Done
+                  </div>
                 )}
                 <Button size="sm" variant="outline" className="flex-1"
                         onClick={() => onChat?.({
@@ -4284,9 +4301,13 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
         </div>
         <ScrollArea className="max-h-[72vh]">
           <div className="p-4 md:p-6 space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               <InfoTile label={isWorker ? 'Works completed' : 'Completed hires'} value={stats.completedWorks || 0} />
               <InfoTile label="Feedbacks" value={stats.feedbackCount || 0} />
+              <InfoTile
+                label="Public rating"
+                value={stats.ratingReady ? `★ ${Number(stats.ratingAverage || 0).toFixed(1)}/5` : `${stats.ratingEligibleCount || 0}/5 ratings`}
+              />
               <InfoTile label={isWorker ? 'Expected wage' : 'Posted jobs'} value={isWorker ? fmtMoney(p.expected_daily_wage || 0) : (stats.postedJobs || 0)} />
               <InfoTile label="Location" value={p.location_text || p.company_address || p.address || '—'} />
             </div>
@@ -4327,7 +4348,12 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
             )}
 
             <div className="rounded-3xl border border-amber-100 bg-amber-50/70 p-4">
-              <h3 className="font-bold mb-3 flex items-center gap-2 text-amber-900"><Star className="w-4 h-4" /> Feedback</h3>
+              <h3 className="font-bold mb-1 flex items-center gap-2 text-amber-900"><Star className="w-4 h-4" /> Public feedback</h3>
+              <p className="text-xs text-amber-800/80 mb-3">
+                {stats.ratingReady
+                  ? `Average rating: ${Number(stats.ratingAverage || 0).toFixed(1)}/5 from ${stats.ratingCount || 0} feedbacks.`
+                  : `Average rating appears after 5 ratings from different ${isWorker ? 'companies' : 'workers'}.`}
+              </p>
               {feedbacks.length === 0 ? <p className="text-sm text-muted-foreground">No feedback added yet.</p> : (
                 <div className="space-y-2">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border p-3"><p className="text-sm font-semibold">{'★'.repeat(Number(f.rating || 0))}{'☆'.repeat(Math.max(0, 5-Number(f.rating || 0)))}</p><p className="text-sm text-slate-700 mt-1">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>
               )}
@@ -6685,29 +6711,24 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                     )}
                     {a.status === 'completed' && (
                       <div className="flex gap-2 mt-3">
-                        <Button size="sm" variant="outline" className="flex-1"
-                                onClick={() => {
-                                  const rating = prompt('Rate the worker (1-5):');
-                                  const feedback = prompt('Feedback for the worker:');
-                                  if (rating && feedback) {
-                                    api('feedback/worker', { method: 'POST', token, body: { application_id: a.id, rating: parseInt(rating), feedback_text: feedback } })
-                                      .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
-                                      .catch(e => toast.error(e.message));
-                                  }
-                                }}>
-                          <Star className="w-4 h-4 mr-1" /> Rate Worker
-                        </Button>
-                        <Button size="sm" variant="outline" className="flex-1"
-                                onClick={() => {
-                                  const feedback = prompt('Additional feedback for the worker:');
-                                  if (feedback) {
-                                    api('feedback/employer', { method: 'POST', token, body: { application_id: a.id, rating: 5, feedback_text: feedback } })
-                                      .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
-                                      .catch(e => toast.error(e.message));
-                                  }
-                                }}>
-                          <MessageSquare className="w-4 h-4 mr-1" /> Feedback
-                        </Button>
+                        {!a.feedback_given ? (
+                          <Button size="sm" variant="outline" className="flex-1"
+                                  onClick={() => {
+                                    const rating = prompt('Rate the worker (1-5 stars):');
+                                    const feedback = prompt('Write feedback about the worker/employee:');
+                                    if (rating && feedback) {
+                                      api('feedback/worker', { method: 'POST', token, body: { application_id: a.id, rating: Number(rating), feedback_text: feedback } })
+                                        .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
+                                        .catch(e => toast.error(e.message));
+                                    }
+                                  }}>
+                            <Star className="w-4 h-4 mr-1" /> Rate Worker
+                          </Button>
+                        ) : (
+                          <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-sm font-semibold text-emerald-700">
+                            Feedback Done
+                          </div>
+                        )}
                       </div>
                     )}
                     <Button size="sm" variant="ghost" className="w-full mt-3 rounded-xl text-emerald-700 hover:bg-emerald-50"
@@ -8398,11 +8419,85 @@ if (changed && finalSaved) {
 
 
 
+
+function loadRazorpayCheckoutScript() {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve(false);
+    if (window.Razorpay) return resolve(true);
+    const existing = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(true), { once: true });
+      existing.addEventListener('error', () => resolve(false), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
+function getPlanValidityMonths(plan, role) {
+  const workerValidity = { Basic: 1, Growth: 6, Premium: 12 };
+  const employerValidity = { Starter: 1, Business: 6, Enterprise: 12 };
+  const map = role === 'employer' ? employerValidity : workerValidity;
+  return map[plan?.name || plan] || 1;
+}
+
+function getPlanValidityLabel(plan, role) {
+  const months = getPlanValidityMonths(plan, role);
+  if (months === 1) return '1 Month';
+  if (months === 6) return '6 Months';
+  if (months === 12) return '12 Months';
+  return `${months} Months`;
+}
+
+function getSubscriptionExpiryDate(plan, role) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + getPlanValidityMonths(plan, role));
+  return d;
+}
+
+function getPlanAmountPaise(plan, role) {
+  const workerAmounts = {
+    Basic: 19900,
+    Growth: 29900,
+    Premium: 59900,
+  };
+  const employerAmounts = {
+    Starter: 99900,
+    Business: 499900,
+    Enterprise: 899900,
+  };
+  const map = role === 'employer' ? employerAmounts : workerAmounts;
+  return map[plan?.name] || 100;
+}
+
+function getPlanDisplayPrice(plan, role) {
+  const workerPrices = {
+    Basic: '₹199 / 1 Month',
+    Growth: '₹299 / 6 Months',
+    Premium: '₹599 / 12 Months',
+  };
+  const employerPrices = {
+    Starter: '₹999 / 1 Month',
+    Business: '₹4,999 / 6 Months',
+    Enterprise: '₹8,999 / 12 Months',
+  };
+  const map = role === 'employer' ? employerPrices : workerPrices;
+  return map[plan?.name] || plan?.price || '₹0';
+}
+
 function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const isEmployer = role === 'employer';
   const planStorageKey = `w2w-subscription-plan-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`;
   const defaultPlan = isEmployer ? 'Starter' : 'Basic';
   const [currentPlan, setCurrentPlan] = useState(defaultPlan);
+  const [paymentPlan, setPaymentPlan] = useState(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -8427,15 +8522,15 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   }, [open, planStorageKey]);
 
   const employeePlans = [
-    { name: 'Basic', price: '₹0', highlight: false, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
-    { name: 'Growth', price: '₹299/month', highlight: true, features: ['Unlimited job applications', 'Priority-based visibility', 'Skill badge', 'Interview notifications', 'Better search ranking'] },
-    { name: 'Premium', price: '₹599/month', highlight: false, features: ['Verified badge', 'Direct chat with employers', 'Faster matching', 'Top visibility', 'High-paying jobs access'] },
+    { name: 'Basic', price: '₹199 / 1 Month', highlight: false, validityMonths: 1, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
+    { name: 'Growth', price: '₹299 / 6 Months', highlight: true, validityMonths: 6, features: ['Unlimited job applications', 'Priority-based visibility', 'Skill badge', 'Interview notifications', 'Better search ranking'] },
+    { name: 'Premium', price: '₹599 / 12 Months', highlight: false, validityMonths: 12, features: ['Verified badge', 'Direct chat with employers', 'Faster matching', 'Top visibility', 'High-paying jobs access'] },
   ];
 
   const employerPlans = [
-    { name: 'Starter', price: '₹999/month', highlight: false, features: ['Post up to 5 jobs', '5 job cards limit', 'Limited worker database access', 'Mail alerts', 'Basic support', 'Manual attendance'] },
-    { name: 'Business', price: '₹4999/month', highlight: true, features: ['Unlimited job posting', 'Full worker database access', 'Direct chat with employees', 'Company branding', 'GPS radius auto attendance', 'Priority support', 'Includes Starter features'] },
-    { name: 'Enterprise', price: '₹8999/month', highlight: false, features: ['Featured company badge', 'Urgent hiring boost', 'Bulk hiring up to 20 workers per job', 'Multi-user access', 'Dedicated support', 'Includes Business and Starter features'] },
+    { name: 'Starter', price: '₹999 / 1 Month', highlight: false, validityMonths: 1, features: ['Post up to 5 jobs', '5 job cards limit', 'Limited worker database access', 'Mail alerts', 'Basic support', 'Manual attendance'] },
+    { name: 'Business', price: '₹4,999 / 6 Months', highlight: true, validityMonths: 6, features: ['Unlimited job posting', 'Full worker database access', 'Direct chat with employees', 'Company branding', 'GPS radius auto attendance', 'Priority support', 'Includes Starter features'] },
+    { name: 'Enterprise', price: '₹8,999 / 12 Months', highlight: false, validityMonths: 12, features: ['Featured company badge', 'Urgent hiring boost', 'Bulk hiring up to 20 workers per job', 'Multi-user access', 'Dedicated support', 'Includes Business and Starter features'] },
   ];
 
   const plans = isEmployer ? employerPlans : employeePlans;
@@ -8449,22 +8544,143 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const activePlanIndex = (planName) => (isEmployer ? employerPlanOrder : workerPlanOrder).indexOf(planName);
   const isPlanIncluded = (planName) => activePlanIndex(planName) <= activePlanIndex(currentPlan);
 
-  const choosePlan = async (planName) => {
+  const activatePlanAfterPayment = async (planName) => {
+    const subRole = isEmployer ? 'employer' : 'worker';
+    const expiryDate = getSubscriptionExpiryDate(planName, subRole);
     try {
       localStorage.setItem(planStorageKey, planName);
-      localStorage.setItem(`w2w-subscription-plan-${isEmployer ? 'employer' : 'worker'}-current`, planName);
-      window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: isEmployer ? 'employer' : 'worker', plan: planName } }));
+      localStorage.setItem(`w2w-subscription-plan-${subRole}-current`, planName);
+      localStorage.setItem(`w2w-subscription-expiry-${subRole}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, expiryDate.toISOString());
+      localStorage.setItem(`w2w-subscription-expiry-${subRole}-current`, expiryDate.toISOString());
+      window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: subRole, plan: planName, expires_at: expiryDate.toISOString() } }));
     } catch {}
     setCurrentPlan(planName);
+    await api('subscription/select', { method: 'POST', body: { plan_name: planName, role: subRole, expires_at: expiryDate.toISOString() } });
+  };
+
+  const startRazorpayPayment = async (plan) => {
+    if (!plan || paymentBusy) return;
+    setPaymentBusy(true);
+    setPaymentError('');
+    const planName = plan.name;
+    const amount = getPlanAmountPaise(plan, isEmployer ? 'employer' : 'worker');
     try {
-      await api('subscription/select', { method: 'POST', body: { plan_name: planName, role: isEmployer ? 'employer' : 'worker' } });
-      toast.success(`${planName} selected for this ${isEmployer ? 'employer' : 'employee'} account`);
+      const publicKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!publicKey) {
+        setPaymentError('Razorpay public key is missing. Add NEXT_PUBLIC_RAZORPAY_KEY_ID in .env.local and Vercel, then redeploy.');
+        toast.error('Razorpay key missing');
+        return;
+      }
+
+      const scriptLoaded = await loadRazorpayCheckoutScript();
+      if (!scriptLoaded || !window.Razorpay) {
+        setPaymentError('Razorpay checkout could not load. Check internet connection or browser script blocking.');
+        toast.error('Razorpay checkout failed to load');
+        return;
+      }
+
+      const token = await getFreshAccessToken();
+      const orderRes = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          plan_name: planName,
+          role: isEmployer ? 'employer' : 'worker',
+          amount,
+          validity_months: getPlanValidityMonths(planName, isEmployer ? 'employer' : 'worker'),
+          currency: 'INR',
+        }),
+      });
+      const orderData = await orderRes.json().catch(() => ({}));
+      if (!orderRes.ok || !orderData?.order?.id) {
+        throw new Error(orderData?.error || 'Unable to create Razorpay order');
+      }
+
+      const options = {
+        key: publicKey,
+        amount: orderData.order.amount,
+        currency: orderData.order.currency || 'INR',
+        name: 'Work2Wish',
+        description: `${planName} ${isEmployer ? 'Employer' : 'Worker'} Subscription`,
+        order_id: orderData.order.id,
+        prefill: {
+          name: me?.profile?.company_name || me?.profile?.full_name || me?.profile?.name || '',
+          email: me?.profile?.email || me?.email || '',
+          contact: String(me?.profile?.phone || '').replace(/\D/g, '').slice(-10),
+        },
+        notes: {
+          plan_name: planName,
+          role: isEmployer ? 'employer' : 'worker',
+          user_id: me?.id || me?.profile?.id || '',
+        },
+        theme: { color: '#059669' },
+        modal: {
+          escape: false,
+          backdropclose: false,
+          ondismiss: () => {
+            setPaymentBusy(false);
+            toast.message('Payment window closed');
+          },
+        },
+        handler: async (response) => {
+          try {
+            const verifyToken = await getFreshAccessToken();
+            const verifyRes = await fetch('/api/razorpay/verify-payment', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(verifyToken ? { Authorization: `Bearer ${verifyToken}` } : {}),
+              },
+              body: JSON.stringify({
+                ...response,
+                plan_name: planName,
+                role: isEmployer ? 'employer' : 'worker',
+                validity_months: getPlanValidityMonths(planName, isEmployer ? 'employer' : 'worker'),
+              }),
+            });
+            const verifyData = await verifyRes.json().catch(() => ({}));
+            if (!verifyRes.ok || !verifyData?.success) throw new Error(verifyData?.error || 'Payment verification failed');
+            await activatePlanAfterPayment(planName);
+            setPaymentPlan(null);
+            onOpenChange(false);
+            toast.success(`${planName} plan activated successfully`);
+          } catch (e) {
+            setPaymentError(e.message || 'Payment verification failed');
+            toast.error(e.message || 'Payment verification failed');
+          } finally {
+            setPaymentBusy(false);
+          }
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.on('payment.failed', (response) => {
+        const message = response?.error?.description || response?.error?.reason || 'Payment failed. Please try again.';
+        setPaymentError(message);
+        setPaymentBusy(false);
+        toast.error(message);
+      });
+      razorpay.open();
     } catch (e) {
-      toast.success(`${planName} selected for this ${isEmployer ? 'employer' : 'employee'} account`);
+      setPaymentError(e.message || 'Unable to open Razorpay payment');
+      toast.error(e.message || 'Unable to open Razorpay payment');
+    } finally {
+      // Keep busy true while Razorpay checkout is open. It is cleared by handler, failure, or dismiss.
     }
   };
 
+  const choosePlan = (plan) => {
+    if (!plan) return;
+    if (currentPlan === plan.name) return;
+    setPaymentPlan(plan);
+    setPaymentError('');
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
         <DialogHeader>
@@ -8473,7 +8689,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
             {planTitle}
           </DialogTitle>
           <DialogDescription className="text-slate-700">
-            {planDescription} Payment integration will be added later.
+            {planDescription} Select a plan to continue with Razorpay payment.
           </DialogDescription>
         </DialogHeader>
 
@@ -8504,6 +8720,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
                   <div>
                     <h3 className="text-lg font-extrabold text-slate-950">{plan.name}</h3>
                     <p className="mt-1 text-2xl font-black text-sky-800">{plan.price}</p>
+                    <p className="mt-1 text-xs font-bold text-emerald-700">Validity: {getPlanValidityLabel(plan, isEmployer ? 'employer' : 'worker')}</p>
                   </div>
                   <Badge className={isCurrent ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}>{isCurrent ? 'Current Plan' : 'Available'}</Badge>
                 </div>
@@ -8521,7 +8738,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
                   type="button"
                   disabled={isCurrent}
                   className={`mt-5 w-full rounded-xl ${isCurrent ? 'bg-emerald-600 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
-                  onClick={() => choosePlan(plan.name)}
+                  onClick={() => choosePlan(plan)}
                 >
                   {isCurrent ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
                   {isCurrent ? 'Current Plan' : isPlanIncluded(plan.name) ? 'Included' : 'Select Plan'}
@@ -8532,6 +8749,76 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
         </div>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={!!paymentPlan} onOpenChange={(next) => { if (!paymentBusy && !next) setPaymentPlan(null); }}>
+      <DialogContent className="max-w-lg rounded-3xl border-emerald-100 bg-white p-5 sm:p-6 shadow-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-xl text-slate-950">
+            <IndianRupee className="h-5 w-5 text-emerald-700" />
+            Confirm Subscription Payment
+          </DialogTitle>
+          <DialogDescription className="text-slate-600">
+            Review your plan and continue to Razorpay checkout.
+          </DialogDescription>
+        </DialogHeader>
+
+        {paymentPlan && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-700">Selected plan</p>
+                  <h3 className="text-2xl font-black text-slate-950">{paymentPlan.name}</h3>
+                  <p className="mt-1 text-sm text-slate-600">{isEmployer ? 'Employer subscription' : 'Worker subscription'}</p>
+                  <p className="mt-1 text-xs font-bold text-emerald-700">Validity: {getPlanValidityLabel(paymentPlan, isEmployer ? 'employer' : 'worker')}</p>
+                </div>
+                <Badge className="bg-emerald-600 text-white">{getPlanDisplayPrice(paymentPlan, isEmployer ? 'employer' : 'worker')}</Badge>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-sm font-bold text-slate-900">Features included</p>
+              <div className="mt-3 space-y-2">
+                {paymentPlan.features.slice(0, 5).map((feature) => (
+                  <div key={feature} className="flex items-start gap-2 text-sm text-slate-700">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {paymentError && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+                {paymentError}
+              </div>
+            )}
+
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={paymentBusy}
+                onClick={() => setPaymentPlan(null)}
+                className="rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={paymentBusy}
+                onClick={() => startRazorpayPayment(paymentPlan)}
+                className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {paymentBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <IndianRupee className="mr-2 h-4 w-4" />}
+                {paymentBusy ? 'Opening Razorpay...' : 'Proceed to Pay'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

@@ -47,6 +47,23 @@ async function getActiveSubscription(admin, userId, role) {
   }
 }
 
+function planValidityMonths(role, planName) {
+  const workerValidity = { Basic: 1, Growth: 6, Premium: 12 };
+  const employerValidity = { Starter: 1, Business: 6, Enterprise: 12 };
+  const map = role === 'employer' ? employerValidity : workerValidity;
+  return map[planName] || 1;
+}
+
+function planExpiryDate(role, planName, start = new Date()) {
+  const d = new Date(start);
+  d.setMonth(d.getMonth() + planValidityMonths(role, planName));
+  return d;
+}
+
+function subscriptionExpired(sub) {
+  return !!sub?.expires_at && new Date(sub.expires_at).getTime() <= Date.now();
+}
+
 function planFeatures(role, planName) {
   const roleKey = role === 'employer' ? 'employer' : 'worker';
   const plans = {
@@ -692,9 +709,20 @@ async function route(request, { params }) {
     // ---------- Subscription current/select (UI + feature gating ready) ----------
     if (path === 'subscription/current' && method === 'GET') {
       const role = me.role === 'employer' ? 'employer' : 'worker';
-      const sub = await getActiveSubscription(admin, me.id, role);
-      const features = planFeatures(role, sub?.plan_name || (role === 'employer' ? 'Starter' : 'Basic'));
-      return json({ subscription: { ...(sub || { user_id: me.id, role, status: 'active' }), plan_name: features.plan_name }, features });
+      let sub = await getActiveSubscription(admin, me.id, role);
+      if (sub && subscriptionExpired(sub)) {
+        const expiredAt = new Date(sub.expires_at).toISOString();
+        try {
+          await admin.from('user_subscriptions').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('id', sub.id);
+          await admin.from('user_profiles').update({ subscription_status: 'expired', subscription_expiry: expiredAt }).eq('id', me.id);
+          await notify(admin, me.id, 'Subscription expired', 'Your subscription validity is over. Please subscribe again to continue premium features.', 'subscription_expired', sub.id);
+        } catch (e) { console.warn('subscription expiry update skipped:', e?.message); }
+        sub = { ...sub, status: 'expired' };
+      }
+      const activePlan = sub?.status === 'active' ? sub.plan_name : (role === 'employer' ? 'Starter' : 'Basic');
+      const features = planFeatures(role, activePlan);
+      const subscription = sub || { user_id: me.id, role, status: 'active' };
+      return json({ subscription: { ...subscription, plan_name: features.plan_name, validity_months: planValidityMonths(role, features.plan_name) }, features });
     }
 
     if (path === 'subscription/select' && method === 'POST') {
@@ -703,20 +731,24 @@ async function route(request, { params }) {
       if ((me.role === 'employer' ? 'employer' : 'worker') !== role && me.role !== 'admin') return err('Subscription role mismatch', 403);
       const allowed = role === 'employer' ? ['Starter','Business','Enterprise'] : ['Basic','Growth','Premium'];
       const planName = allowed.includes(body.plan_name) ? body.plan_name : (role === 'employer' ? 'Starter' : 'Basic');
+      const startedAt = new Date();
+      const expiresAt = body.expires_at ? new Date(body.expires_at) : planExpiryDate(role, planName, startedAt);
       const payload = {
         user_id: me.id,
         role,
         plan_name: planName,
         status: 'active',
         source: 'ui_manual',
-        started_at: new Date().toISOString(),
+        validity_months: planValidityMonths(role, planName),
+        started_at: startedAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
         updated_at: new Date().toISOString(),
       };
       try {
         await admin.from('user_subscriptions').update({ status: 'inactive', updated_at: new Date().toISOString() }).eq('user_id', me.id).eq('role', role).eq('status', 'active');
         const { data, error } = await admin.from('user_subscriptions').insert(payload).select().single();
         if (error) return err(error.message, 400);
-        await admin.from('user_profiles').update({ subscription_plan: planName, subscription_status: 'active', subscription_expiry: null }).eq('id', me.id);
+        await admin.from('user_profiles').update({ subscription_plan: planName, subscription_status: 'active', subscription_expiry: payload.expires_at }).eq('id', me.id);
         return json({ subscription: data, features: planFeatures(role, planName) });
       } catch (e) {
         return json({ subscription: payload, features: planFeatures(role, planName), saved: false });
@@ -1135,14 +1167,21 @@ async function route(request, { params }) {
       const { data: user, error: userError } = await admin.from('user_profiles').select('*').eq('id', profileId).maybeSingle();
       if (userError) return err(userError.message, 400);
       if (!user) return err('Profile not found', 404);
-      let extra = null, completedWorks = 0, feedbacks = [], postedJobs = [], activeHires = [];
+      let extra = null, completedWorks = 0, feedbacks = [], postedJobs = [], activeHires = [], ratingAverage = 0, ratingCount = 0, ratingEligibleCount = 0;
       if (user.role === 'worker') {
         const { data: worker } = await admin.from('workers').select('*').eq('user_id', profileId).maybeSingle();
         extra = worker || {};
         const { count } = await admin.from('applications').select('id', { count: 'exact', head: true }).eq('worker_id', profileId).eq('status', 'completed');
         completedWorks = count || 0;
-        const { data: wf } = await admin.from('worker_feedbacks').select('rating,feedback_text,created_at,company_id').eq('worker_id', profileId).order('created_at', { ascending: false }).limit(10);
+        const { data: wf } = await admin.from('worker_feedbacks').select('rating,feedback_text,created_at,employer_id,application_id').eq('worker_id', profileId).order('created_at', { ascending: false }).limit(10);
         feedbacks = wf || [];
+        const { data: allWf } = await admin.from('worker_feedbacks').select('rating,employer_id').eq('worker_id', profileId);
+        const workerRatings = allWf || [];
+        ratingCount = workerRatings.length;
+        ratingEligibleCount = new Set(workerRatings.map(r => r.employer_id).filter(Boolean)).size;
+        ratingAverage = ratingEligibleCount >= 5 && ratingCount
+          ? Number((workerRatings.reduce((sum, r) => sum + Number(r.rating || 0), 0) / ratingCount).toFixed(1))
+          : 0;
         const { data: ah } = await admin.from('applications').select('id,status,applied_at,started_at,completed_at,jobs(title,location_text,daily_pay,start_date,duration_days,employer_id,employers(company_name,company_logo))').eq('worker_id', profileId).in('status', ['accepted','ongoing','completed']).order('applied_at', { ascending: false }).limit(8);
         activeHires = ah || [];
       } else if (user.role === 'employer') {
@@ -1150,12 +1189,33 @@ async function route(request, { params }) {
         extra = employer || {};
         const { data: jobs } = await admin.from('jobs').select('id,title,category,location_text,daily_pay,status,created_at,duration_days,workers_needed').eq('employer_id', profileId).order('created_at', { ascending: false }).limit(10);
         postedJobs = jobs || [];
-        const { data: cf } = await admin.from('company_feedbacks').select('rating,feedback_text,created_at,worker_id').eq('company_id', profileId).order('created_at', { ascending: false }).limit(10);
+        const { data: cf } = await admin.from('company_feedbacks').select('rating,feedback_text,created_at,worker_id,application_id').eq('company_id', profileId).order('created_at', { ascending: false }).limit(10);
         feedbacks = cf || [];
+        const { data: allCf } = await admin.from('company_feedbacks').select('rating,worker_id').eq('company_id', profileId);
+        const companyRatings = allCf || [];
+        ratingCount = companyRatings.length;
+        ratingEligibleCount = new Set(companyRatings.map(r => r.worker_id).filter(Boolean)).size;
+        ratingAverage = ratingEligibleCount >= 5 && ratingCount
+          ? Number((companyRatings.reduce((sum, r) => sum + Number(r.rating || 0), 0) / ratingCount).toFixed(1))
+          : 0;
         const { count } = await admin.from('applications').select('id,jobs!inner(employer_id)', { count: 'exact', head: true }).eq('jobs.employer_id', profileId).eq('status', 'completed');
         completedWorks = count || 0;
       }
-      return json({ profile: { ...user, ...extra, role: user.role, id: user.id }, stats: { completedWorks, feedbackCount: feedbacks.length, postedJobs: postedJobs.length }, feedbacks, postedJobs, activeHires });
+      return json({
+        profile: { ...user, ...extra, role: user.role, id: user.id },
+        stats: {
+          completedWorks,
+          feedbackCount: ratingCount || feedbacks.length,
+          postedJobs: postedJobs.length,
+          ratingAverage,
+          ratingCount,
+          ratingEligibleCount,
+          ratingReady: ratingEligibleCount >= 5,
+        },
+        feedbacks,
+        postedJobs,
+        activeHires,
+      });
     }
 
     // Worker confirms an employer-selected application before job moves forward.
@@ -1560,6 +1620,20 @@ async function route(request, { params }) {
       // After the employee accepts the invitation, the application must stay in `ongoing`
       // until the employer manually clicks Complete & Pay.
 
+      try {
+        const ids = (data || []).map(a => a.id);
+        if (ids.length) {
+          const { data: employerGivenFeedbacks } = await admin.from('worker_feedbacks')
+            .select('application_id')
+            .eq('employer_id', me.id)
+            .in('application_id', ids);
+          const employerGivenSet = new Set((employerGivenFeedbacks || []).map(r => r.application_id));
+          for (const app of data || []) app.feedback_given = employerGivenSet.has(app.id);
+        }
+      } catch (e) {
+        for (const app of data || []) app.feedback_given = false;
+      }
+
       return json({ applicants: data });
     }
 
@@ -1762,74 +1836,101 @@ async function route(request, { params }) {
     if (path === 'feedback/company' && method === 'POST') {
       const body = await request.json();
       const { application_id, rating, feedback_text } = body;
-      if (!application_id || !rating || rating < 1 || rating > 5) return err('Invalid data', 400);
+      const cleanRating = Number(rating);
+      const cleanFeedback = String(feedback_text || '').trim();
+      if (!application_id || !Number.isFinite(cleanRating) || cleanRating < 1 || cleanRating > 5) return err('Please select a rating from 1 to 5 stars.', 400);
+      if (!cleanFeedback) return err('Please add feedback before submitting.', 400);
 
       const { data: app } = await admin.from('applications')
         .select('*, jobs!inner(employer_id)')
         .eq('id', application_id).eq('worker_id', me.id).maybeSingle();
       if (!app) return err('Application not found or not yours', 404);
-      if (app.status !== 'completed') return err('Can only feedback completed jobs', 400);
+      if (app.status !== 'completed') return err('Feedback can be given only after the work is completed.', 400);
+
+      const { data: existing } = await admin.from('company_feedbacks')
+        .select('id')
+        .eq('application_id', application_id)
+        .eq('worker_id', me.id)
+        .maybeSingle();
+      if (existing) return err('You already gave feedback for this completed work.', 409);
 
       const { data, error } = await admin.from('company_feedbacks').insert({
         worker_id: me.id,
         company_id: app.jobs.employer_id,
         application_id,
-        rating,
-        feedback_text,
+        rating: cleanRating,
+        feedback_text: cleanFeedback,
       }).select().single();
       if (error) return err(error.message, 400);
+
+      // Update employer/company average rating only after 5 different workers have rated.
+      try {
+        const { data: ratings } = await admin.from('company_feedbacks')
+          .select('rating,worker_id')
+          .eq('company_id', app.jobs.employer_id);
+        const rows = ratings || [];
+        const uniqueWorkers = new Set(rows.map(r => r.worker_id).filter(Boolean)).size;
+        const avg = uniqueWorkers >= 5 && rows.length
+          ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / rows.length).toFixed(2))
+          : 0;
+        await admin.from('employers').update({ average_rating: avg }).eq('user_id', app.jobs.employer_id);
+      } catch {}
+
+      await notify(admin, app.jobs.employer_id, 'New company feedback', 'A completed worker rated your company profile.', 'feedback', application_id);
       return json({ feedback: data });
     }
 
     if (path === 'feedback/worker' && method === 'POST') {
       const body = await request.json();
       const { application_id, rating, feedback_text } = body;
-      if (!application_id || !rating || rating < 1 || rating > 5) return err('Invalid data', 400);
+      const cleanRating = Number(rating);
+      const cleanFeedback = String(feedback_text || '').trim();
+      if (!application_id || !Number.isFinite(cleanRating) || cleanRating < 1 || cleanRating > 5) return err('Please select a rating from 1 to 5 stars.', 400);
+      if (!cleanFeedback) return err('Please add feedback before submitting.', 400);
 
       const { data: app } = await admin.from('applications')
         .select('*, jobs!inner(employer_id)')
         .eq('id', application_id).eq('jobs.employer_id', me.id).maybeSingle();
       if (!app) return err('Application not found or not yours', 404);
-      if (app.status !== 'completed') return err('Can only feedback completed jobs', 400);
+      if (app.status !== 'completed') return err('Feedback can be given only after the work is completed.', 400);
+
+      const { data: existing } = await admin.from('worker_feedbacks')
+        .select('id')
+        .eq('application_id', application_id)
+        .eq('employer_id', me.id)
+        .maybeSingle();
+      if (existing) return err('You already rated this worker for this completed work.', 409);
 
       const { data, error } = await admin.from('worker_feedbacks').insert({
         employer_id: me.id,
         worker_id: app.worker_id,
         application_id,
-        rating,
-        feedback_text,
+        rating: cleanRating,
+        feedback_text: cleanFeedback,
       }).select().single();
       if (error) return err(error.message, 400);
 
-      // Update worker average rating
-      const { data: ratings } = await admin.from('worker_feedbacks')
-        .select('rating').eq('worker_id', app.worker_id);
-      const avg = ratings.length > 0 ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length : 0;
-      await admin.from('workers').update({ average_rating: avg }).eq('user_id', app.worker_id);
+      // Update worker average rating only after 5 different employers have rated.
+      try {
+        const { data: ratings } = await admin.from('worker_feedbacks')
+          .select('rating,employer_id')
+          .eq('worker_id', app.worker_id);
+        const rows = ratings || [];
+        const uniqueEmployers = new Set(rows.map(r => r.employer_id).filter(Boolean)).size;
+        const avg = uniqueEmployers >= 5 && rows.length
+          ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / rows.length).toFixed(2))
+          : 0;
+        await admin.from('workers').update({ average_rating: avg }).eq('user_id', app.worker_id);
+      } catch {}
 
+      await notify(admin, app.worker_id, 'New work feedback', 'An employer rated your completed work.', 'feedback', application_id);
       return json({ feedback: data });
     }
 
+    // Backward-compatible alias: employer-to-worker feedback uses the worker feedback table.
     if (path === 'feedback/employer' && method === 'POST') {
       const body = await request.json();
-      const { application_id, rating, feedback_text } = body;
-      if (!application_id || !rating || rating < 1 || rating > 5) return err('Invalid data', 400);
-
-      const { data: app } = await admin.from('applications')
-        .select('*, jobs!inner(employer_id)')
-        .eq('id', application_id).eq('jobs.employer_id', me.id).maybeSingle();
-      if (!app) return err('Application not found or not yours', 404);
-      if (app.status !== 'completed') return err('Can only feedback completed jobs', 400);
-
-      const { data, error } = await admin.from('employer_feedbacks').insert({
-        employer_id: me.id,
-        worker_id: app.worker_id,
-        application_id,
-        rating,
-        feedback_text,
-      }).select().single();
-      if (error) return err(error.message, 400);
-      return json({ feedback: data });
+      return err('Use feedback/worker for employer-to-worker feedback.', 410);
     }
 
     // ---------- Worker routes ----------
@@ -1858,10 +1959,22 @@ async function route(request, { params }) {
           for (const app of data || []) {
             app.attendance_records = byApp[app.id] || [];
           }
+
+          const { data: workerGivenFeedbacks } = await admin.from('company_feedbacks')
+            .select('application_id')
+            .eq('worker_id', me.id)
+            .in('application_id', ids);
+          const workerGivenSet = new Set((workerGivenFeedbacks || []).map(r => r.application_id));
+          for (const app of data || []) {
+            app.feedback_given = workerGivenSet.has(app.id);
+          }
         }
       } catch (e) {
-        // Attendance table may not exist until the SQL below is run. Never block jobs loading.
-        for (const app of data || []) app.attendance_records = [];
+        // Attendance/feedback tables may not exist until SQL is run. Never block jobs loading.
+        for (const app of data || []) {
+          app.attendance_records = app.attendance_records || [];
+          app.feedback_given = false;
+        }
       }
 
       return json({ applications: data });
