@@ -62,3 +62,9 @@ drop policy if exists "company_feedbacks_insert_workers" on public.company_feedb
 create policy "company_feedbacks_insert_workers"
   on public.company_feedbacks for insert
   with check (worker_id = auth.uid());
+
+
+-- Ensure existing databases also get employer_id when worker_feedbacks already exists.
+alter table public.worker_feedbacks
+  add column if not exists employer_id uuid references public.employers(user_id) on delete cascade;
+

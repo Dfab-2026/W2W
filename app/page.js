@@ -48,20 +48,20 @@ function Work2WishLogo({ className = 'w-10 h-10', imgClassName = 'w-full h-full 
 // ----------------------------- subscription feature gates -----------------------------
 const SUBSCRIPTION_FEATURES = {
   worker: {
-    Basic: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 5, nearbySearch: true, mailAlerts: true, profileVisibility: 'medium', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
-    Growth: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'high', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: true, analytics: true },
-    Premium: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
+    Basic: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: 5, nearbySearch: true, mailAlerts: true, profileVisibility: 'medium', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
+    Growth: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'high', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: true, analytics: true },
+    Premium: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
   },
   employer: {
     Starter: {
-      manualAttendance: true, gpsAttendance: false, maxActiveJobs: 5, maxWorkersPerJob: 5,
+      manualAttendance: true, gpsAttendance: true, maxActiveJobs: 5, maxWorkersPerJob: 5,
       limitedWorkerDatabase: true, fullWorkerDatabase: false, mailAlerts: true, basicSupport: true,
       prioritySupport: false, directEmployeeChat: false, companyBranding: false,
       featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false,
       radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false,
     },
     Business: {
-      manualAttendance: false, gpsAttendance: true, maxActiveJobs: Infinity, maxWorkersPerJob: 10,
+      manualAttendance: true, gpsAttendance: true, maxActiveJobs: Infinity, maxWorkersPerJob: 10,
       limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true,
       prioritySupport: true, directEmployeeChat: true, companyBranding: true,
       featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false,
@@ -3485,7 +3485,7 @@ function LocationSearchBox({
             className="pl-9 pr-24 sm:pr-32 border-0 shadow-none focus-visible:ring-0 h-11 rounded-xl bg-transparent"
           />
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
-            <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={openGoogleMapsSearch} disabled={loading} className="h-7 px-2" title="Open this location in Google Maps">
+            <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-7 px-2" title="Search and select typed location">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">Search</span>
             </Button>
@@ -3498,8 +3498,7 @@ function LocationSearchBox({
 
         {showPredictions && (predictions.length > 0 || loading || locationError) && (
           <div
-            className="fixed z-[999999] max-h-80 overflow-y-auto rounded-2xl border bg-white shadow-2xl ring-1 ring-slate-200"
-            style={{ top: dropdownPos.top || undefined, left: dropdownPos.left || undefined, width: dropdownPos.width || undefined }}
+            className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border bg-white shadow-xl ring-1 ring-slate-200"
           >
             {loading && predictions.length === 0 && (
               <div className="px-4 py-3 text-sm text-slate-600 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
@@ -3551,6 +3550,7 @@ function WorkerHome({ token, me, onChat }) {
   const [benefitFilter, setBenefitFilter] = useState('all');
   const [radiusKm, setRadiusKm] = useState('10');
   const [customRadius, setCustomRadius] = useState('');
+  const [nearbyLocation, setNearbyLocation] = useState({ location_text: '', latitude: null, longitude: null });
   const [selected, setSelected] = useState(null);
   const [profileView, setProfileView] = useState(null);
   const workerSubscription = getSubscriptionFeatures('worker', me?.profile || me);
@@ -3648,6 +3648,17 @@ function WorkerHome({ token, me, onChat }) {
       return;
     }
     await findNearbyFromCoords(lat, lng, 'saved location');
+  };
+
+  const loadNearbyFromSelectedLocation = async () => {
+    const lat = Number(nearbyLocation.latitude);
+    const lng = Number(nearbyLocation.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setLocationError('Search and select one exact location first, or use current/saved location.');
+      setHasCheckedNearby(true);
+      return;
+    }
+    await findNearbyFromCoords(lat, lng, 'selected search location');
   };
 
   const openProfileDetails = async (profileId) => {
@@ -3751,77 +3762,6 @@ function WorkerHome({ token, me, onChat }) {
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card className="hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white grid place-items-center">
-              <MapPin className="w-5 h-5" />
-            </span>
-            Nearby jobs · {activeRadius} km
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Button
-              onClick={loadNearbyJobs}
-              disabled={locationLoading}
-              className="bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20"
-            >
-              {locationLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <MapPin className="w-4 h-4 mr-2" />
-              )}
-              Current location
-            </Button>
-            <Button
-              type="button"
-              onClick={loadNearbyFromSavedLocation}
-              disabled={locationLoading}
-              variant="outline"
-              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-            >
-              <MapPin className="w-4 h-4 mr-2" />
-              Saved location
-            </Button>
-          </div>
-
-          {locationError && <p className="text-sm text-red-500 mt-3">{locationError}</p>}
-
-          <div className="grid sm:grid-cols-2 gap-3 mt-4">
-            {nearbyJobs.map((job) => (
-              <button
-                key={job.id}
-                onClick={() => setSelected(job)}
-                className="text-left bg-white rounded-2xl border border-slate-200 p-4 hover:shadow-lg hover:border-indigo-200 transition group premium-job-mini"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold truncate group-hover:text-indigo-700">{job.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">{job.employers?.company_name} · {job.location_text || 'Location not added'}</p>
-                  </div>
-                  <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 shrink-0">
-                    {job.distance_km < 1 ? job.distance_km.toFixed(2) : job.distance_km.toFixed(1)} km
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between mt-3 text-sm">
-                  <span className="font-bold text-emerald-700">{jobPayLabel(job)}</span>
-                  <span className="text-muted-foreground">{jobDurationLabel(job)}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {hasCheckedNearby && !locationLoading && nearbyJobs.length === 0 && !locationError && (
-            <p className="text-sm text-muted-foreground mt-3">No jobs within {activeRadius} km.</p>
-          )}
-
-          {!hasCheckedNearby && (
-            <p className="text-sm text-muted-foreground mt-3">Select distance and search nearby.</p>
-          )}
         </CardContent>
       </Card>
 
@@ -4194,26 +4134,19 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                         );
                       })}
                     </div>
-                    {workerSubscription.gpsAttendance ? (
-                      <>
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={gpsAttendanceId === a.id}
-                          className="mt-3 w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold"
-                          onClick={() => markGpsAttendance(a)}
-                        >
-                          {gpsAttendanceId === a.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MapPin className="w-4 h-4 mr-2" />}
-                          Mark Today Attendance with GPS
-                        </Button>
-                        <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 text-center">{workerPlan} plan: GPS attendance works when your current GPS is inside the employer selected radius.</p>
-                      </>
-                    ) : (
-                      <SubscriptionLock
-                        title="Manual attendance on Basic plan"
-                        description="GPS auto attendance unlocks from Growth plan. Ask the employer to mark manual attendance for Basic plan workers."
-                      />
-                    )}
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={gpsAttendanceId === a.id}
+                        className="mt-3 w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold"
+                        onClick={() => markGpsAttendance(a)}
+                      >
+                        {gpsAttendanceId === a.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MapPin className="w-4 h-4 mr-2" />}
+                        Mark Today Attendance with GPS
+                      </Button>
+                      <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 text-center">GPS attendance is enabled. Employer can also mark manual attendance if needed.</p>
+                    </>
                   </div>
                   
                   {/* Job Details */}
@@ -4277,6 +4210,10 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
   const title = isWorker ? (p.full_name || 'Worker profile') : (p.company_name || p.full_name || 'Company profile');
   const photo = isWorker ? p.photo_url : (p.company_logo || p.photo_url);
   const feedbacks = data?.feedbacks || [];
+  const calculatedRatingCount = feedbacks.filter((f) => Number(f.rating) > 0).length;
+  const calculatedRatingAverage = calculatedRatingCount ? feedbacks.reduce((sum, f) => sum + Number(f.rating || 0), 0) / calculatedRatingCount : 0;
+  const publicRatingAverage = Number(stats.ratingAverage || 0) || calculatedRatingAverage;
+  const publicRatingCount = Number(stats.ratingCount || stats.feedbackCount || 0) || calculatedRatingCount;
   const activeHires = data?.activeHires || [];
   const postedJobs = data?.postedJobs || [];
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -4306,7 +4243,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
               <InfoTile label="Feedbacks" value={stats.feedbackCount || 0} />
               <InfoTile
                 label="Public rating"
-                value={stats.ratingReady ? `★ ${Number(stats.ratingAverage || 0).toFixed(1)}/5` : `${stats.ratingEligibleCount || 0}/5 ratings`}
+                value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'}
               />
               <InfoTile label={isWorker ? 'Expected wage' : 'Posted jobs'} value={isWorker ? fmtMoney(p.expected_daily_wage || 0) : (stats.postedJobs || 0)} />
               <InfoTile label="Location" value={p.location_text || p.company_address || p.address || '—'} />
@@ -4350,12 +4287,12 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
             <div className="rounded-3xl border border-amber-100 bg-amber-50/70 p-4">
               <h3 className="font-bold mb-1 flex items-center gap-2 text-amber-900"><Star className="w-4 h-4" /> Public feedback</h3>
               <p className="text-xs text-amber-800/80 mb-3">
-                {stats.ratingReady
-                  ? `Average rating: ${Number(stats.ratingAverage || 0).toFixed(1)}/5 from ${stats.ratingCount || 0} feedbacks.`
-                  : `Average rating appears after 5 ratings from different ${isWorker ? 'companies' : 'workers'}.`}
+                {publicRatingCount
+                  ? `Average rating: ${publicRatingAverage.toFixed(1)}/5 from ${publicRatingCount} feedbacks.`
+                  : `No public rating yet. Ratings update after each feedback.`}
               </p>
               {feedbacks.length === 0 ? <p className="text-sm text-muted-foreground">No feedback added yet.</p> : (
-                <div className="space-y-2">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border p-3"><p className="text-sm font-semibold">{'★'.repeat(Number(f.rating || 0))}{'☆'.repeat(Math.max(0, 5-Number(f.rating || 0)))}</p><p className="text-sm text-slate-700 mt-1">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>
+                <div className="space-y-2">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border p-3"><p className="text-sm font-semibold text-amber-500">{'★'.repeat(Math.floor(Number(f.rating || 0)))}<span className="text-amber-200">{'★'.repeat(Math.max(0, 5-Math.floor(Number(f.rating || 0))))}</span></p><p className="text-sm text-slate-700 mt-1">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>
               )}
             </div>
 
@@ -4454,7 +4391,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
   };
 
   return (
-    <div className={`rounded-2xl border p-4 space-y-3 shadow-sm ${wrapClass}`}>
+    <div className={`rounded-2xl border p-4 space-y-3 shadow-sm overflow-visible ${wrapClass}`}>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0 flex gap-3">
           <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${iconBox}`}><MapPin className="w-5 h-5" /></div>
@@ -4512,6 +4449,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
 
 function VerificationDocumentsCard({ token, me, role, verified, form, setForm, onSaved, color = 'indigo' }) {
   const [busy, setBusy] = useState(false);
+  const [localDocumentEdited, setLocalDocumentEdited] = useState(false);
   const accent = color === 'emerald' ? 'emerald' : 'indigo';
   const isEmployer = role === 'employer';
   const documentReviewStatus = sectionReviewState(me, 'documents', form.verification_status, verified);
@@ -4521,8 +4459,8 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
     me?.profile || {},
     me?.extra || {}
   );
-  const status = documentChangedAfterReview ? 'modified' : documentReviewStatus;
-  const lockedVerified = status === 'verified' && !documentChangedAfterReview;
+  const status = (localDocumentEdited || documentChangedAfterReview) ? 'modified' : documentReviewStatus;
+  const lockedVerified = status === 'verified' && !localDocumentEdited && !documentChangedAfterReview;
 
   const cleanAadhaar = (value) => String(value || '').replace(/\D/g, '').slice(0, 20);
   const cleanPan = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
@@ -4531,12 +4469,22 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
   const isValidPan = (value) => /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(value || ''));
   const isValidGst = (value) => /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(String(value || ''));
 
+  const markDocumentSectionEdited = (patch) => {
+    setForm((s) => ({
+      ...s,
+      ...patch,
+      verification_status: 'not_submitted',
+      verification_section: 'documents',
+    }));
+    setLocalDocumentEdited(true);
+  };
+
   const uploadDoc = async (file, field, kind) => {
     if (!file) return;
     setBusy(true);
     try {
       const { url } = await uploadFile(file, kind, token);
-      setForm((s) => ({ ...s, [field]: url }));
+      markDocumentSectionEdited({ [field]: url });
       toast.success(field === 'certificate_url' ? 'Skill certificate selected. Click Send for Verification to send it for admin review.' : 'Document selected. Click Send for Verification to send it for admin review.');
     } catch (e) {
       toast.error(e.message || 'Upload failed');
@@ -4549,7 +4497,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
     const pan = cleanPan(form.pan_number);
 
     if (isEmployer) {
-      if (!form.company_address?.trim()) return toast.error('Enter company address');
       if (!form.pan_image_url || !form.pan_back_url || !form.gst_certificate_url) {
         return toast.error('Upload PAN front, PAN back and GST certificate');
       }
@@ -4567,7 +4514,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
     try {
       const body = isEmployer
         ? {
-            company_address: form.company_address,
             pan_image_url: form.pan_image_url,
             pan_back_url: form.pan_back_url,
             gst_certificate_url: form.gst_certificate_url,
@@ -4589,6 +4535,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
 
       await api('me/profile', { method: 'PATCH', token, body });
       setForm((s) => ({ ...s, ...body }));
+      setLocalDocumentEdited(false);
       toast.success('Verification submitted for admin review');
       onSaved?.();
     } catch (e) {
@@ -4644,17 +4591,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
       <CardContent className="p-4 sm:p-5 space-y-5 bg-slate-50/40" onKeyDown={(e) => { if (e.key === 'Enter' && e.target?.tagName !== 'TEXTAREA') { e.preventDefault(); if (!busy && !lockedVerified) submitVerification(); } }}>
         {isEmployer ? (
           <>
-            <div>
-              <Label>Company address</Label>
-              <Textarea
-                rows={3}
-                value={form.company_address || ''}
-                onChange={(e) => setForm((s) => ({ ...s, company_address: e.target.value }))}
-                placeholder="Door no, street, area, city, state, pincode"
-                className="rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0 resize-none"
-              />
-            </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
               <DocumentUploadBox color="emerald" label="Company PAN front" url={form.pan_image_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_image_url', 'company-pan-front')} />
               <DocumentUploadBox color="emerald" label="Company PAN back" url={form.pan_back_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_back_url', 'company-pan-back')} />
@@ -4670,7 +4606,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
                   value={form.aadhaar_number || ''}
                   maxLength={12}
                   inputMode="numeric"
-                  onChange={(e) => setForm((s) => ({ ...s, aadhaar_number: cleanAadhaar(e.target.value) }))}
+                  onChange={(e) => markDocumentSectionEdited({ aadhaar_number: cleanAadhaar(e.target.value) })}
                   placeholder="123412341234"
                   className={inputClass}
                 />
@@ -4683,7 +4619,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
                 <Input
                   value={form.pan_number || ''}
                   maxLength={10}
-                  onChange={(e) => setForm((s) => ({ ...s, pan_number: cleanPan(e.target.value).slice(0, 10) }))}
+                  onChange={(e) => markDocumentSectionEdited({ pan_number: cleanPan(e.target.value).slice(0, 10) })}
                   maxLength={10}
                   placeholder="ABCDE1234F"
                   className={inputClass}
@@ -4699,7 +4635,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
               <Textarea
                 rows={3}
                 value={form.address || ''}
-                onChange={(e) => setForm((s) => ({ ...s, address: e.target.value }))}
+                onChange={(e) => markDocumentSectionEdited({ address: e.target.value })}
                 placeholder="Manual typing only: door no, street, area, city, state, pincode"
                 className="rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0 resize-none"
               />
@@ -4880,8 +4816,8 @@ Send for Verification
 
 function DocumentUploadBox({ label, url, onFile, disabled, verified = false, color = 'indigo', optional = false, allowLater = false }) {
   const hasFile = !!url;
-  const canUpload = !disabled && (!hasFile || (allowLater && !verified));
-  const fileLabel = verified && hasFile ? 'Verified' : hasFile ? 'Uploaded' : 'Upload';
+  const canUpload = !disabled;
+  const fileLabel = hasFile ? 'Change' : 'Upload';
   const theme = color === 'emerald'
     ? { card: 'border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/60 to-white shadow-emerald-100/70', icon: 'border-emerald-100 bg-emerald-50 text-emerald-500', btn: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50', link: 'text-emerald-700' }
     : { card: 'border-indigo-200/80 bg-gradient-to-br from-white via-indigo-50/60 to-white shadow-indigo-100/70', icon: 'border-indigo-100 bg-indigo-50 text-indigo-500', btn: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50', link: 'text-indigo-700' };
@@ -4901,20 +4837,21 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
           <div className={`w-16 h-16 rounded-2xl border grid place-items-center overflow-hidden shrink-0 ${theme.icon}`}>
             {hasFile ? <img src={url} alt={label} className="w-full h-full object-cover" /> : <ImgIcon className="w-6 h-6" />}
           </div>
-          {verified && hasFile ? (
-            <a className="h-10 min-w-[112px] inline-flex items-center justify-center px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm font-semibold text-emerald-700 hover:bg-emerald-50" href={url} target="_blank" rel="noreferrer">
-              View file
-            </a>
-          ) : (
+          <div className="flex flex-col gap-2 min-w-[112px]">
+            {hasFile && (
+              <a className={`h-10 min-w-[112px] inline-flex items-center justify-center px-3 py-2 rounded-xl border bg-white text-sm font-semibold ${verified ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : theme.btn}`} href={url} target="_blank" rel="noreferrer">
+                View file
+              </a>
+            )}
             <label className={`h-10 min-w-[112px] inline-flex items-center justify-center px-3 py-2 rounded-xl border text-sm bg-white/90 ${theme.btn} ${canUpload ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
               <Upload className="w-4 h-4 mr-2" /> {fileLabel}
               <input type="file" accept="image/*,.pdf" className="hidden" disabled={!canUpload} onChange={(e) => { const file = e.target.files?.[0]; if (file) onFile(file); e.target.value = ''; }} />
             </label>
-          )}
+          </div>
         </div>
       </div>
       <div className="mt-3 min-h-[18px]">
-        {!verified && hasFile && <a className={`text-xs hover:underline inline-block ${theme.link}`} href={url} target="_blank" rel="noreferrer">View uploaded file</a>}
+        {hasFile && <p className={`text-xs font-medium ${theme.link}`}>Uploaded document can be changed anytime.</p>}
         {verified && !hasFile && !optional && <p className="text-xs text-amber-700">Missing file</p>}
       </div>
     </div>
@@ -4996,7 +4933,7 @@ function hasBankDetailsChanged(current = {}, saved = {}) {
 const PROFILE_VERIFY_FIELDS = ['full_name', 'phone', 'age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known', 'available', 'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'previous_employer_reference', 'bio'];
 const EMPLOYER_PROFILE_VERIFY_FIELDS = ['full_name', 'phone', 'company_name', 'industry', 'company_size', 'hr_contact', 'official_email', 'company_address', 'gst_number', 'pan_number', 'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'description'];
 const WORKER_DOCUMENT_VERIFY_FIELDS = ['address', 'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'certificate_url', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url'];
-const EMPLOYER_DOCUMENT_VERIFY_FIELDS = ['company_address', 'gst_number', 'pan_number', 'pan_image_url', 'pan_back_url', 'gst_certificate_url'];
+const EMPLOYER_DOCUMENT_VERIFY_FIELDS = ['gst_number', 'pan_number', 'pan_image_url', 'pan_back_url', 'gst_certificate_url'];
 
 function normalizeVerifyValue(key, value) {
   if (Array.isArray(value)) return value.map(v => String(v || '').trim()).filter(Boolean).join(',');
@@ -5025,11 +4962,31 @@ function finalProfileSaveKey(me, role) {
   return `w2w-final-profile-save-${role || me?.profile?.role || 'user'}-${me?.profile?.id || me?.id || 'me'}`;
 }
 
+function employerProfileDraftKey(me) {
+  return `w2w-employer-profile-draft-${me?.profile?.id || me?.id || 'me'}`;
+}
+
+function pickEmployerDraftFields(data = {}) {
+  const keys = [
+    'full_name', 'phone', 'company_name', 'industry', 'company_size', 'hr_contact', 'official_email',
+    'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'description', 'company_address',
+    'gst_number', 'pan_number', 'account_holder_name', 'bank_name', 'bank_account', 'ifsc_code', 'branch_name',
+    'upi_id', 'bank_qr_url', 'pan_image_url', 'pan_back_url', 'gst_certificate_url',
+    'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url', 'selfie_verified', 'selfie_verified_at',
+    'mobile_verified', 'language'
+  ];
+  const out = {};
+  keys.forEach((key) => {
+    if (data[key] !== undefined && data[key] !== null) out[key] = data[key];
+  });
+  return out;
+}
+
 function SectionVerificationAction({ token, me, section, title, description, color = 'indigo', setForm, onSaved, disabled = false, payloadBuilder = null, validate = null, modified = false }) {
   const [busy, setBusy] = useState(false);
   const verified = !!me?.extra?.verified;
   const rawStatus = sectionReviewState(me, section, me?.extra?.verification_status, verified);
-  const status = modified && (rawStatus === 'pending' || rawStatus === 'verified') ? 'modified' : rawStatus;
+  const status = modified ? 'modified' : rawStatus;
   const label = status === 'verified' ? 'Done' : status === 'pending' ? 'Pending Approval' : 'Send for Verification';
   const Icon = status === 'verified' ? CheckCircle2 : status === 'pending' ? Clock : ShieldCheck;
   const blocked = !!disabled || status === 'pending' || status === 'verified';
@@ -5087,6 +5044,36 @@ function SectionVerificationAction({ token, me, section, title, description, col
   );
 }
 
+function pickProfileRating(extra = {}) {
+  const rating = Number(extra.rating_average ?? extra.average_rating ?? extra.ratingAverage ?? extra.rating ?? 0) || 0;
+  const count = Number(extra.rating_count ?? extra.ratingCount ?? extra.feedback_count ?? extra.feedbackCount ?? 0) || 0;
+  return { rating, count };
+}
+
+function TopProfileStarRating({ value = 0, count = 0, color = 'indigo' }) {
+  const rating = Math.max(0, Math.min(5, Number(value || 0)));
+  const filled = Math.floor(rating);
+  const labelClass = 'border-amber-300 bg-amber-50 text-amber-800 shadow-sm shadow-amber-100';
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 ${labelClass}`}>
+      <span className="flex items-center gap-0.5" aria-label={`Rating ${rating.toFixed(1)} out of 5`}>
+        {Array.from({ length: 5 }).map((_, i) => {
+          const active = i < filled;
+          return (
+            <Star
+              key={i}
+              className={`w-3.5 h-3.5 ${active ? 'text-amber-600' : 'text-amber-200'}`}
+              style={{ color: active ? '#d97706' : '#fde68a', fill: active ? '#d97706' : 'transparent', strokeWidth: active ? 2.8 : 2 }}
+            />
+          );
+        })}
+      </span>
+      <span className="text-xs font-bold">{rating.toFixed(1)}/5</span>
+      {Number(count || 0) > 0 && <span className="text-[10px] opacity-75">({count})</span>}
+    </div>
+  );
+}
+
 function WorkerProfile({ token, me, onSaved, onLogout }) {
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
@@ -5102,8 +5089,13 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     window.addEventListener('w2w-subscription-updated', refresh);
     return () => window.removeEventListener('w2w-subscription-updated', refresh);
   }, []);
+  const workerDraftKey = `w2w-worker-profile-draft-${me?.profile?.id || me?.id || 'me'}`;
+
   useEffect(() => {
-    if (me) setForm({
+    if (me) {
+      let draft = {};
+      try { draft = JSON.parse(localStorage.getItem(workerDraftKey) || '{}') || {}; } catch {}
+      setForm({
       full_name: me.profile?.full_name || '',
       phone: cleanIndianPhone10(me.profile?.phone) || '',
       age: me.extra?.age || '',
@@ -5149,8 +5141,15 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
       verification_notes: me.extra?.verification_notes || '',
       language: me.profile?.language || 'en',
+      ...draft,
     });
+    }
   }, [me]);
+
+  useEffect(() => {
+    if (!me || !Object.keys(form || {}).length) return;
+    try { localStorage.setItem(workerDraftKey, JSON.stringify(form)); } catch {}
+  }, [form, me]);
 
   useEffect(() => {
     if (!me) return;
@@ -5221,9 +5220,9 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   const workerDocumentChangedAfterReview = (workerDocumentReviewStatus === 'pending' || workerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(WORKER_DOCUMENT_VERIFY_FIELDS, buildWorkerDocumentPayload(), me?.profile || {}, me?.extra || {});
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
-  const workerProfileCardVerifiedForSave = workerProfileReviewStatus === 'verified' || verified;
-  const workerDocumentCardVerifiedForSave = workerDocumentReviewStatus === 'verified' || verified;
-  const workerBankCardVerifiedForSave = workerBankReviewStatus === 'verified' || verified;
+  const workerProfileCardVerifiedForSave = (workerProfileReviewStatus === 'verified' || verified) && !workerProfileChangedAfterReview;
+  const workerDocumentCardVerifiedForSave = (workerDocumentReviewStatus === 'verified' || verified) && !workerDocumentChangedAfterReview;
+  const workerBankCardVerifiedForSave = (workerBankReviewStatus === 'verified' || verified) && !workerBankChangedAfterReview;
   const workerAllProfileCardsVerified = workerProfileCardVerifiedForSave && workerDocumentCardVerifiedForSave && workerBankCardVerifiedForSave;
   const workerAnyProfileCardPending = [workerProfileReviewStatus, workerDocumentReviewStatus, workerBankReviewStatus].some((s) => s === 'pending') || workerProfileChangedAfterReview || workerDocumentChangedAfterReview || workerBankChangedAfterReview;
   const workerTopStatus = finalSaved && workerAllProfileCardsVerified ? 'verified' : workerAnyProfileCardPending ? 'pending' : 'unverified';
@@ -5259,6 +5258,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       await api('me/profile', { method: 'PATCH', token, body });
       setForm((prev) => ({ ...prev, ...body }));
       localStorage.setItem(finalProfileSaveKey(me, 'worker'), 'saved');
+      try { localStorage.removeItem(workerDraftKey); } catch {}
       setFinalSaved(true);
       toast.success('Profile saved');
       await onSaved?.();
@@ -5321,8 +5321,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             <p className="font-bold text-lg">{me.profile?.full_name || 'Worker'}</p>
             <p className="text-sm text-muted-foreground truncate">{me.profile?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-              <span className="text-sm font-medium">{Number(me.extra?.rating || 0).toFixed(1)}</span>
+              {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="indigo" />; })()}
               {workerTopStatus === 'verified' ? (
                 <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
               ) : workerTopStatus === 'pending' ? (
@@ -6774,21 +6773,47 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
   const employerSubscription = getSubscriptionFeatures('employer', loadSession()?.profile);
   const employerPlan = employerSubscription.plan;
   const [step, setStep] = useState(1);
+  const [employerMe, setEmployerMe] = useState(null);
   const [f, setF] = useState({
-    title: '', category: 'general', description: '', location_text: '', latitude: '', longitude: '',
+    title: '', category: 'general', description: '', location_text: '', latitude: '', longitude: '', attendance_latitude: '', attendance_longitude: '',
     daily_pay: 1000, hourly_pay: 100, pay_type: 'daily', duration_days: 1, duration_hours: 8, work_duration_type: 'days', start_date: '', end_date: '', start_time: '', start_meridiem: 'AM', end_time: '', end_meridiem: 'PM', workers_needed: 1,
     shift_timing: 'day', experience: 'beginner', contact_number: '',
     skill_needed: '', accommodation_available: 'no', food_included: 'no', urgent_hiring: false,
-    overtime_available: false, transportation_provided: false, post_valid_days: 5, candidate_verification: 'all', attendance_radius_meters: 20,
+    overtime_available: false, transportation_provided: false, post_valid_days: 5, candidate_verification: 'all', attendance_radius_meters: '',
   });
   const [busy, setBusy] = useState(false);
   const fixedRadiusOptions = ['10', '20', '25', '50', '100', '200'];
-  const [radiusMode, setRadiusMode] = useState('20');
+  const [radiusMode, setRadiusMode] = useState('');
+  const [attendanceGpsSaved, setAttendanceGpsSaved] = useState(false);
   const [sameDayTimeOpen, setSameDayTimeOpen] = useState(false);
 
   useEffect(() => {
+    if (!token) return;
+    let active = true;
+    api('me', { token })
+      .then((d) => {
+        if (!active) return;
+        setEmployerMe(d);
+        const saved = d?.extra || {};
+        const profile = d?.profile || d || {};
+        if (!initialJob?.id) {
+          setF((s) => ({
+            ...s,
+            location_text: saved.location_text || saved.company_address || profile.location_text || profile.company_address || s.location_text || '',
+            latitude: saved.latitude || profile.latitude || s.latitude || '',
+            longitude: saved.longitude || profile.longitude || s.longitude || '',
+            contact_number: s.contact_number || profile.phone || saved.hr_contact || profile.hr_contact || saved.phone || '',
+          }));
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [token, initialJob?.id]);
+
+  useEffect(() => {
     if (initialJob?.id) {
-      const savedRadius = String(initialJob.attendance_radius_meters || 20);
+      const savedRadiusValue = Number(initialJob.attendance_radius_meters);
+      const savedRadius = Number.isFinite(savedRadiusValue) && savedRadiusValue > 0 ? String(savedRadiusValue) : '';
       setF((s) => ({
         ...s,
         ...initialJob,
@@ -6803,8 +6828,10 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
         end_meridiem: initialJob.end_meridiem || initialJob.extra?.end_meridiem || s.end_meridiem,
         post_valid_days: initialJob.post_valid_days || initialJob.valid_days || 5,
         candidate_verification: initialJob.candidate_verification || initialJob.extra?.candidate_verification || 'all',
+        attendance_radius_meters: savedRadius ? Number(savedRadius) : '',
       }));
       setRadiusMode(fixedRadiusOptions.includes(savedRadius) ? savedRadius : 'custom');
+      setAttendanceGpsSaved(Boolean(initialJob.attendance_latitude && initialJob.attendance_longitude));
       setStep(1);
     }
   }, [initialJob?.id]);
@@ -6848,19 +6875,79 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
 
   const prevStep = () => setStep(1);
 
+  const getSavedCompanyLocation = () => {
+    const saved = employerMe?.extra || {};
+    const profile = employerMe?.profile || employerMe || {};
+    return {
+      text: saved.location_text || profile.location_text || saved.company_address || profile.company_address || '',
+      lat: saved.latitude || profile.latitude || '',
+      lng: saved.longitude || profile.longitude || '',
+    };
+  };
+
+  useEffect(() => {
+    const savedLocation = getSavedCompanyLocation();
+    if (!initialJob?.id && savedLocation.text && (!f.location_text || f.location_text !== savedLocation.text)) {
+      setF((s) => ({
+        ...s,
+        location_text: savedLocation.text,
+        latitude: savedLocation.lat || s.latitude || '',
+        longitude: savedLocation.lng || s.longitude || '',
+      }));
+    }
+  }, [employerMe?.extra?.location_text, employerMe?.profile?.location_text, employerMe?.extra?.latitude, employerMe?.extra?.longitude, initialJob?.id]);
+
+  const applySavedCompanyLocationToJob = () => {
+    const savedLocation = getSavedCompanyLocation();
+    if (!savedLocation.text) return toast.error('Save company location in Employer Profile first');
+    setF((s) => ({
+      ...s,
+      location_text: savedLocation.text,
+      latitude: savedLocation.lat || s.latitude || '',
+      longitude: savedLocation.lng || s.longitude || '',
+    }));
+    toast.success('Saved company location added to this job');
+  };
+
+  const setAttendanceRadius = (value) => {
+    const next = Number(value);
+    if (!Number.isFinite(next) || next <= 0) {
+      setF((s) => ({ ...s, attendance_radius_meters: '' }));
+      setAttendanceGpsSaved(false);
+      return;
+    }
+    setF((s) => ({ ...s, attendance_radius_meters: next }));
+    // Radius change must be saved again with GPS.
+    setAttendanceGpsSaved(false);
+  };
+
+  const attendanceRadiusValue = Number(f.attendance_radius_meters);
+  const attendanceRadiusReady = Number.isFinite(attendanceRadiusValue) && attendanceRadiusValue > 0;
+  const attendanceGpsReady = Boolean(f.attendance_latitude && f.attendance_longitude && attendanceRadiusReady);
+
   const useCurrentJobGps = () => {
     if (!navigator.geolocation) return toast.error('GPS is not supported on this device');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const latitude = pos.coords.latitude;
         const longitude = pos.coords.longitude;
+        const savedLocation = getSavedCompanyLocation();
+        if (!attendanceRadiusReady) {
+          toast.error('Select attendance radius before saving GPS');
+          return;
+        }
+        const safeRadius = Math.max(1, Math.min(attendanceRadiusValue, 1000));
         setF(s => ({
           ...s,
-          latitude,
-          longitude,
-          location_text: s.location_text?.trim() || `Current GPS: ${formatCoordinates(latitude, longitude)}`,
+          attendance_latitude: latitude,
+          attendance_longitude: longitude,
+          attendance_radius_meters: safeRadius,
+          location_text: savedLocation.text || s.location_text || '',
+          latitude: savedLocation.lat || s.latitude || '',
+          longitude: savedLocation.lng || s.longitude || '',
         }));
-        toast.success('Current GPS saved for this job attendance check');
+        setAttendanceGpsSaved(true);
+        toast.success('Attendance GPS saved and displayed in this row.');
       },
       () => toast.error('Allow location permission to save current GPS'),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
@@ -6880,8 +6967,25 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
       showSubscriptionRequired(`posting more than ${employerSubscription.maxWorkersPerJob} workers in one job`, 'Enterprise');
       return;
     }
-    if (!f.description?.trim() || !f.shift_timing || !f.experience || !f.contact_number?.trim()) {
-      toast.error('Please fill all required fields before publishing');
+    const savedCompany = employerMe?.extra || {};
+    const profile = employerMe?.profile || employerMe || {};
+    const savedLocation = getSavedCompanyLocation();
+    const finalLocationText = savedLocation.text || f.location_text?.trim() || '';
+    const finalContactNumber = f.contact_number?.trim() || profile.phone || savedCompany.hr_contact || profile.hr_contact || savedCompany.phone || '';
+    if (!f.description?.trim()) {
+      toast.error('Please enter job description before publishing.');
+      return;
+    }
+    if (!finalLocationText) {
+      toast.error('Save company location in Employer Profile first.');
+      return;
+    }
+    if (!finalContactNumber) {
+      toast.error('Enter contact number before publishing.');
+      return;
+    }
+    if (!attendanceGpsReady) {
+      toast.error('Save Attendance GPS and radius before publishing.');
       return;
     }
     setBusy(true);
@@ -6890,6 +6994,12 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
       const calculatedEndDate = f.work_duration_type === 'hours' ? f.start_date : calculateEndDateFromDuration(f.start_date, calculatedDays);
       const payload = {
         ...f,
+        location_text: finalLocationText,
+        latitude: savedLocation.lat || f.latitude || null,
+        longitude: savedLocation.lng || f.longitude || null,
+        contact_number: finalContactNumber,
+        attendance_latitude: f.attendance_latitude || null,
+        attendance_longitude: f.attendance_longitude || null,
         daily_pay: Number(f.daily_pay) || 0,
         hourly_pay: Number(f.hourly_pay) || 0,
         pay_type: f.pay_type || 'daily',
@@ -6900,7 +7010,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
         work_time_range: timeRangeReady() ? `${f.start_time} ${f.start_meridiem} - ${f.end_time} ${f.end_meridiem}` : null,
         workers_needed: Number(f.workers_needed) || 1,
         post_valid_days: Number(f.post_valid_days) || 5,
-        attendance_radius_meters: Number(f.attendance_radius_meters) || 20,
+        attendance_radius_meters: attendanceRadiusValue,
         candidate_verification: f.candidate_verification || 'all',
       };
       await api(initialJob?.id ? `jobs/${initialJob.id}` : 'jobs', { method: initialJob?.id ? 'PATCH' : 'POST', token, body: payload });
@@ -7064,20 +7174,24 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                   <div className="md:col-span-12 space-y-0.5">
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-1.5 flex flex-col gap-1">
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-emerald-900 flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Attendance GPS point</p>
-                        <p className="hidden lg:block text-[10px] text-emerald-700 mt-0.5 leading-tight">Use current GPS only when you are at the company/site. Worker daily attendance will be marked automatically when their GPS is within the allowed distance.</p>
-                        <p className="text-[10px] md:text-[11px] text-emerald-800 mt-0.5 truncate">{f.latitude && f.longitude ? `Saved GPS: ${formatCoordinates(f.latitude, f.longitude)} · Radius ${f.attendance_radius_meters || 20}m` : 'No exact GPS saved yet. Use current GPS while standing at the company/site.'}</p>
+                        <p className="text-xs font-bold text-emerald-900 flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Attendance GPS <span className="text-red-500">*</span></p>
+                        <p className="text-[10px] text-emerald-700 mt-0.5 leading-tight">Job location is automatically taken from the saved company profile. Set only the attendance GPS point and radius here.</p>
+                        <p className="text-[10px] md:text-[11px] text-emerald-800 mt-0.5 truncate">Job location: {f.location_text || getSavedCompanyLocation().text || 'Save company location in Profile first'}</p>
                       </div>
-                      <div className="grid grid-cols-[auto_auto_auto_1fr] items-center gap-1.5">
-                        <Button type="button" size="sm" disabled={!employerSubscription.gpsAttendance} className="h-8 px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shrink-0 text-xs font-semibold disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100" onClick={useCurrentJobGps}>
-                          <MapPin className="w-4 h-4 mr-2" /> {employerSubscription.gpsAttendance ? 'Use current GPS' : 'GPS Locked'}
+                      <div className="grid grid-cols-1 md:grid-cols-[auto_auto_auto_1fr] items-center gap-1.5">
+                        <Button type="button" size="sm" disabled={!attendanceRadiusReady} className="h-8 px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shrink-0 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed" onClick={useCurrentJobGps}>
+                          <MapPin className="w-4 h-4 mr-2" /> {attendanceGpsSaved ? 'Update GPS' : 'Save GPS'}
                         </Button>
-                        <Select disabled={!employerSubscription.radiusControl} value={radiusMode} onValueChange={(v) => {
+                        <Select value={radiusMode} onValueChange={(v) => {
                           setRadiusMode(v);
-                          if (v !== 'custom') setF(s => ({ ...s, attendance_radius_meters: Number(v) }));
+                          if (v !== 'custom') setAttendanceRadius(v);
+                          if (v === 'custom') {
+                            setF((s) => ({ ...s, attendance_radius_meters: '' }));
+                            setAttendanceGpsSaved(false);
+                          }
                         }}>
-                          <SelectTrigger className="h-8 rounded-lg border-emerald-200 bg-white w-32 sm:w-40 text-xs">
-                            <SelectValue placeholder="Radius" />
+                          <SelectTrigger className="h-8 rounded-lg border-emerald-200 bg-white w-full md:w-40 text-xs">
+                            <SelectValue placeholder="Select radius *" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="10">10 meters</SelectItem>
@@ -7094,17 +7208,21 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                             type="number"
                             min="1"
                             max="1000"
-                            value={f.attendance_radius_meters || ''}
-                            onChange={(e) => setF(s => ({ ...s, attendance_radius_meters: e.target.value }))}
+                            value={f.attendance_radius_meters ?? ''}
+                            onChange={(e) => setAttendanceRadius(e.target.value)}
                             placeholder="Meters"
-                            className="h-8 w-24 rounded-lg border-emerald-200 bg-white text-xs"
-                            disabled={!employerSubscription.radiusControl}
-                          />
-                        ) : (
-                          <div className="w-24" />
-                        )}
-                        <p className="hidden md:block text-[10px] text-emerald-700 leading-snug truncate">{employerSubscription.gpsAttendance ? 'Auto attendance uses this selected radius. Manual attendance marking is not required.' : 'Starter plan uses manual attendance. Subscribe to Business or higher to enable GPS attendance and radius control.'}</p>
+                            className="h-8 w-full md:w-24 rounded-lg border-emerald-200 bg-white text-xs"
+                            />
+                        ) : null}
+                        <div className="rounded-lg border border-emerald-200 bg-white px-2 py-1 text-[10px] md:text-[11px] text-emerald-900 min-w-0">
+                          {f.attendance_latitude && f.attendance_longitude ? (
+                            <p className="truncate"><span className="font-bold">Saved GPS:</span> {formatCoordinates(f.attendance_latitude, f.attendance_longitude)} <span className="font-semibold text-emerald-700">• Radius: {attendanceRadiusReady ? `${attendanceRadiusValue} m` : 'Select radius'}</span></p>
+                          ) : (
+                            <p className="truncate"><span className="font-bold">Saved GPS:</span> Not saved yet <span className="font-semibold text-emerald-700">• Radius: {attendanceRadiusReady ? `${attendanceRadiusValue} m` : 'Select radius'}</span></p>
+                          )}
+                        </div>
                       </div>
+                      <p className="text-[10px] text-emerald-700 leading-snug">Auto attendance uses this selected attendance GPS radius. Manual attendance is available for employers in every plan.</p>
                     </div>
                   </div>
 
@@ -7241,7 +7359,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
 
   // Show only jobs that already have an invited or confirmed worker.
   // The API now sends hired_count, so this tab updates correctly after employee acceptance.
-  const hiredJobs = jobs.filter(j => (j.hired_count || j.ongoing_count || j.invitation_count || 0) > 0);
+  const hiredJobs = jobs.filter(j => (j.hired_count || j.ongoing_count || j.invitation_count || j.completed_count || 0) > 0);
 
   useEffect(() => {
     reload?.();
@@ -7283,7 +7401,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
         toast.error('Unable to load applicants');
         return;
       }
-      const hiredApps = d.applicants.filter(a => a.status === 'ongoing' || a.status === 'accepted');
+      const hiredApps = d.applicants.filter(a => a.status === 'ongoing' || a.status === 'accepted' || a.status === 'completed');
       setApplicants(hiredApps);
       
       // Load attendance data
@@ -7376,7 +7494,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
   };
 
   const getHiredCount = (job) => {
-    return job.hired_count || job.applications?.filter(a => a.status === 'ongoing' || a.status === 'accepted').length || 0;
+    return job.hired_count || job.applications?.filter(a => a.status === 'ongoing' || a.status === 'accepted' || a.status === 'completed').length || 0;
   };
 
   return (
@@ -7467,9 +7585,9 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           </div>
                         </div>
                         <Badge
-                          className='bg-emerald-600 hover:bg-emerald-700'
+                          className={app.status === 'completed' ? 'bg-green-600 hover:bg-green-700' : 'bg-emerald-600 hover:bg-emerald-700'}
                         >
-                          Active - Working
+                          {app.status === 'completed' ? 'Completed' : 'Active - Working'}
                         </Badge>
                       </div>
 
@@ -7510,13 +7628,24 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       </div>
 
                       {/* Status Note */}
-                      {!canMarkAttendance && (
+                      {!canMarkAttendance && app.status !== 'completed' && (
                         <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
                           <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                             ⏳ Waiting for employee acceptance
                           </p>
                           <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                             Once the employee accepts the job, you can start marking attendance.
+                          </p>
+                        </div>
+                      )}
+
+                      {app.status === 'completed' && (
+                        <div className="mb-4 p-3 rounded-xl bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-700">
+                          <p className="text-sm font-semibold text-green-700 dark:text-green-300">
+                            ✅ Work completed
+                          </p>
+                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                            Payment is completed. Employer and worker feedback can be saved for this completed job.
                           </p>
                         </div>
                       )}
@@ -7575,27 +7704,21 @@ function HiredJobs({ token, jobs, reload, onChat }) {
 
                       {/* Plan Based Attendance Action */}
                       {selectedDate && canMarkAttendance && (
-                        <div className={`mb-4 p-3 rounded-xl border ${employerSubscription.manualAttendance ? 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-700' : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-700'}`}>
-                          <p className={`text-sm font-semibold mb-1 ${employerSubscription.manualAttendance ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                            {employerSubscription.manualAttendance ? 'Manual attendance' : 'GPS auto attendance'} for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        <div className="mb-4 p-3 rounded-xl border bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-700">
+                          <p className="text-sm font-semibold mb-1 text-amber-700 dark:text-amber-300">
+                            Manual attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>
-                          <p className={`text-xs ${employerSubscription.manualAttendance ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                            {employerSubscription.manualAttendance
-                              ? `${employerPlan} plan uses manual attendance. Mark the selected date as Present or Absent.`
-                              : 'Attendance is marked automatically from the employee Ongoing job GPS check-in when they are inside the employer selected radius. Manual attendance marking is disabled.'}
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            Manual attendance is enabled. GPS attendance can still be marked by the worker from their ongoing job page.
                           </p>
-                          {employerSubscription.manualAttendance ? (
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                              <Button size="sm" disabled={markingAttendance} className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => markAttendance(app.id, selectedDate, 'present')}>
-                                {markingAttendance ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />} Present
-                              </Button>
-                              <Button size="sm" disabled={markingAttendance} className="bg-red-600 hover:bg-red-700 text-white" onClick={() => markAttendance(app.id, selectedDate, 'absent')}>
-                                <X className="w-4 h-4 mr-2" /> Absent
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button size="sm" variant="ghost" className="mt-2 text-emerald-700 hover:bg-emerald-100" onClick={() => setSelectedDate(null)}>Close</Button>
-                          )}
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <Button size="sm" disabled={markingAttendance} className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => markAttendance(app.id, selectedDate, 'present')}>
+                              {markingAttendance ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />} Present
+                            </Button>
+                            <Button size="sm" disabled={markingAttendance} className="bg-red-600 hover:bg-red-700 text-white" onClick={() => markAttendance(app.id, selectedDate, 'absent')}>
+                              <X className="w-4 h-4 mr-2" /> Absent
+                            </Button>
+                          </div>
                         </div>
                       )}
 
@@ -7645,14 +7768,33 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           </Button>
                         )}
 
-                        {app.status === 'completed' && (
+                        {app.status === 'completed' && !app.feedback_given && (
+                          <Button
+                            size="sm"
+                            className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
+                            onClick={() => {
+                              const rating = prompt('Rate the worker (1-5 stars):');
+                              const feedback = prompt('Write feedback about the worker/employee:');
+                              if (rating && feedback) {
+                                api('feedback/worker', { method: 'POST', token, body: { application_id: app.id, rating: Number(rating), feedback_text: feedback } })
+                                  .then(() => { toast.success('Feedback submitted and saved!'); if (selectedJob) openJobDetails(selectedJob); reload?.(); })
+                                  .catch(e => toast.error(e.message));
+                              }
+                            }}
+                          >
+                            <Star className="w-4 h-4 mr-2" />
+                            Give Feedback
+                          </Button>
+                        )}
+
+                        {app.status === 'completed' && app.feedback_given && (
                           <Button
                             size="sm"
                             disabled
                             className="flex-1 bg-green-100 text-green-700 hover:bg-green-100"
                           >
                             <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Completed
+                            Feedback Done
                           </Button>
                         )}
                       </div>
@@ -7911,7 +8053,14 @@ language:me.profile?.language || 'en'
 
 };
 
-setF(profileData);
+let draftData = {};
+try {
+  draftData = JSON.parse(localStorage.getItem(employerProfileDraftKey(me)) || '{}') || {};
+} catch {
+  draftData = {};
+}
+const mergedProfileData = { ...profileData, ...draftData };
+setF(mergedProfileData);
 setSavedData(profileData);
 
 }
@@ -7940,6 +8089,13 @@ if (changed && finalSaved) {
 }
 
 },[f,savedData,finalSaved,me]);
+
+useEffect(() => {
+  if (!me) return;
+  try {
+    localStorage.setItem(employerProfileDraftKey(me), JSON.stringify(pickEmployerDraftFields(f)));
+  } catch {}
+}, [f, me]);
 
   const loadAttendanceRows = async () => {
     if (!token) return;
@@ -8077,8 +8233,8 @@ if (changed && finalSaved) {
   const employerGloballyVerified = !!me?.extra?.verified && me?.extra?.verification_status === 'verified';
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
-  const employerProfileCardVerified = employerProfileRawStatus === 'verified' || employerGloballyVerified;
-  const employerDocumentCardVerified = employerDocumentRawStatus === 'verified' || employerGloballyVerified;
+  const employerProfileCardVerified = (employerProfileRawStatus === 'verified' || employerGloballyVerified) && !employerProfileChangedAfterReview;
+  const employerDocumentCardVerified = (employerDocumentRawStatus === 'verified' || employerGloballyVerified) && !employerDocumentChangedAfterReview;
   const employerAllProfileCardsVerified = employerProfileCardVerified && employerDocumentCardVerified && employerSelfieCardVerified;
   const employerAnyProfileCardPending = [employerProfileRawStatus, employerDocumentRawStatus].some((s) => s === 'pending') || employerProfileChangedAfterReview || employerDocumentChangedAfterReview;
   const employerTopStatus = finalSaved && employerAllProfileCardsVerified ? 'verified' : employerAnyProfileCardPending ? 'pending' : 'unverified';
@@ -8119,6 +8275,7 @@ if (changed && finalSaved) {
 
       const saved = await api('me/profile', { method: 'PATCH', token, body });
       localStorage.setItem(finalProfileSaveKey(me, 'employer'), 'saved');
+      try { localStorage.removeItem(employerProfileDraftKey(me)); } catch {}
       const savedExtra = saved?.extra || {};
       setF((prev) => ({ ...prev, ...body, ...savedExtra }));
       setSavedData((prev) => ({ ...prev, ...body, ...savedExtra }));
@@ -8222,6 +8379,7 @@ if (changed && finalSaved) {
             <p className="font-bold text-lg">{me.extra?.company_name || 'Set company name'}</p>
             <p className="text-sm text-muted-foreground truncate">{me.profile?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="emerald" />; })()}
               {employerTopStatus === 'verified' ? (
                 <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
               ) : employerTopStatus === 'pending' ? (
@@ -8319,7 +8477,7 @@ if (changed && finalSaved) {
               color="emerald"
               setForm={setF}
               onSaved={onSaved}
-              disabled={!!requireEmployerProfile()}
+              disabled={busy}
               validate={requireEmployerProfile}
               payloadBuilder={buildEmployerProfilePayload}
               modified={employerProfileChangedAfterReview}

@@ -23,6 +23,11 @@ create table if not exists public.employer_feedbacks (
   created_at timestamptz default now()
 );
 
+
+-- Ensure existing databases also get employer_id when worker_feedbacks already exists.
+alter table public.worker_feedbacks
+  add column if not exists employer_id uuid references public.employers(user_id) on delete cascade;
+
 -- Add company feedback (visible in company profile)
 create table if not exists public.company_feedbacks (
   id uuid primary key default gen_random_uuid(),

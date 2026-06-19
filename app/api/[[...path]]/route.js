@@ -1297,7 +1297,7 @@ async function route(request, { params }) {
           applications: undefined,
           applicants_count: apps.length,
           pending_count: apps.filter(a => a.status === 'pending').length,
-          hired_count: apps.filter(a => ['accepted','ongoing'].includes(a.status)).length,
+          hired_count: apps.filter(a => ['accepted','ongoing','completed'].includes(a.status)).length,
         };
       });
       return json({ jobs });
@@ -1323,13 +1323,15 @@ async function route(request, { params }) {
         .eq('user_id', me.id)
         .maybeSingle();
 
-      const locationText = (body.location_text || '').trim() || employer?.location_text || null;
-      const latitude = body.latitude !== undefined && body.latitude !== null && body.latitude !== ''
-        ? Number(body.latitude)
-        : (employer?.latitude !== undefined && employer?.latitude !== null ? Number(employer.latitude) : null);
-      const longitude = body.longitude !== undefined && body.longitude !== null && body.longitude !== ''
-        ? Number(body.longitude)
-        : (employer?.longitude !== undefined && employer?.longitude !== null ? Number(employer.longitude) : null);
+      const locationText = employer?.location_text || (body.location_text || '').trim() || null;
+      const latitude = employer?.latitude !== undefined && employer?.latitude !== null
+        ? Number(employer.latitude)
+        : (body.latitude !== undefined && body.latitude !== null && body.latitude !== '' ? Number(body.latitude) : null);
+      const longitude = employer?.longitude !== undefined && employer?.longitude !== null
+        ? Number(employer.longitude)
+        : (body.longitude !== undefined && body.longitude !== null && body.longitude !== '' ? Number(body.longitude) : null);
+      const attendanceLatitude = body.attendance_latitude !== undefined && body.attendance_latitude !== null && body.attendance_latitude !== '' ? Number(body.attendance_latitude) : null;
+      const attendanceLongitude = body.attendance_longitude !== undefined && body.attendance_longitude !== null && body.attendance_longitude !== '' ? Number(body.attendance_longitude) : null;
 
       const basePayload = {
         employer_id: me.id,
@@ -1361,6 +1363,8 @@ async function route(request, { params }) {
         transportation_provided: !!body.transportation_provided,
         post_valid_days: Number(body.post_valid_days) || 5,
         attendance_radius_meters: Math.max(1, Math.min(Number(body.attendance_radius_meters) || 20, 1000)),
+        attendance_latitude: Number.isFinite(attendanceLatitude) ? attendanceLatitude : null,
+        attendance_longitude: Number.isFinite(attendanceLongitude) ? attendanceLongitude : null,
         hourly_pay: Number(body.hourly_pay) || 0,
         pay_type: body.pay_type || null,
         duration_hours: Number(body.duration_hours) || 0,
@@ -1392,15 +1396,18 @@ async function route(request, { params }) {
       const { data: current } = await admin.from('jobs').select('*').eq('id', jobId).maybeSingle();
       if (!current) return err('Job not found', 404);
       if (current.employer_id !== me.id) return err('Forbidden', 403);
+      const { data: employer } = await admin.from('employers').select('location_text, latitude, longitude').eq('user_id', me.id).maybeSingle();
+      const attendanceLatitude = body.attendance_latitude !== undefined && body.attendance_latitude !== null && body.attendance_latitude !== '' ? Number(body.attendance_latitude) : current.attendance_latitude;
+      const attendanceLongitude = body.attendance_longitude !== undefined && body.attendance_longitude !== null && body.attendance_longitude !== '' ? Number(body.attendance_longitude) : current.attendance_longitude;
       const days = Number(body.post_valid_days || current.post_valid_days || 5);
       const expires = new Date(); expires.setDate(expires.getDate() + days);
       const updatePayload = {
         title: body.title,
         category: body.category,
         description: body.description,
-        location_text: body.location_text || current.location_text,
-        latitude: body.latitude !== '' && body.latitude !== undefined ? Number(body.latitude) : current.latitude,
-        longitude: body.longitude !== '' && body.longitude !== undefined ? Number(body.longitude) : current.longitude,
+        location_text: employer?.location_text || body.location_text || current.location_text,
+        latitude: employer?.latitude !== undefined && employer?.latitude !== null ? Number(employer.latitude) : (body.latitude !== '' && body.latitude !== undefined ? Number(body.latitude) : current.latitude),
+        longitude: employer?.longitude !== undefined && employer?.longitude !== null ? Number(employer.longitude) : (body.longitude !== '' && body.longitude !== undefined ? Number(body.longitude) : current.longitude),
         daily_pay: Number(body.daily_pay) || current.daily_pay,
         duration_days: Number(body.duration_days) || current.duration_days,
         start_date: body.start_date || current.start_date,
@@ -1416,6 +1423,8 @@ async function route(request, { params }) {
         transportation_provided: !!body.transportation_provided,
         post_valid_days: days,
         attendance_radius_meters: Math.max(1, Math.min(Number(body.attendance_radius_meters || current.attendance_radius_meters) || 20, 1000)),
+        attendance_latitude: Number.isFinite(Number(attendanceLatitude)) ? Number(attendanceLatitude) : null,
+        attendance_longitude: Number.isFinite(Number(attendanceLongitude)) ? Number(attendanceLongitude) : null,
         hourly_pay: Number(body.hourly_pay) || current.hourly_pay || 0,
         pay_type: body.pay_type || current.pay_type || null,
         duration_hours: Number(body.duration_hours) || current.duration_hours || 0,
@@ -1451,9 +1460,15 @@ async function route(request, { params }) {
     if (path.match(/^jobs\/[^/]+\/apply$/) && method === 'POST') {
       const jobId = path.split('/')[1];
       const body = await request.json().catch(() => ({}));
-      const { data: profile } = await admin.from('user_profiles').select('role,full_name,email,verified,verification_status').eq('id', me.id).maybeSingle();
-      if (profile?.role !== 'worker') return err('Only workers can apply', 403);
-      const workerSub = await getActiveSubscription(admin, me.id, 'worker');
+      let { data: profile } = await admin.from('user_profiles').select('id,role,full_name,email,verified,verification_status').eq('id', me.id).maybeSingle();
+      if (!profile && me.email) {
+        const byEmail = await admin.from('user_profiles').select('id,role,full_name,email,verified,verification_status').eq('email', me.email).maybeSingle();
+        profile = byEmail.data || null;
+      }
+      const resolvedRole = String(profile?.role || me.user_metadata?.role || me.app_metadata?.role || '').toLowerCase();
+      if (resolvedRole !== 'worker') return err('Only workers can apply', 403);
+      const workerId = profile?.id || me.id;
+      const workerSub = await getActiveSubscription(admin, workerId, 'worker');
       const workerFeatures = planFeatures('worker', workerSub?.plan_name || 'Free');
       if (Number.isFinite(workerFeatures.maxApplicationsPerMonth)) {
         const monthStart = new Date();
@@ -1461,7 +1476,7 @@ async function route(request, { params }) {
         monthStart.setHours(0,0,0,0);
         const { count } = await admin.from('applications')
           .select('id', { count: 'exact', head: true })
-          .eq('worker_id', me.id)
+          .eq('worker_id', workerId)
           .gte('applied_at', monthStart.toISOString());
         if ((count || 0) >= workerFeatures.maxApplicationsPerMonth) return err(`${workerFeatures.plan_name} plan allows ${workerFeatures.maxApplicationsPerMonth} job applications per month. Upgrade to apply more.`, 403);
       }
@@ -1474,7 +1489,7 @@ async function route(request, { params }) {
       if (requiredCandidate === 'unverified' && isWorkerVerified) return err('Only unverified candidates can apply for this job', 403);
 
       const { data: app, error } = await admin.from('applications').insert({
-        job_id: jobId, worker_id: me.id, message: body.message || null,
+        job_id: jobId, worker_id: workerId, message: body.message || null,
       }).select().single();
       if (error) return err(error.message, 400);
 
@@ -1498,7 +1513,7 @@ async function route(request, { params }) {
       if (error) return err(error.message, 400);
       const enriched = (data || []).map(j => {
         const apps = j.applications || [];
-        const hiredApps = apps.filter(a => ['accepted', 'ongoing'].includes(a.status));
+        const hiredApps = apps.filter(a => ['accepted', 'ongoing', 'completed'].includes(a.status));
         return {
           ...j,
           applicants_count: apps.length,
@@ -1506,6 +1521,7 @@ async function route(request, { params }) {
           hired_count: hiredApps.length,
           ongoing_count: apps.filter(a => a.status === 'ongoing').length,
           invitation_count: apps.filter(a => a.status === 'accepted').length,
+          completed_count: apps.filter(a => a.status === 'completed').length,
         };
       });
       return json({ jobs: enriched });
@@ -1666,7 +1682,7 @@ async function route(request, { params }) {
       if (!Number.isFinite(workerLat) || !Number.isFinite(workerLng)) return err('Current GPS is required to mark attendance', 400);
 
       const { data: appRow } = await admin.from('applications')
-        .select('id,status,worker_id,job_id,jobs!inner(employer_id,title,latitude,longitude,attendance_radius_meters)')
+        .select('id,status,worker_id,job_id,jobs!inner(employer_id,title,latitude,longitude,attendance_latitude,attendance_longitude,attendance_radius_meters)')
         .eq('id', appId)
         .maybeSingle();
       if (!appRow) return err('Application not found', 404);
@@ -1676,14 +1692,14 @@ async function route(request, { params }) {
       if (!workerFeatures.gpsAttendance && me.role !== 'admin') return err('GPS attendance is available from Growth plan. Basic plan uses employer manual attendance.', 403);
       if (appRow.status !== 'ongoing') return err('Attendance can be marked only for ongoing jobs', 400);
 
-      const jobLat = Number(appRow.jobs?.latitude);
-      const jobLng = Number(appRow.jobs?.longitude);
-      if (!Number.isFinite(jobLat) || !Number.isFinite(jobLng)) return err('Employer has not saved job GPS location', 400);
+      const jobLat = Number(appRow.jobs?.attendance_latitude ?? appRow.jobs?.latitude);
+      const jobLng = Number(appRow.jobs?.attendance_longitude ?? appRow.jobs?.longitude);
+      if (!Number.isFinite(jobLat) || !Number.isFinite(jobLng)) return err('Employer has not saved attendance GPS location', 400);
 
       const allowedMeters = Math.max(1, Math.min(Number(appRow.jobs?.attendance_radius_meters) || 20, 1000));
       const distance = distanceMeters(workerLat, workerLng, jobLat, jobLng);
       if (distance === null) return err('Unable to calculate GPS distance', 400);
-      if (distance > allowedMeters) return err(`You are ${Math.round(distance)}m away from job location. Attendance allowed within ${allowedMeters}m only.`, 400);
+      if (distance > allowedMeters) return err(`You are ${Math.round(distance)}m away from attendance GPS point. Attendance allowed within ${allowedMeters}m only.`, 400);
 
       const payload = {
         application_id: appId,
@@ -1732,9 +1748,7 @@ async function route(request, { params }) {
         .maybeSingle();
       if (!appRow) return err('Application not found', 404);
       if (appRow.jobs?.employer_id !== me.id && me.role !== 'admin') return err('Only employer can mark attendance', 403);
-      const employerSub = await getActiveSubscription(admin, appRow.jobs?.employer_id, 'employer');
-      const employerFeatures = planFeatures('employer', employerSub?.plan_name || 'Free');
-      if (!employerFeatures.manualAttendance && me.role !== 'admin') return err('Manual attendance is available only in Free plan. Paid plans use GPS auto attendance.', 403);
+      // Manual attendance is enabled for employers in every subscription plan.
       if (appRow.status !== 'ongoing') return err('Attendance can be marked only after worker accepts and job moves to ongoing', 400);
 
       const payload = {
@@ -1863,17 +1877,15 @@ async function route(request, { params }) {
       }).select().single();
       if (error) return err(error.message, 400);
 
-      // Update employer/company average rating only after 5 different workers have rated.
+      // Update employer/company average rating after every feedback.
       try {
         const { data: ratings } = await admin.from('company_feedbacks')
-          .select('rating,worker_id')
+          .select('rating')
           .eq('company_id', app.jobs.employer_id);
         const rows = ratings || [];
-        const uniqueWorkers = new Set(rows.map(r => r.worker_id).filter(Boolean)).size;
-        const avg = uniqueWorkers >= 5 && rows.length
-          ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / rows.length).toFixed(2))
-          : 0;
-        await admin.from('employers').update({ average_rating: avg }).eq('user_id', app.jobs.employer_id);
+        const count = rows.length;
+        const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+        await admin.from('employers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', app.jobs.employer_id);
       } catch {}
 
       await notify(admin, app.jobs.employer_id, 'New company feedback', 'A completed worker rated your company profile.', 'feedback', application_id);
@@ -1890,8 +1902,9 @@ async function route(request, { params }) {
 
       const { data: app } = await admin.from('applications')
         .select('*, jobs!inner(employer_id)')
-        .eq('id', application_id).eq('jobs.employer_id', me.id).maybeSingle();
-      if (!app) return err('Application not found or not yours', 404);
+        .eq('id', application_id)
+        .maybeSingle();
+      if (!app || app.jobs?.employer_id !== me.id) return err('Application not found or not yours', 404);
       if (app.status !== 'completed') return err('Feedback can be given only after the work is completed.', 400);
 
       const { data: existing } = await admin.from('worker_feedbacks')
@@ -1910,17 +1923,15 @@ async function route(request, { params }) {
       }).select().single();
       if (error) return err(error.message, 400);
 
-      // Update worker average rating only after 5 different employers have rated.
+      // Update worker average rating after every feedback.
       try {
         const { data: ratings } = await admin.from('worker_feedbacks')
-          .select('rating,employer_id')
+          .select('rating')
           .eq('worker_id', app.worker_id);
         const rows = ratings || [];
-        const uniqueEmployers = new Set(rows.map(r => r.employer_id).filter(Boolean)).size;
-        const avg = uniqueEmployers >= 5 && rows.length
-          ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / rows.length).toFixed(2))
-          : 0;
-        await admin.from('workers').update({ average_rating: avg }).eq('user_id', app.worker_id);
+        const count = rows.length;
+        const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+        await admin.from('workers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', app.worker_id);
       } catch {}
 
       await notify(admin, app.worker_id, 'New work feedback', 'An employer rated your completed work.', 'feedback', application_id);
