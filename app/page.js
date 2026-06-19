@@ -48,11 +48,14 @@ function Work2WishLogo({ className = 'w-10 h-10', imgClassName = 'w-full h-full 
 // ----------------------------- subscription feature gates -----------------------------
 const SUBSCRIPTION_FEATURES = {
   worker: {
+    Free: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 0, nearbySearch: false, mailAlerts: false, profileVisibility: 'basic', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
     Basic: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: 5, nearbySearch: true, mailAlerts: true, profileVisibility: 'medium', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
     Growth: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'high', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: true, analytics: true },
     Premium: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
+    Trial: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: Infinity, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
   },
   employer: {
+    Free: { manualAttendance: false, gpsAttendance: false, maxActiveJobs: 0, maxWorkersPerJob: 0, limitedWorkerDatabase: false, fullWorkerDatabase: false, mailAlerts: false, basicSupport: true, prioritySupport: false, directEmployeeChat: false, companyBranding: false, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false },
     Starter: {
       manualAttendance: true, gpsAttendance: true, maxActiveJobs: 5, maxWorkersPerJob: 5,
       limitedWorkerDatabase: true, fullWorkerDatabase: false, mailAlerts: true, basicSupport: true,
@@ -74,6 +77,13 @@ const SUBSCRIPTION_FEATURES = {
       featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true,
       radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true,
     },
+    Trial: {
+      manualAttendance: true, gpsAttendance: true, maxActiveJobs: Infinity, maxWorkersPerJob: 20,
+      limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true,
+      prioritySupport: true, directEmployeeChat: true, companyBranding: true,
+      featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true,
+      radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true,
+    },
   },
 };
 
@@ -81,28 +91,106 @@ function getSubscriptionIdentity(role, profile) {
   return profile?.email || profile?.id || profile?.user_id || 'current';
 }
 
+
+const FREE_PRO_TRIAL_PLAN = 'Trial';
+const FREE_PRO_TRIAL_DAYS = 90;
+
+function normalizeSubscriptionPlan(plan) {
+  if (!plan) return 'Free';
+  const value = String(plan).trim();
+  if (['Trial', 'Free Pro Trial', 'FreeProTrial', 'free_trial', 'free_pro_trial'].includes(value)) return FREE_PRO_TRIAL_PLAN;
+  return value;
+}
+
+function getSubscriptionLabel(plan) {
+  const normalizedPlan = normalizeSubscriptionPlan(plan);
+  return normalizedPlan === FREE_PRO_TRIAL_PLAN ? 'Free Pro Trial - All Features' : (normalizedPlan === 'Free' ? 'Free Plan' : normalizedPlan);
+}
+
+function getSubscriptionExpiryKey(role, profile) {
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  const identity = getSubscriptionIdentity(normalizedRole, profile);
+  return `w2w-subscription-expiry-${normalizedRole}-${identity}`;
+}
+
+function getFreeTrialKeys(role, profile) {
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  const identity = getSubscriptionIdentity(normalizedRole, profile);
+  return {
+    started: `w2w-free-pro-trial-started-${normalizedRole}-${identity}`,
+    expires: `w2w-free-pro-trial-expires-${normalizedRole}-${identity}`,
+    popup: `w2w-free-pro-trial-popup-shown-${normalizedRole}-${identity}`,
+    expiredPopup: `w2w-free-pro-trial-expired-popup-shown-${normalizedRole}-${identity}`,
+  };
+}
+
+function getActiveFreeProTrial(role = 'worker', profile = null) {
+  if (typeof window === 'undefined') return null;
+  const keys = getFreeTrialKeys(role, profile);
+  try {
+    const startedAt = localStorage.getItem(keys.started);
+    const expiresAt = localStorage.getItem(keys.expires);
+    if (!startedAt || !expiresAt) return null;
+    const expiresMs = new Date(expiresAt).getTime();
+    if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) return null;
+    return { started_at: startedAt, expires_at: expiresAt };
+  } catch { return null; }
+}
+
+function ensureFreeProTrial(role = 'worker', profile = null) {
+  if (typeof window === 'undefined') return { active: false, created: false, expired: false };
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  const identity = getSubscriptionIdentity(normalizedRole, profile);
+  const planKey = `w2w-subscription-plan-${normalizedRole}-${identity}`;
+  const keys = getFreeTrialKeys(normalizedRole, profile);
+  try {
+    const savedPlan = normalizeSubscriptionPlan(localStorage.getItem(planKey));
+    if (savedPlan && savedPlan !== 'Free' && savedPlan !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[savedPlan]) {
+      return { active: false, created: false, paid: true };
+    }
+    const active = getActiveFreeProTrial(normalizedRole, profile);
+    if (active) return { active: true, created: false, ...active };
+    const hadTrial = localStorage.getItem(keys.started);
+    const expiredAt = localStorage.getItem(keys.expires);
+    if (hadTrial && expiredAt && new Date(expiredAt).getTime() <= Date.now()) {
+      return { active: false, created: false, expired: true, expires_at: expiredAt };
+    }
+    const startedAt = new Date();
+    const expiresAt = new Date(startedAt);
+    expiresAt.setDate(expiresAt.getDate() + FREE_PRO_TRIAL_DAYS);
+    localStorage.setItem(keys.started, startedAt.toISOString());
+    localStorage.setItem(keys.expires, expiresAt.toISOString());
+    localStorage.setItem(planKey, FREE_PRO_TRIAL_PLAN);
+    localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, FREE_PRO_TRIAL_PLAN);
+    localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), expiresAt.toISOString());
+    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, expiresAt.toISOString());
+    window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: normalizedRole, plan: FREE_PRO_TRIAL_PLAN, expires_at: expiresAt.toISOString() } }));
+    return { active: true, created: true, started_at: startedAt.toISOString(), expires_at: expiresAt.toISOString() };
+  } catch { return { active: false, created: false }; }
+}
+
 function getStoredSubscriptionPlan(role = 'worker', profile = null) {
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
-  const fallback = normalizedRole === 'employer' ? 'Starter' : 'Basic';
+  const fallback = 'Free';
   if (typeof window === 'undefined') return fallback;
   const identity = getSubscriptionIdentity(normalizedRole, profile);
-  const keys = [
-    `w2w-subscription-plan-${normalizedRole}-${identity}`,
-    `w2w-subscription-plan-${normalizedRole}-current`,
-  ];
+  const keys = identity && identity !== 'current'
+    ? [`w2w-subscription-plan-${normalizedRole}-${identity}`]
+    : [`w2w-subscription-plan-${normalizedRole}-current`];
   for (const key of keys) {
     try {
-      const value = localStorage.getItem(key);
-      if (value && SUBSCRIPTION_FEATURES[normalizedRole]?.[value]) return value;
+      const value = normalizeSubscriptionPlan(localStorage.getItem(key));
+      if (value && value !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[value]) return value;
     } catch {}
   }
+  if (getActiveFreeProTrial(normalizedRole, profile)) return FREE_PRO_TRIAL_PLAN;
   return fallback;
 }
 
 function getSubscriptionFeatures(role = 'worker', profile = null) {
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   const plan = getStoredSubscriptionPlan(normalizedRole, profile);
-  return { plan, ...(SUBSCRIPTION_FEATURES[normalizedRole]?.[plan] || SUBSCRIPTION_FEATURES[normalizedRole][normalizedRole === 'employer' ? 'Starter' : 'Basic']) };
+  return { plan, ...(SUBSCRIPTION_FEATURES[normalizedRole]?.[plan] || SUBSCRIPTION_FEATURES[normalizedRole].Free) };
 }
 
 function SubscriptionLock({ title = 'Upgrade required', description = 'This feature is not available in your current plan.' }) {
@@ -2723,11 +2811,44 @@ function AccountActivitySheet({ token, accent = 'indigo' }) {
 // ============================================================
 // WORKER APP
 // ============================================================
+
+function FreeProTrialDialog({ role = 'worker', trial, onOpenSubscription, onClose }) {
+  if (!trial?.show) return null;
+  const isExpired = trial.type === 'expired';
+  const title = isExpired ? 'Your free pro access has ended' : 'Congratulations!';
+  const message = isExpired
+    ? 'Your 3 months free pro access is over. Subscribe to any plan to continue premium features.'
+    : `Your ${role === 'employer' ? 'employer' : 'worker'} account has free pro access enabled for 3 months. All paid plan features are unlocked during this period.`;
+  return (
+    <Dialog open={!!trial.show} onOpenChange={(open) => !open && onClose?.()}>
+      <DialogContent className="max-w-md rounded-3xl border-emerald-100 bg-gradient-to-br from-white via-emerald-50 to-sky-50 p-6 text-center shadow-2xl">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-emerald-500 to-sky-600 text-white shadow-lg">
+          {isExpired ? <ShieldAlert className="h-8 w-8" /> : <Sparkles className="h-8 w-8" />}
+        </div>
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-black text-slate-950">{title}</DialogTitle>
+          <DialogDescription className="text-slate-700">{message}</DialogDescription>
+        </DialogHeader>
+        {!isExpired && trial.expires_at && (
+          <div className="rounded-2xl border border-emerald-100 bg-white/80 p-3 text-sm font-bold text-emerald-800">
+            Pro access valid until {new Date(trial.expires_at).toLocaleDateString()}
+          </div>
+        )}
+        <DialogFooter className="sm:justify-center gap-2">
+          {isExpired && <Button type="button" onClick={onOpenSubscription} className="rounded-xl bg-emerald-600 hover:bg-emerald-700">Subscribe Now</Button>}
+          <Button type="button" variant={isExpired ? 'outline' : 'default'} onClick={onClose} className="rounded-xl">{isExpired ? 'Later' : 'Continue'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function WorkerApp({ auth, onLogout }) {
   const token = auth?.session?.access_token;
   const [tab, setTabState] = useState('home'); // home | myjobs | chats | profile
   const [me, setMe] = useState(null);
   const [chatPeer, setChatPeer] = useState(null);
+  const [trialNotice, setTrialNotice] = useState(null);
   const tabHistoryRef = useRef([]);
 
   const setTab = (nextTab, options = {}) => {
@@ -2782,6 +2903,21 @@ function WorkerApp({ auth, onLogout }) {
     try { const data = await api('me', { token }); setMe(data); } catch (e) { toast.error(e.message); }
   };
   useEffect(() => { if (token) { refreshMe(); } }, [token]);
+
+  useEffect(() => {
+    if (!me?.profile?.id) return;
+    const result = ensureFreeProTrial('worker', me.profile);
+    const keys = getFreeTrialKeys('worker', me.profile);
+    try {
+      if (result.created && localStorage.getItem(keys.popup) !== 'yes') {
+        localStorage.setItem(keys.popup, 'yes');
+        setTrialNotice({ show: true, type: 'created', expires_at: result.expires_at });
+      } else if (result.expired && localStorage.getItem(keys.expiredPopup) !== 'yes') {
+        localStorage.setItem(keys.expiredPopup, 'yes');
+        setTrialNotice({ show: true, type: 'expired', expires_at: result.expires_at });
+      }
+    } catch {}
+  }, [me?.profile?.id]);
 
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
@@ -2884,6 +3020,12 @@ function WorkerApp({ auth, onLogout }) {
           })}
         </div>
       </nav>
+      <FreeProTrialDialog
+        role="worker"
+        trial={trialNotice}
+        onClose={() => setTrialNotice(null)}
+        onOpenSubscription={() => { setTrialNotice(null); setTab('profile'); }}
+      />
     </div>
   );
 }
@@ -6481,6 +6623,7 @@ function EmployerApp({ auth, onLogout }) {
   const [me, setMe] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [chatPeer, setChatPeer] = useState(null);
+  const [trialNotice, setTrialNotice] = useState(null);
   const [editingJob, setEditingJob] = useState(null);
   const [notificationFocusApplicationId, setNotificationFocusApplicationId] = useState(null);
   const tabHistoryRef = useRef([]);
@@ -6543,6 +6686,22 @@ function EmployerApp({ auth, onLogout }) {
     catch (e) { toast.error(e.message); }
   };
   useEffect(() => { if (token) { refreshMe(); refreshJobs(); } }, [token]);
+
+  useEffect(() => {
+    if (!me?.profile?.id) return;
+    const result = ensureFreeProTrial('employer', me.profile);
+    const keys = getFreeTrialKeys('employer', me.profile);
+    try {
+      if (result.created && localStorage.getItem(keys.popup) !== 'yes') {
+        localStorage.setItem(keys.popup, 'yes');
+        setTrialNotice({ show: true, type: 'created', expires_at: result.expires_at });
+      } else if (result.expired && localStorage.getItem(keys.expiredPopup) !== 'yes') {
+        localStorage.setItem(keys.expiredPopup, 'yes');
+        setTrialNotice({ show: true, type: 'expired', expires_at: result.expires_at });
+      }
+    } catch {}
+  }, [me?.profile?.id]);
+
   // Keep posted job applicant badges/counts live for employer without manual refresh.
   useEffect(() => {
     if (!token) return;
@@ -6668,6 +6827,12 @@ function EmployerApp({ auth, onLogout }) {
           })}
         </div>
       </nav>
+      <FreeProTrialDialog
+        role="employer"
+        trial={trialNotice}
+        onClose={() => setTrialNotice(null)}
+        onOpenSubscription={() => { setTrialNotice(null); setTab('profile'); }}
+      />
     </div>
   );
 }
@@ -8779,14 +8944,15 @@ function loadRazorpayCheckoutScript() {
 }
 
 function getPlanValidityMonths(plan, role) {
-  const workerValidity = { Basic: 1, Growth: 6, Premium: 12 };
-  const employerValidity = { Starter: 1, Business: 6, Enterprise: 12 };
+  const workerValidity = { Free: 0, Basic: 1, Growth: 6, Premium: 12 };
+  const employerValidity = { Free: 0, Starter: 1, Business: 6, Enterprise: 12 };
   const map = role === 'employer' ? employerValidity : workerValidity;
-  return map[plan?.name || plan] || 1;
+  return map[plan?.name || plan] ?? 1;
 }
 
 function getPlanValidityLabel(plan, role) {
   const months = getPlanValidityMonths(plan, role);
+  if (months === 0) return 'Free';
   if (months === 1) return '1 Month';
   if (months === 6) return '6 Months';
   if (months === 12) return '12 Months';
@@ -8801,11 +8967,13 @@ function getSubscriptionExpiryDate(plan, role) {
 
 function getPlanAmountPaise(plan, role) {
   const workerAmounts = {
+    Free: 0,
     Basic: 19900,
     Growth: 29900,
     Premium: 59900,
   };
   const employerAmounts = {
+    Free: 0,
     Starter: 99900,
     Business: 499900,
     Enterprise: 899900,
@@ -8816,11 +8984,13 @@ function getPlanAmountPaise(plan, role) {
 
 function getPlanDisplayPrice(plan, role) {
   const workerPrices = {
+    Free: '₹0',
     Basic: '₹199 / 1 Month',
     Growth: '₹299 / 6 Months',
     Premium: '₹599 / 12 Months',
   };
   const employerPrices = {
+    Free: '₹0',
     Starter: '₹999 / 1 Month',
     Business: '₹4,999 / 6 Months',
     Enterprise: '₹8,999 / 12 Months',
@@ -8832,7 +9002,7 @@ function getPlanDisplayPrice(plan, role) {
 function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const isEmployer = role === 'employer';
   const planStorageKey = `w2w-subscription-plan-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`;
-  const defaultPlan = isEmployer ? 'Starter' : 'Basic';
+  const defaultPlan = 'Free';
   const [currentPlan, setCurrentPlan] = useState(defaultPlan);
   const [paymentPlan, setPaymentPlan] = useState(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
@@ -8843,16 +9013,16 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     let alive = true;
     const localPlan = (() => {
       try {
-        const savedPlan = localStorage.getItem(planStorageKey) || defaultPlan;
-        if (isEmployer && (savedPlan === 'Free' || savedPlan === 'Premium Employer')) return savedPlan === 'Premium Employer' ? 'Business' : 'Starter';
-        return savedPlan;
+        const savedPlan = normalizeSubscriptionPlan(localStorage.getItem(planStorageKey));
+        if (savedPlan && (isEmployer ? ['Starter','Business','Enterprise','Trial'].includes(savedPlan) : ['Basic','Growth','Premium','Trial'].includes(savedPlan))) return savedPlan;
+        return defaultPlan;
       } catch { return defaultPlan; }
     })();
     setCurrentPlan(localPlan);
     api('subscription/current').then((d) => {
       if (!alive) return;
-      const planName = d?.subscription?.plan_name || localPlan;
-      if (planName) {
+      const planName = normalizeSubscriptionPlan(d?.subscription?.plan_name || localPlan);
+      if (planName && (planName === 'Trial' || SUBSCRIPTION_FEATURES[isEmployer ? 'employer' : 'worker']?.[planName])) {
         setCurrentPlan(planName);
         try { localStorage.setItem(planStorageKey, planName); } catch {}
       }
@@ -8872,16 +9042,20 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     { name: 'Enterprise', price: '₹8,999 / 12 Months', highlight: false, validityMonths: 12, features: ['Featured company badge', 'Urgent hiring boost', 'Bulk hiring up to 20 workers per job', 'Multi-user access', 'Dedicated support', 'Includes Business and Starter features'] },
   ];
 
+  const freePlanFeatures = isEmployer
+    ? ['Create employer account', 'Complete company profile', 'Upload documents for verification', 'View basic dashboard']
+    : ['Create worker account', 'Complete worker profile', 'Upload documents for verification', 'Basic language support'];
+
   const plans = isEmployer ? employerPlans : employeePlans;
   const planTitle = isEmployer ? 'Employer Subscription Plans' : 'Employee Subscription Plans';
   const planDescription = isEmployer
     ? 'Employer plans are separate for this employer account only.'
     : 'Worker plans are separate for this worker account only.';
 
-  const workerPlanOrder = ['Basic', 'Growth', 'Premium'];
-  const employerPlanOrder = ['Starter', 'Business', 'Enterprise'];
+  const workerPlanOrder = ['Free', 'Basic', 'Growth', 'Premium'];
+  const employerPlanOrder = ['Free', 'Starter', 'Business', 'Enterprise'];
   const activePlanIndex = (planName) => (isEmployer ? employerPlanOrder : workerPlanOrder).indexOf(planName);
-  const isPlanIncluded = (planName) => activePlanIndex(planName) <= activePlanIndex(currentPlan);
+  const isPlanIncluded = (planName) => currentPlan !== 'Free' && activePlanIndex(planName) <= activePlanIndex(currentPlan);
 
   const activatePlanAfterPayment = async (planName) => {
     const subRole = isEmployer ? 'employer' : 'worker';
@@ -9013,7 +9187,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
 
   const choosePlan = (plan) => {
     if (!plan) return;
-    if (currentPlan === plan.name) return;
+    if (currentPlan !== 'Trial' && currentPlan === plan.name) return;
     setPaymentPlan(plan);
     setPaymentError('');
   };
@@ -9038,13 +9212,29 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
               <p className="text-sm font-bold text-slate-900">Current plan for this account</p>
               <p className="text-xs text-slate-600 truncate">{me?.profile?.email || 'Current signed-in account'}</p>
             </div>
-            <Badge className="bg-emerald-600 text-white px-3 py-1 text-sm">{currentPlan}</Badge>
+            <Badge className="bg-emerald-600 text-white px-3 py-1 text-sm">{getSubscriptionLabel(currentPlan)}</Badge>
           </div>
+          {currentPlan === 'Free' && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {freePlanFeatures.map((feature) => (
+                <div key={feature} className="flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
+                  <span>{feature}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {currentPlan === 'Trial' && (
+          <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+            Congratulations! Free pro access is active for this account. All paid plan features are unlocked for 3 months. You can still subscribe to any paid plan anytime.
+          </div>
+        )}
 
         <div className={`mt-5 grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch`}>
           {plans.map((plan) => {
-            const isCurrent = currentPlan === plan.name;
+            const isCurrent = currentPlan !== 'Trial' && currentPlan === plan.name;
             return (
               <div
                 key={plan.name}

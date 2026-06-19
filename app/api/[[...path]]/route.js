@@ -32,26 +32,72 @@ async function sendEmail({ to, subject, html }) {
 
 
 async function getActiveSubscription(admin, userId, role) {
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   try {
-    const { data } = await admin.from('user_subscriptions')
+    let { data: sub } = await admin.from('user_subscriptions')
       .select('*')
       .eq('user_id', userId)
-      .eq('role', role === 'employer' ? 'employer' : 'worker')
+      .eq('role', normalizedRole)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    return data || null;
+
+    if (sub && subscriptionExpired(sub)) {
+      await admin.from('user_subscriptions')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('id', sub.id);
+      sub = null;
+    }
+
+    if (sub) return sub;
+
+    const { data: trialHistory } = await admin.from('user_subscriptions')
+      .select('id,status,expires_at')
+      .eq('user_id', userId)
+      .eq('role', normalizedRole)
+      .eq('plan_name', 'Trial')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (trialHistory) return null;
+
+    const startedAt = new Date();
+    const expiresAt = new Date(startedAt);
+    expiresAt.setMonth(expiresAt.getMonth() + 3);
+    const payload = {
+      user_id: userId,
+      role: normalizedRole,
+      plan_name: 'Trial',
+      status: 'active',
+      source: 'free_pro_trial',
+      validity_months: 3,
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { data: created, error } = await admin.from('user_subscriptions').insert(payload).select('*').single();
+    if (error) return null;
+    return created || payload;
   } catch {
     return null;
   }
 }
 
+function normalizeSubscriptionPlan(planName) {
+  if (!planName) return 'Free';
+  const value = String(planName).trim();
+  if (['Trial', 'Free Pro Trial', 'FreeProTrial', 'free_trial', 'free_pro_trial'].includes(value)) return 'Trial';
+  return value;
+}
+
 function planValidityMonths(role, planName) {
-  const workerValidity = { Basic: 1, Growth: 6, Premium: 12 };
-  const employerValidity = { Starter: 1, Business: 6, Enterprise: 12 };
+  const workerValidity = { Free: 0, Trial: 3, Basic: 1, Growth: 6, Premium: 12 };
+  const employerValidity = { Free: 0, Trial: 3, Starter: 1, Business: 6, Enterprise: 12 };
   const map = role === 'employer' ? employerValidity : workerValidity;
-  return map[planName] || 1;
+  const normalizedPlan = normalizeSubscriptionPlan(planName);
+  return map[normalizedPlan] ?? 1;
 }
 
 function planExpiryDate(role, planName, start = new Date()) {
@@ -66,20 +112,25 @@ function subscriptionExpired(sub) {
 
 function planFeatures(role, planName) {
   const roleKey = role === 'employer' ? 'employer' : 'worker';
+  const normalizedPlanName = normalizeSubscriptionPlan(planName);
   const plans = {
     worker: {
+      Free: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 0, nearbySearch: false, mailAlerts: false, profileVisibility: 'basic', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
       Basic: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 5, nearbySearch: true, mailAlerts: true, profileVisibility: 'medium', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
       Growth: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'high', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: true, analytics: true },
       Premium: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
+      Trial: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
     },
     employer: {
+      Free: { manualAttendance: false, gpsAttendance: false, maxActiveJobs: 0, maxWorkersPerJob: 0, limitedWorkerDatabase: false, fullWorkerDatabase: false, mailAlerts: false, basicSupport: true, prioritySupport: false, directEmployeeChat: false, companyBranding: false, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false },
       Starter: { manualAttendance: true, gpsAttendance: false, maxActiveJobs: 5, maxWorkersPerJob: 5, limitedWorkerDatabase: true, fullWorkerDatabase: false, mailAlerts: true, basicSupport: true, prioritySupport: false, directEmployeeChat: false, companyBranding: false, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false },
       Business: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 10, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: true, featuredJobs: false, analytics: true, multiLocation: false },
       Enterprise: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 20, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true },
+      Trial: { manualAttendance: true, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 20, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true },
     },
   };
-  const fallbackPlan = roleKey === 'employer' ? 'Free' : 'Basic';
-  const plan = plans[roleKey][planName] ? planName : fallbackPlan;
+  const fallbackPlan = 'Free';
+  const plan = plans[roleKey][normalizedPlanName] ? normalizedPlanName : fallbackPlan;
   return { plan_name: plan, ...(plans[roleKey][plan] || plans[roleKey].Free) };
 }
 
@@ -719,7 +770,7 @@ async function route(request, { params }) {
         } catch (e) { console.warn('subscription expiry update skipped:', e?.message); }
         sub = { ...sub, status: 'expired' };
       }
-      const activePlan = sub?.status === 'active' ? sub.plan_name : (role === 'employer' ? 'Starter' : 'Basic');
+      const activePlan = sub?.status === 'active' ? sub.plan_name : 'Free';
       const features = planFeatures(role, activePlan);
       const subscription = sub || { user_id: me.id, role, status: 'active' };
       return json({ subscription: { ...subscription, plan_name: features.plan_name, validity_months: planValidityMonths(role, features.plan_name) }, features });
@@ -730,7 +781,8 @@ async function route(request, { params }) {
       const role = body.role === 'employer' ? 'employer' : 'worker';
       if ((me.role === 'employer' ? 'employer' : 'worker') !== role && me.role !== 'admin') return err('Subscription role mismatch', 403);
       const allowed = role === 'employer' ? ['Starter','Business','Enterprise'] : ['Basic','Growth','Premium'];
-      const planName = allowed.includes(body.plan_name) ? body.plan_name : (role === 'employer' ? 'Starter' : 'Basic');
+      if (!allowed.includes(body.plan_name)) return err('Invalid subscription plan selected', 400);
+      const planName = body.plan_name;
       const startedAt = new Date();
       const expiresAt = body.expires_at ? new Date(body.expires_at) : planExpiryDate(role, planName, startedAt);
       const payload = {
