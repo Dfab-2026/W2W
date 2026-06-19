@@ -212,16 +212,38 @@ async function api(path, { method = 'GET', body, token } = {}) {
 }
 
 async function uploadFile(file, kind, token) {
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('kind', kind);
-  const res = await fetch('/api/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: fd,
-  });
+  const makeUploadRequest = async (accessToken) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('kind', kind);
+    return fetch('/api/upload', {
+      method: 'POST',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: fd,
+    });
+  };
+
+  let accessToken = token || getSavedAccessToken();
+  let res = await makeUploadRequest(accessToken);
+
+  // Profile photos/logos use multipart upload, so they cannot reuse api().
+  // Refresh the saved session once before showing an Unauthorized error.
+  if (res.status === 401) {
+    const refreshedToken = await getFreshAccessToken(null);
+    if (refreshedToken && refreshedToken !== accessToken) {
+      accessToken = refreshedToken;
+      res = await makeUploadRequest(accessToken);
+    }
+  }
+
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+  if (!res.ok) {
+    const message = data.error || `Upload failed (${res.status})`;
+    if (res.status === 401 || /unauthorized|jwt|token|session/i.test(message)) {
+      throw new Error('Please login again or refresh the page, then try once more.');
+    }
+    throw new Error(message);
+  }
   return data; // { url, path }
 }
 
@@ -659,6 +681,36 @@ const [lang, setLang] = useState('en');
   );
 }
 
+
+function MaintenanceScreen({ settings, isAdmin = false, onRefresh }) {
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#0f172a,transparent_42%),linear-gradient(135deg,#020617,#111827,#1e293b)] grid place-items-center px-4 text-white">
+      <Card className="w-full max-w-xl border-white/10 bg-white/10 backdrop-blur-2xl text-white shadow-2xl">
+        <CardContent className="p-8 text-center space-y-5">
+          <motion.div
+            className="mx-auto w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-400 to-orange-600 grid place-items-center shadow-xl shadow-amber-500/30"
+            animate={{ scale: [1, 1.05, 1], rotate: [0, 2, -2, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+          >
+            <ShieldAlert className="w-10 h-10" />
+          </motion.div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-amber-200 font-bold">Work2Wish Update Mode</p>
+            <h1 className="mt-2 text-3xl font-black">{settings?.maintenance_title || 'App Update in Progress'}</h1>
+            <p className="mt-3 text-white/80 leading-relaxed">{settings?.maintenance_message || 'We are improving Work2Wish. Please try again shortly.'}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-white/80">
+            <Clock className="w-4 h-4 inline mr-2 text-amber-200" />
+            Estimated time: {settings?.maintenance_eta || '30 minutes'}
+          </div>
+          {isAdmin && <Badge className="bg-emerald-500/20 text-emerald-100 border border-emerald-300/30">Admin access allowed</Badge>}
+          <Button onClick={onRefresh} className="bg-white text-slate-900 hover:bg-slate-100">Refresh</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ============================================================
 // MAIN APP — single combined login, role only matters at signup
 // ============================================================
@@ -672,6 +724,8 @@ export default function App() {
   const [oauthCtx, setOauthCtx] = useState(null);
   const [forgotEmail, setForgotEmail] = useState('');
   const [language, setLanguage] = useState('en'); // en, hi, etc.
+  const [appSettings, setAppSettings] = useState(null);
+  const [maintenanceChecked, setMaintenanceChecked] = useState(false);
 
   // Smart screen setter that tracks history
   const setScreen = (newScreen) => {
@@ -686,6 +740,20 @@ export default function App() {
     setNavigationHistory(prev => prev.slice(0, -1));
     setScreenState(previousScreen);
   };
+
+  const loadAppSettings = async () => {
+    try {
+      const { data, error } = await getSupabase()
+        .from('app_settings')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+      if (!error && data) setAppSettings(data);
+    } catch {}
+    setMaintenanceChecked(true);
+  };
+
+  useEffect(() => { loadAppSettings(); }, []);
 
   // ----- Boot sequence -----
   useEffect(() => {
@@ -805,6 +873,10 @@ export default function App() {
       handleAuthed({ session: data.session, role: fin.role, profile });
     } catch (e) { toast.error(e.message); }
   };
+
+  if (maintenanceChecked && appSettings?.maintenance_mode && auth?.role !== 'admin' && ['worker-app', 'employer-app'].includes(screen)) {
+    return <MaintenanceScreen settings={appSettings} onRefresh={loadAppSettings} />;
+  }
 
   return (
     <AnimatePresence mode="wait">
@@ -933,6 +1005,53 @@ function AdminApp({ auth, onLogout }) {
   const [messages, setMessages] = useState([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [adminMessage, setAdminMessage] = useState('');
+  const [adminTab, setAdminTab] = useState('users');
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settings, setSettings] = useState({
+    maintenance_mode: false,
+    maintenance_title: 'App Update in Progress',
+    maintenance_message: 'We are improving Work2Wish. Please try again shortly.',
+    maintenance_eta: '30 minutes',
+  });
+
+  const loadSettings = async () => {
+    try {
+      const { data, error } = await getSupabase()
+        .from('app_settings')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+      if (!error && data) setSettings((s) => ({ ...s, ...data }));
+    } catch (e) {}
+  };
+
+  const saveSettings = async (patch = {}) => {
+    setSettingsBusy(true);
+    try {
+      const next = { ...settings, ...patch, id: 1, updated_at: new Date().toISOString() };
+      const { error } = await getSupabase()
+        .from('app_settings')
+        .upsert(next, { onConflict: 'id' });
+      if (error) throw error;
+      setSettings(next);
+      toast.success(next.maintenance_mode ? 'Maintenance mode enabled' : 'Maintenance settings saved');
+    } catch (e) {
+      toast.error(e.message || 'Run APP_SETTINGS_MAINTENANCE.sql first');
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  useEffect(() => { loadSettings(); }, []);
+
+  const adminStats = useMemo(() => ({
+    total: users.length,
+    workers: users.filter(u => u.role === 'worker').length,
+    employers: users.filter(u => u.role === 'employer').length,
+    pending: users.filter(u => u.verification_status === 'submitted' || u.verification_status === 'pending').length,
+    verified: users.filter(u => u.verified).length,
+    blocked: users.filter(u => u.blocked).length,
+  }), [users]);
 
   const loadUsers = async () => {
     if (!token) return;
@@ -1115,7 +1234,7 @@ function AdminApp({ auth, onLogout }) {
               </motion.div>
               Admin Dashboard
             </h1>
-            <p className="text-sm text-muted-foreground">Users, documents, jobs, chats, history.</p>
+            <p className="text-sm text-muted-foreground">Control center for verifications, users, reports, messages and app update mode.</p>
           </div>
           <div className="flex gap-2 items-center">
             <NotificationCenter token={token} userId={auth?.profile?.id} channelKey="admin" accent="amber" />
@@ -1126,15 +1245,77 @@ function AdminApp({ auth, onLogout }) {
       </header>
 
       <main className="container py-6 space-y-5">
-        <div className="grid sm:grid-cols-5 gap-3">
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total users</p><p className="text-2xl font-bold">{users.length}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Workers</p><p className="text-2xl font-bold">{users.filter(u => u.role === 'worker').length}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Employers</p><p className="text-2xl font-bold">{users.filter(u => u.role === 'employer').length}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Pending verify</p><p className="text-2xl font-bold text-amber-600">{users.filter(u => u.verification_status === 'submitted' || u.verification_status === 'pending').length}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Blocked</p><p className="text-2xl font-bold text-red-600">{users.filter(u => u.blocked).length}</p></CardContent></Card>
+        <div className="grid lg:grid-cols-6 sm:grid-cols-3 gap-3">
+          {[
+            ['Total users', adminStats.total, 'text-slate-900'],
+            ['Workers', adminStats.workers, 'text-blue-700'],
+            ['Employers', adminStats.employers, 'text-emerald-700'],
+            ['Pending verify', adminStats.pending, 'text-amber-600'],
+            ['Verified', adminStats.verified, 'text-emerald-600'],
+            ['Blocked', adminStats.blocked, 'text-red-600'],
+          ].map(([label, value, color]) => (
+            <Card key={label} className="border-0 shadow-sm bg-white/90"><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className={`text-2xl font-black ${color}`}>{value}</p></CardContent></Card>
+          ))}
         </div>
 
-        <Card>
+        <Card className="border-0 shadow-sm bg-white/95">
+          <CardContent className="p-3">
+            <div className="grid sm:grid-cols-4 gap-2">
+              {[
+                ['users', 'Users & Verification'],
+                ['maintenance', 'Update Mode'],
+                ['messages', 'Admin Messages'],
+                ['safety', 'Safety Actions'],
+              ].map(([key, label]) => (
+                <Button key={key} variant={adminTab === key ? 'default' : 'outline'} onClick={() => setAdminTab(key)} className={adminTab === key ? 'bg-slate-900 text-white' : 'bg-white'}>{label}</Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {adminTab === 'maintenance' && (
+          <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-amber-700" /> App Update / Maintenance Mode</CardTitle>
+              <CardDescription>Turn this ON before deployment or database changes. Workers and employers will see an update screen. Admin remains allowed.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-3 gap-3">
+                <div>
+                  <Label>Title</Label>
+                  <Input value={settings.maintenance_title || ''} onChange={(e) => setSettings(s => ({ ...s, maintenance_title: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Estimated time</Label>
+                  <Input value={settings.maintenance_eta || ''} onChange={(e) => setSettings(s => ({ ...s, maintenance_eta: e.target.value }))} placeholder="30 minutes" />
+                </div>
+                <div className="flex items-end">
+                  <Badge className={settings.maintenance_mode ? 'bg-red-100 text-red-700 px-4 py-2' : 'bg-emerald-100 text-emerald-700 px-4 py-2'}>{settings.maintenance_mode ? 'Maintenance ON' : 'App Live'}</Badge>
+                </div>
+              </div>
+              <div>
+                <Label>Message shown to users</Label>
+                <Textarea value={settings.maintenance_message || ''} onChange={(e) => setSettings(s => ({ ...s, maintenance_message: e.target.value }))} className="bg-white" />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={settingsBusy} onClick={() => saveSettings({ maintenance_mode: true })} className="bg-red-600 hover:bg-red-700">{settingsBusy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldAlert className="w-4 h-4 mr-2" />} Turn ON Maintenance</Button>
+                <Button disabled={settingsBusy} onClick={() => saveSettings({ maintenance_mode: false })} className="bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 className="w-4 h-4 mr-2" /> Turn OFF Maintenance</Button>
+                <Button disabled={settingsBusy} variant="outline" onClick={() => saveSettings()}><Save className="w-4 h-4 mr-2" /> Save Text</Button>
+                <Button variant="outline" onClick={loadSettings}>Reload</Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {adminTab === 'messages' && (
+          <Card className="border-sky-200 bg-sky-50/70"><CardContent className="p-4 text-sm text-sky-800">Open a user from Users & Verification, then use the message box in the profile details popup to send correction requests or update notes.</CardContent></Card>
+        )}
+
+        {adminTab === 'safety' && (
+          <Card className="border-red-200 bg-red-50/70"><CardContent className="p-4 text-sm text-red-800">Block, unblock and delete controls are available in the user table and user details popup. Admin accounts are protected from these actions.</CardContent></Card>
+        )}
+
+        {adminTab === 'users' && <Card>
           <CardHeader className="space-y-3">
             <div className="flex flex-col gap-3">
               <div>
@@ -1220,7 +1401,7 @@ function AdminApp({ auth, onLogout }) {
               </table>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
       </main>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
@@ -4414,7 +4595,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
             </>
           ) : (
             <Button type="button" className={`${isEmerald ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600'} text-white disabled:text-white disabled:opacity-100`} onClick={saveOnlyLocation} disabled={savingLocation || !canSaveLocation}>
-              {savingLocation ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} {hasSaved ? 'Save change' : 'Save location'}
+              {savingLocation ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} {hasSaved ? 'Save Changes' : 'Save location'}
             </Button>
           )}
         </div>
