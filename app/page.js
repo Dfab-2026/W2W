@@ -4004,7 +4004,13 @@ function WorkerHome({ token, me, onChat }) {
         showSubscriptionRequired('unlimited job applications', 'Growth');
         return;
       }
-      await api(`jobs/${jobId}/apply`, { method: 'POST', token, body: {} });
+      const applyRes = await api(`jobs/${jobId}/apply`, { method: 'POST', token, body: {} });
+      if (applyRes?.already_applied) {
+        toast.message('You already applied for this job. Check Applied Jobs.');
+        setSelected(null);
+        load();
+        return;
+      }
       if (Number.isFinite(workerSubscription.maxApplicationsPerMonth)) {
         localStorage.setItem(workerApplicationMonthKey, String(applicationsThisMonth + 1));
       }
@@ -4017,7 +4023,16 @@ function WorkerHome({ token, me, onChat }) {
       toast.success('Applied! Employer notified.');
       setSelected(null);
       load();
-    } catch (e) { toast.error(e.message); }
+    } catch (e) {
+      const msg = String(e.message || '').toLowerCase();
+      if (msg.includes('duplicate key') || msg.includes('already exists')) {
+        toast.message('You already applied for this job. Check Applied Jobs.');
+        setSelected(null);
+        load();
+      } else {
+        toast.error(e.message || 'Unable to apply. Please try again.');
+      }
+    }
   };
 
   // When a radius search is active, show ONLY jobs inside the selected distance.
@@ -4896,17 +4911,17 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             </CardDescription>
           </div>
           {lockedVerified ? (
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
+            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
           ) : status === 'submitted' || status === 'pending' ? (
-            <Badge className="bg-amber-100 text-amber-700">Pending</Badge>
+            <Badge className="bg-amber-100 text-amber-700">Pending Approval</Badge>
           ) : status === 'modified' ? (
-            <Badge className="bg-amber-100 text-amber-700">Modified</Badge>
+            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
           ) : status === 'saved' ? (
             <Badge className="bg-sky-100 text-sky-700">Saved</Badge>
           ) : status === 'rejected' ? (
             <Badge className="bg-red-100 text-red-700">Rejected</Badge>
           ) : (
-            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
+            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
           )}
         </div>
       </CardHeader>
@@ -5213,7 +5228,6 @@ function sectionReviewState(me, section, fallbackStatus, verified) {
   // Example: Bank verify should mark only Bank as pending, not Documents/Profile.
   // When section-wise verification exists, do not use the old global fallback for other cards.
   if (Object.keys(sectionStatuses).length > 0) {
-    if (verified) return 'verified';
     return 'not_submitted';
   }
 
@@ -5547,7 +5561,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   const workerDocumentCardVerifiedForSave = (workerDocumentReviewStatus === 'verified' || verified) && !workerDocumentChangedAfterReview;
   const workerBankCardVerifiedForSave = (workerBankReviewStatus === 'verified' || verified) && !workerBankChangedAfterReview;
   const workerAllProfileCardsVerified = workerProfileCardVerifiedForSave && workerDocumentCardVerifiedForSave && workerBankCardVerifiedForSave;
-  const workerAnyProfileCardPending = [workerProfileReviewStatus, workerDocumentReviewStatus, workerBankReviewStatus].some((s) => s === 'pending') || workerProfileChangedAfterReview || workerDocumentChangedAfterReview || workerBankChangedAfterReview;
+  const workerAnyProfileCardPending = [workerProfileReviewStatus, workerDocumentReviewStatus, workerBankReviewStatus].some((s) => s === 'pending') && !(workerProfileChangedAfterReview || workerDocumentChangedAfterReview || workerBankChangedAfterReview);
   const workerTopStatus = finalSaved && workerAllProfileCardsVerified ? 'verified' : workerAnyProfileCardPending ? 'pending' : 'unverified';
 
   useEffect(() => {
@@ -5589,9 +5603,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   };
 
   const saveWorkerLocation = async (loc) => {
-    const nextStatus = verified
-      ? 'pending'
-      : (form.verification_status === 'pending' || form.verification_status === 'submitted' ? 'pending' : 'saved');
+    const nextStatus = 'not_submitted';
     const body = {
       location_text: loc.location_text || '',
       latitude: loc.latitude,
@@ -5646,11 +5658,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="indigo" />; })()}
               {workerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
+                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : workerTopStatus === 'pending' ? (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
+                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
             </div>
             {me.profile?.login_id && (
@@ -6291,7 +6303,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             <p className="font-semibold flex items-center gap-2"><Camera className="w-4 h-4" /> Selfie verification</p>
             <p className="text-xs text-muted-foreground mt-1">Front face only. Camera auto captures when your face is clear inside the frame.</p>
           </div>
-          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>}
+          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
         </div>
 
         {verified ? (
@@ -6477,7 +6489,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
           <p className="font-semibold flex items-center gap-2"><Phone className="w-4 h-4" /> Mobile OTP</p>
           <p className="text-xs text-muted-foreground mt-0.5">Verify your active phone number.</p>
         </div>
-        {isVerified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>}
+        {isVerified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
       </div>
 
       {isVerified && !editing && (
@@ -7795,30 +7807,45 @@ function HiredJobs({ token, jobs, reload, onChat }) {
     }
   };
 
-  const completeJobWithPayment = async (appId) => {
+  const completeJobWithPayment = async (appId, method = 'upi') => {
     setProcessingPayment(true);
     try {
-      // Mark application as completed
+      const paymentMethod = method === 'manual' ? 'manual' : 'upi';
+      const paymentLabel = paymentMethod === 'manual' ? 'Manual Payment' : 'UPI / GPay Payment';
       await api(`applications/${appId}`, {
         method: 'PATCH',
         token,
-        body: { status: 'completed' }
+        body: {
+          status: 'completed',
+          payment_method: paymentMethod,
+          payment_status: 'paid',
+          payment_note: paymentLabel,
+          payment_amount: jobTotalPay(selectedJob),
+        }
       });
-      
-      toast.success('✅ Job marked as completed! Payment processed.');
+      toast.success(`✅ Job completed. Payment marked as ${paymentLabel}.`);
       setCompletionDialogApp(null);
-      
-      // Reload to refresh the UI
-      setTimeout(() => {
-        if (selectedJob) openJobDetails(selectedJob);
-        reload?.();
-      }, 1000);
+      if (selectedJob) await openJobDetails(selectedJob);
+      await reload?.();
     } catch (e) {
-      console.error('Completion error:', e);
-      toast.error(e.message || 'Failed to complete job');
+      console.error('Completion/payment error:', e);
+      toast.error(e.message || 'Failed to mark payment and complete job');
     } finally {
       setProcessingPayment(false);
     }
+  };
+
+  const openUpiPaymentApp = (app) => {
+    const upiId = app?.workers?.upi_id;
+    if (!upiId) {
+      toast.error('Worker UPI ID is not available. Use Manual Payment or bank details.');
+      return;
+    }
+    const workerName = app?.workers?.user_profiles?.full_name || 'Worker';
+    const amount = Math.max(0, Number(jobTotalPay(selectedJob) || 0));
+    const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(workerName)}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent('Work2Wish worker payment')}`;
+    try { window.location.href = upiUrl; } catch {}
+    toast.message('Complete the payment in GPay/UPI app, then click Mark UPI Paid.');
   };
 
   const removeHiredWorker = async (app) => {
@@ -8215,7 +8242,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
         <Dialog open={!!completionDialogApp} onOpenChange={(o) => !o && setCompletionDialogApp(null)}>
           <DialogContent className="max-w-2xl rounded-3xl">
             <DialogHeader>
-              <DialogTitle className="text-2xl font-bold">Complete Job & Process Payment</DialogTitle>
+              <DialogTitle className="text-2xl font-bold">Complete Job & Pay Worker</DialogTitle>
             </DialogHeader>
             
             <div className="space-y-4 max-h-96 overflow-y-auto">
@@ -8308,7 +8335,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
               {/* Confirmation Message */}
               <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
                 <p className="text-sm text-amber-700 dark:text-amber-300">
-                  ✅ Payment will be transferred to the account above. Click confirm to complete the job.
+                  Choose Manual Payment to mark offline payment, or use UPI/GPay using the worker UPI ID / QR code shown above. After payment, mark it paid to complete the job.
                 </p>
               </div>
             </div>
@@ -8318,21 +8345,28 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                 Cancel
               </Button>
               <Button
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-slate-700 hover:bg-slate-800 text-white"
                 disabled={processingPayment}
-                onClick={() => completeJobWithPayment(completionDialogApp.id)}
+                onClick={() => completeJobWithPayment(completionDialogApp.id, 'manual')}
               >
-                {processingPayment ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Confirm & Complete Job
-                  </>
-                )}
+                {processingPayment ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                Manual Payment
+              </Button>
+              <Button
+                variant="outline"
+                disabled={processingPayment || !completionDialogApp?.workers?.upi_id}
+                onClick={() => openUpiPaymentApp(completionDialogApp)}
+                className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+              >
+                UPI / GPay
+              </Button>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={processingPayment}
+                onClick={() => completeJobWithPayment(completionDialogApp.id, 'upi')}
+              >
+                {processingPayment ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                Mark UPI Paid
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -8582,7 +8616,7 @@ useEffect(() => {
   const employerProfileCardVerified = (employerProfileRawStatus === 'verified' || employerGloballyVerified) && !employerProfileChangedAfterReview;
   const employerDocumentCardVerified = (employerDocumentRawStatus === 'verified' || employerGloballyVerified) && !employerDocumentChangedAfterReview;
   const employerAllProfileCardsVerified = employerProfileCardVerified && employerDocumentCardVerified && employerSelfieCardVerified;
-  const employerAnyProfileCardPending = [employerProfileRawStatus, employerDocumentRawStatus].some((s) => s === 'pending') || employerProfileChangedAfterReview || employerDocumentChangedAfterReview;
+  const employerAnyProfileCardPending = [employerProfileRawStatus, employerDocumentRawStatus].some((s) => s === 'pending') && !(employerProfileChangedAfterReview || employerDocumentChangedAfterReview);
   const employerTopStatus = finalSaved && employerAllProfileCardsVerified ? 'verified' : employerAnyProfileCardPending ? 'pending' : 'unverified';
 
   useEffect(() => {
@@ -8637,9 +8671,7 @@ useEffect(() => {
   };
 
   const saveCompanyLocation = async (loc) => {
-    const nextStatus = me.extra?.verified
-      ? 'pending'
-      : (f.verification_status === 'pending' || f.verification_status === 'submitted' ? 'pending' : 'saved');
+    const nextStatus = 'not_submitted';
     const body = {
       location_text: loc.location_text || '',
       latitude: loc.latitude,
@@ -8727,11 +8759,11 @@ useEffect(() => {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="emerald" />; })()}
               {employerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Verified</Badge>
+                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : employerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><XCircle className="w-3.5 h-3.5 mr-1" /> Unverified</Badge>
+                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
             </div>
             {me.profile?.login_id && (

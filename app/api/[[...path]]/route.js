@@ -942,6 +942,20 @@ async function route(request, { params }) {
         ({ error } = await admin.from(table).update(updatePayload).eq('user_id', userId));
       }
       if (error) return err(error.message, 400);
+
+      // Final verify must also mark every visible profile card as verified.
+      // Without these section logs, dashboards can keep showing Pending/Send for Verification
+      // even after admin final approval because section-wise state wins over global status.
+      if (verified) {
+        const sectionsToVerify = profile.role === 'worker'
+          ? ['profile', 'documents', 'bank']
+          : ['profile', 'documents'];
+        for (const section of sectionsToVerify) {
+          await logActivity(admin, userId, 'admin_verified_section', { section, label: section === 'bank' ? 'Bank Details' : section === 'documents' ? 'Documents' : 'Profile' }, me.id);
+          await logActivity(admin, me.id, 'verified_profile_section', { user_id: userId, section, role: profile.role }, me.id);
+        }
+      }
+
       await notify(admin, userId, verified ? 'Account verified' : 'Verification update', verified ? 'Your Work2Wish account is now verified.' : 'Your verification was not approved. Please update your documents.', 'verification', userId);
       await logActivity(admin, userId, verified ? 'admin_verified_account' : 'admin_rejected_verification', { verified, notes }, me.id);
       await logActivity(admin, me.id, verified ? 'verified_user' : 'rejected_user', { user_id: userId, role: profile.role }, me.id);
@@ -1049,17 +1063,33 @@ async function route(request, { params }) {
           .order('id', { ascending: false })
           .limit(100);
         for (const row of rows || []) {
-          const details = typeof row.details === 'string' ? JSON.parse(row.details || '{}') : (row.details || {});
+          let details = {};
+          try {
+            details = typeof row.details === 'string' ? JSON.parse(row.details || '{}') : (row.details || {});
+          } catch (_) {
+            details = {};
+          }
           const rawSection = details.section || (row.action === 'submitted_verification' ? 'documents' : 'profile');
           // Keep old admin key `verification` and user-facing card key `documents` in sync.
-          // Admin verifies Worker/Employer Verification, but the profile page card reads Documents.
+          // The first/latest activity for a section must win exactly:
+          // submitted -> pending, admin_verified -> verified.
           const section = rawSection === 'verification' ? 'documents' : rawSection;
           if (!section_statuses[section]) {
             section_statuses[section] = row.action === 'admin_verified_section' ? 'verified' : 'pending';
           }
         }
+
+        // If admin used Final Verify, mark every required card Done unless that
+        // exact card has a newer Pending submission above. Do not overwrite pending.
+        if (extra?.verified === true && extra?.verification_status === 'verified') {
+          const requiredSections = profile?.role === 'worker' ? ['profile', 'documents', 'bank'] : ['profile', 'documents'];
+          for (const sec of requiredSections) {
+            if (!section_statuses[sec]) section_statuses[sec] = 'verified';
+          }
+        }
+
         const persistedSection = extra?.verification_section === 'verification' ? 'documents' : extra?.verification_section;
-        if (extra?.verification_status === 'verified' && persistedSection) {
+        if (extra?.verification_status === 'verified' && persistedSection && !section_statuses[persistedSection]) {
           section_statuses[persistedSection] = 'verified';
         }
       } catch (e) {
@@ -1115,7 +1145,7 @@ async function route(request, { params }) {
                     'bank_account', 'account_holder_name', 'bank_name', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url', 'selfie_verified', 'selfie_verified_at', 'certificate_url', 'previous_employer_reference',
                     'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'bio', 'available', 'address',
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url',
-                    'verification_status', 'verification_notes', 'badge_immediate_joiner'];
+                    'verification_status', 'verification_section', 'verification_notes', 'badge_immediate_joiner'];
         const wu = {}; for (const k of wf) if (k in body) wu[k] = body[k];
         if ('available' in body) wu.badge_immediate_joiner = !!body.available;
 
@@ -1135,7 +1165,7 @@ async function route(request, { params }) {
             result = await admin.from('workers').insert({ user_id: me.id, ...wu }).select().maybeSingle();
           }
           if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','selfie_front_url','selfie_left_url','selfie_right_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','selfie_front_url','selfie_left_url','selfie_right_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
             const safe = {}; for (const k of safeKeys) if (k in wu) safe[k] = wu[k];
             result = existingWorker
               ? await admin.from('workers').update(safe).eq('user_id', me.id).select().maybeSingle()
@@ -1150,7 +1180,7 @@ async function route(request, { params }) {
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'gst_certificate_url',
                     'account_holder_name', 'bank_name', 'bank_account', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url',
                     'mobile_verified', 'selfie_url', 'selfie_verified', 'selfie_verified_at',
-                    'verification_status', 'verification_notes'];
+                    'verification_status', 'verification_section', 'verification_notes'];
         const eu = {}; for (const k of ef) if (k in body) eu[k] = body[k];
 
         if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
@@ -1175,7 +1205,7 @@ async function route(request, { params }) {
             result = await admin.from('employers').insert({ user_id: me.id, ...eu }).select().maybeSingle();
           }
           if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['company_name','company_logo','industry','company_size','hr_contact','official_email','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','verification_status','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_url','selfie_verified','selfie_verified_at','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safeKeys = ['company_name','company_logo','industry','company_size','hr_contact','official_email','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_url','selfie_verified','selfie_verified_at','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
             const safe = {}; for (const k of safeKeys) if (k in eu) safe[k] = eu[k];
             result = existingEmployer
               ? await admin.from('employers').update(safe).eq('user_id', me.id).select().maybeSingle()
@@ -1540,10 +1570,30 @@ async function route(request, { params }) {
       if (requiredCandidate === 'verified' && !isWorkerVerified) return err('Only verified candidates can apply for this job', 403);
       if (requiredCandidate === 'unverified' && isWorkerVerified) return err('Only unverified candidates can apply for this job', 403);
 
+      const { data: existingApp } = await admin.from('applications')
+        .select('id,status')
+        .eq('job_id', jobId)
+        .eq('worker_id', workerId)
+        .maybeSingle();
+      if (existingApp) {
+        return json({ application: existingApp, already_applied: true, message: 'You have already applied for this job.' });
+      }
+
       const { data: app, error } = await admin.from('applications').insert({
         job_id: jobId, worker_id: workerId, message: body.message || null,
       }).select().single();
-      if (error) return err(error.message, 400);
+      if (error) {
+        const msg = String(error.message || '').toLowerCase();
+        if (error.code === '23505' || msg.includes('duplicate key') || msg.includes('already exists')) {
+          const { data: existingAfterRace } = await admin.from('applications')
+            .select('id,status')
+            .eq('job_id', jobId)
+            .eq('worker_id', workerId)
+            .maybeSingle();
+          return json({ application: existingAfterRace || null, already_applied: true, message: 'You have already applied for this job.' });
+        }
+        return err(error.message, 400);
+      }
 
       // notify employer
       await notify(admin, job.employer_id, 'New applicant',
@@ -1863,6 +1913,29 @@ async function route(request, { params }) {
         ({ data, error } = await admin.from('applications').update({ status }).eq('id', appId).select().single());
       }
       if (error) return err(error.message, 400);
+      if (status === 'completed' && body.payment_method) {
+        try {
+          await admin.from('application_payments').insert({
+            application_id: appId,
+            employer_id: appRow.jobs.employer_id,
+            worker_id: appRow.worker_id,
+            amount: Number(body.payment_amount || 0) || null,
+            currency: 'INR',
+            status: String(body.payment_method || '').toLowerCase() === 'manual' ? 'manual_paid' : 'upi_paid',
+            raw_response: {
+              payment_method: body.payment_method,
+              payment_status: body.payment_status || 'paid',
+              payment_note: body.payment_note || null,
+              marked_by: me.id,
+              marked_at: nowIso
+            },
+            created_at: nowIso,
+            updated_at: nowIso
+          });
+        } catch (paymentLogError) {
+          console.warn('manual/upi payment log skipped:', paymentLogError?.message);
+        }
+      }
       await notify(admin, appRow.worker_id,
         status === 'accepted' ? 'Job invitation received' : `Application ${status}`,
         status === 'accepted' ? `Your application for "${appRow.jobs.title}" was accepted. Open Applied Jobs and accept the invitation to move it to Ongoing Jobs.` : `Your application for "${appRow.jobs.title}" was ${status}.`,
