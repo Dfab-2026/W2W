@@ -1940,6 +1940,7 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [googleTermsAccepted, setGoogleTermsAccepted] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1952,6 +1953,10 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
   };
 
   const google = async () => {
+    if (!googleTermsAccepted) {
+      toast.error('Please read and accept the Terms & Conditions and Privacy Policy to continue with Google.');
+      return;
+    }
     try {
       const supa = getSupabase();
       const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
@@ -2024,9 +2029,32 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
           <h2 className="text-3xl font-extrabold tracking-tight">Welcome back</h2>
           <p className="text-muted-foreground mt-1">Log in to continue.</p>
 
-          <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}>
-            <Button variant="outline" className="w-full h-12 mt-6 hover:shadow-md transition-shadow"
-                    onClick={google}>
+          <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
+            <label className="flex items-start gap-3 text-xs leading-5 text-slate-700">
+              <input
+                type="checkbox"
+                checked={googleTermsAccepted}
+                onChange={(e) => setGoogleTermsAccepted(e.target.checked)}
+                className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 accent-sky-600"
+              />
+              <span>
+                I have read and agree to Work2Wish{' '}
+                <a href="/terms" target="_blank" rel="noreferrer" className="font-semibold text-sky-700 underline underline-offset-2">
+                  Terms & Conditions
+                </a>{' '}
+                and{' '}
+                <a href="/privacy" target="_blank" rel="noreferrer" className="font-semibold text-sky-700 underline underline-offset-2">
+                  Privacy Policy
+                </a>{' '}
+                before continuing with Google.
+              </span>
+            </label>
+          </div>
+
+          <motion.div whileHover={{ y: googleTermsAccepted ? -2 : 0 }} whileTap={{ scale: googleTermsAccepted ? 0.99 : 1 }}>
+            <Button variant="outline" className={`w-full h-12 mt-3 transition-shadow ${googleTermsAccepted ? 'hover:shadow-md' : 'opacity-60 cursor-not-allowed'}`}
+                    onClick={google}
+                    disabled={!googleTermsAccepted}>
               <svg className="w-5 h-5 mr-2" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.1 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.4 1.1 7.4 2.8l5.7-5.7C33.6 6.5 29 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16.1 19 13 24 13c2.8 0 5.4 1.1 7.4 2.8l5.7-5.7C33.6 6.5 29 4.5 24 4.5 16.4 4.5 9.8 8.6 6.3 14.7z"/><path fill="#4CAF50" d="M24 43.5c5 0 9.5-1.9 12.9-5l-6-4.9c-2 1.4-4.4 2.4-6.9 2.4-5.3 0-9.7-3-11.3-7l-6.5 5C9.5 39.4 16.1 43.5 24 43.5z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 1.9-1.9 3.5-3.4 4.7l6 4.9C40 35.1 43.5 30 43.5 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
               Continue with Google
             </Button>
