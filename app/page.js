@@ -196,8 +196,8 @@ function getSubscriptionFeatures(role = 'worker', profile = null) {
 function SubscriptionLock({ title = 'Upgrade required', description = 'This feature is not available in your current plan.' }) {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
-      <p className="text-sm font-bold text-amber-800">{title}</p>
-      <p className="mt-1 text-xs text-amber-700">{description}</p>
+      <p className="text-sm font-bold !text-black">{title}</p>
+      <p className="mt-1 text-xs !text-black">{description}</p>
     </div>
   );
 }
@@ -792,7 +792,7 @@ function MaintenanceScreen({ settings, isAdmin = false, onRefresh }) {
             Estimated time: {settings?.maintenance_eta || '30 minutes'}
           </div>
           {isAdmin && <Badge className="bg-emerald-500/20 text-emerald-100 border border-emerald-300/30">Admin access allowed</Badge>}
-          <Button onClick={onRefresh} className="bg-white text-slate-900 hover:bg-slate-100">Refresh</Button>
+          <Button onClick={onRefresh} className="bg-white !text-black hover:bg-slate-100">Refresh</Button>
         </CardContent>
       </Card>
     </div>
@@ -1335,7 +1335,7 @@ function AdminApp({ auth, onLogout }) {
       <main className="container py-6 space-y-5">
         <div className="grid lg:grid-cols-6 sm:grid-cols-3 gap-3">
           {[
-            ['Total users', adminStats.total, 'text-slate-900'],
+            ['Total users', adminStats.total, '!text-black'],
             ['Workers', adminStats.workers, 'text-blue-700'],
             ['Employers', adminStats.employers, 'text-emerald-700'],
             ['Pending verify', adminStats.pending, 'text-amber-600'],
@@ -1364,7 +1364,7 @@ function AdminApp({ auth, onLogout }) {
         {adminTab === 'maintenance' && (
           <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 shadow-sm">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-amber-700" /> App Update / Maintenance Mode</CardTitle>
+              <CardTitle className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 !text-black" /> App Update / Maintenance Mode</CardTitle>
               <CardDescription>Turn this ON before deployment or database changes. Workers and employers will see an update screen. Admin remains allowed.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1429,7 +1429,7 @@ function AdminApp({ auth, onLogout }) {
           <CardContent>
             <div className="overflow-x-auto rounded-xl border">
               <table className="w-full text-sm bg-white">
-                <thead className="bg-slate-100 text-slate-600">
+                <thead className="bg-slate-100 !text-black">
                   <tr>
                     <th className="text-left p-3">User</th>
                     <th className="text-left p-3">Role</th>
@@ -1470,7 +1470,7 @@ function AdminApp({ auth, onLogout }) {
                             const submittedAt = u.verification_submitted_at ? new Date(u.verification_submitted_at) : null;
                             const verifiedAt = u.verified_at ? new Date(u.verified_at) : null;
                             const needsReview = submittedAt && (!verifiedAt || submittedAt.getTime() > verifiedAt.getTime());
-                            if (needsReview) return <Badge className="bg-amber-100 text-amber-800 block w-fit">Updated</Badge>;
+                            if (needsReview) return <Badge className="bg-amber-100 !text-black block w-fit">Updated</Badge>;
                           } catch (e) {}
                           return null;
                         })()}
@@ -1591,7 +1591,7 @@ function AdminApp({ auth, onLogout }) {
                   const submittedAt = selected.verification_submitted_at ? new Date(selected.verification_submitted_at) : null;
                   const verifiedAt = selected.verified_at ? new Date(selected.verified_at) : null;
                   const needsReview = submittedAt && (!verifiedAt || submittedAt.getTime() > verifiedAt.getTime());
-                  if (needsReview) return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><Badge className="bg-amber-100 text-amber-800 mr-2">Updated</Badge>Documents changed. Review all three sections and verify account again.</div>;
+                  if (needsReview) return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm !text-black"><Badge className="bg-amber-100 !text-black mr-2">Updated</Badge>Documents changed. Review all three sections and verify account again.</div>;
                 } catch (e) {}
                 return null;
               })()}
@@ -1675,7 +1675,7 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
   const styles = {
     indigo: 'border-indigo-200 bg-indigo-50/60 text-indigo-800',
     emerald: 'border-emerald-200 bg-emerald-50/60 text-emerald-800',
-    amber: 'border-amber-200 bg-amber-50/60 text-amber-800',
+    amber: 'border-amber-200 bg-amber-50/60 !text-black',
   };
   const button = verified
     ? 'w2w-verify-button w2w-verify-done border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:!opacity-100 disabled:bg-emerald-600 disabled:text-white disabled:cursor-default'
@@ -1688,7 +1688,7 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h3 className="font-extrabold flex items-center gap-2">{icon}{title}</h3>
-          <Badge className={verified ? 'mt-2 bg-emerald-100 text-emerald-800 border border-emerald-200' : 'mt-2 bg-white text-slate-600 border border-slate-200'}>{verified ? 'Section verified' : 'Review pending'}</Badge>
+          <Badge className={verified ? 'mt-2 bg-emerald-100 text-emerald-800 border border-emerald-200' : 'mt-2 bg-white !text-black border border-slate-200'}>{verified ? 'Section verified' : 'Review pending'}</Badge>
         </div>
         <Button size="sm" variant="outline" disabled={disabled || verified} onClick={onVerify} className={button} style={buttonStyle}>
           <CheckCircle2 className="w-4 h-4 mr-1" /> {verified ? 'Done' : 'Verify'}
@@ -1723,7 +1723,7 @@ function AdminCompactList({ title, icon, rows = [], empty = 'No records.' }) {
 function AdminCheck({ label, checked, onChange }) {
   return (
     <label className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${checked ? 'bg-emerald-50 border-emerald-300 shadow-sm' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
-      <span className="font-semibold text-slate-800">{label}</span>
+      <span className="font-semibold !text-black">{label}</span>
       <span className="flex items-center gap-2">
         <span className={`text-xs font-bold rounded-full px-2.5 py-1 ${checked ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{checked ? 'Verified' : 'Not verified'}</span>
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-emerald-600" />
@@ -1735,8 +1735,8 @@ function AdminCheck({ label, checked, onChange }) {
 function StatusPill({ label, ok }) {
   return (
     <div className={`rounded-2xl border px-4 py-3 flex items-center justify-between ${ok ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-      <span className="text-sm font-semibold text-slate-700">{label}</span>
-      <Badge className={ok ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}>{ok ? 'Verified' : 'Pending'}</Badge>
+      <span className="text-sm font-semibold !text-black">{label}</span>
+      <Badge className={ok ? 'bg-emerald-600 text-white' : 'bg-slate-200 !text-black'}>{ok ? 'Verified' : 'Pending'}</Badge>
     </div>
   );
 }
@@ -2372,7 +2372,7 @@ function NotificationCenter({
       }
     : accent === 'amber'
       ? {
-          soft: 'bg-amber-50 text-amber-700 border-amber-200',
+          soft: 'bg-amber-50 !text-black border-amber-200',
           ring: 'ring-amber-100',
           icon: 'from-amber-500 to-orange-600',
           button: 'bg-amber-600 hover:bg-amber-700 text-white',
@@ -2492,7 +2492,7 @@ function NotificationCenter({
       <Button
         size="icon"
         variant="outline"
-        className="relative rounded-full bg-white/95 text-slate-800 border-white/70 shadow-sm hover:bg-white"
+        className="relative rounded-full bg-white/95 !text-black border-white/70 shadow-sm hover:bg-white"
         onClick={openPanel}
       >
         <Bell className="w-5 h-5" />
@@ -2532,13 +2532,13 @@ function NotificationCenter({
                       size="icon"
                       variant="ghost"
                       onClick={() => selected ? setSelected(null) : closePanel()}
-                      className="h-10 w-10 rounded-2xl bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 shrink-0"
+                      className="h-10 w-10 rounded-2xl bg-white !text-black border border-slate-200 shadow-sm hover:bg-slate-50 shrink-0"
                       title={selected ? 'Back to notifications' : 'Close notifications'}
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </Button>
                     <div className="min-w-0">
-                      <h2 className="font-extrabold text-lg text-slate-950 truncate">
+                      <h2 className="font-extrabold text-lg !text-black truncate">
                         {selected ? 'Notification Details' : 'Notifications'}
                       </h2>
                       <p className="text-xs text-slate-500 mt-0.5">
@@ -2558,7 +2558,7 @@ function NotificationCenter({
                             setNotifications(prev => prev.map(n => ({ ...n, read: true })));
                             toast.success('All marked as read');
                           }}
-                          className="h-9 rounded-xl text-xs text-slate-700 hover:bg-white"
+                          className="h-9 rounded-xl text-xs !text-black hover:bg-white"
                         >
                           Mark read
                         </Button>
@@ -2575,10 +2575,10 @@ function NotificationCenter({
                     <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${accentClasses.icon} text-white flex items-center justify-center shadow-lg mb-4`}>
                       <Bell className="w-7 h-7" />
                     </div>
-                    <h3 className="text-xl font-extrabold text-slate-950 leading-tight">
+                    <h3 className="text-xl font-extrabold !text-black leading-tight">
                       {selected?.title || 'Notification'}
                     </h3>
-                    <p className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    <p className="mt-3 text-sm !text-black leading-relaxed whitespace-pre-wrap">
                       {selected?.message || 'No details'}
                     </p>
                   </div>
@@ -2600,7 +2600,7 @@ function NotificationCenter({
 
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Received</p>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                      <p className="mt-2 text-sm font-semibold !text-black">
                         {selected?.created_at ? new Date(selected.created_at).toLocaleString() : 'Unknown'}
                       </p>
                       <p className="text-xs text-slate-500 mt-1">{timeAgo(selected?.created_at)}</p>
@@ -2639,7 +2639,7 @@ function NotificationCenter({
                       <div className="w-16 h-16 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-4">
                         <Bell className="w-8 h-8 text-slate-400" />
                       </div>
-                      <p className="font-bold text-slate-900">No notifications</p>
+                      <p className="font-bold !text-black">No notifications</p>
                       <p className="text-sm text-slate-500 mt-1">Updates will appear here when available.</p>
                     </div>
                   ) : (
@@ -2660,7 +2660,7 @@ function NotificationCenter({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="font-extrabold text-sm text-slate-950 truncate">
+                                <p className="font-extrabold text-sm !text-black truncate">
                                   {item.title || 'Notification'}
                                 </p>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -2677,7 +2677,7 @@ function NotificationCenter({
                               <ArrowRight className="w-4 h-4 text-slate-400 shrink-0 mt-1" />
                             </div>
 
-                            <p className="text-xs text-slate-600 mt-2 line-clamp-2 leading-snug">
+                            <p className="text-xs !text-black mt-2 line-clamp-2 leading-snug">
                               {item.message || 'Tap to open related page'}
                             </p>
 
@@ -2793,7 +2793,7 @@ function AccountActivitySheet({ token, accent = 'indigo' }) {
                       </div>
                       {a.details && Object.keys(a.details || {}).length > 0 && (
                         <div className="mt-3 rounded-xl border bg-slate-50 p-3 space-y-1">
-                          {detailsToWords(a.details).map((line, idx) => <p key={idx} className="text-[11px] text-slate-700 capitalize">{line}</p>)}
+                          {detailsToWords(a.details).map((line, idx) => <p key={idx} className="text-[11px] !text-black capitalize">{line}</p>)}
                         </div>
                       )}
                     </div>
@@ -2826,8 +2826,8 @@ function FreeProTrialDialog({ role = 'worker', trial, onOpenSubscription, onClos
           {isExpired ? <ShieldAlert className="h-8 w-8" /> : <Sparkles className="h-8 w-8" />}
         </div>
         <DialogHeader>
-          <DialogTitle className="text-2xl font-black text-slate-950">{title}</DialogTitle>
-          <DialogDescription className="text-slate-700">{message}</DialogDescription>
+          <DialogTitle className="text-2xl font-black !text-black">{title}</DialogTitle>
+          <DialogDescription className="!text-black">{message}</DialogDescription>
         </DialogHeader>
         {!isExpired && trial.expires_at && (
           <div className="rounded-2xl border border-emerald-100 bg-white/80 p-3 text-sm font-bold text-emerald-800">
@@ -3491,11 +3491,11 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
         >
           <div className="h-screen w-screen overflow-hidden bg-white flex flex-col rounded-none">
             <div className="relative z-30 h-16 shrink-0 bg-white/95 backdrop-blur-xl border-b border-slate-200 shadow-sm px-4 flex items-center justify-between gap-3">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-10 rounded-xl bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-10 rounded-xl bg-slate-100 !text-black hover:bg-slate-200 border-slate-200">
                 <ArrowLeft className="w-4 h-4 mr-2" /> Back
               </Button>
               <div className="text-center min-w-0">
-                <DialogTitle className="text-base sm:text-lg font-extrabold text-slate-900 truncate">Select Location</DialogTitle>
+                <DialogTitle className="text-base sm:text-lg font-extrabold !text-black truncate">Select Location</DialogTitle>
                 <DialogDescription className="text-xs text-slate-500 truncate">Use GPS or enter coordinates, then confirm the pin.</DialogDescription>
               </div>
               <Button type="button" onClick={savePin} className={`h-10 rounded-xl text-white ${isEmerald ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-indigo-700 hover:bg-indigo-800'}`}>
@@ -3524,10 +3524,10 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
               </div>
 
               <div className="absolute right-4 top-4 z-30 flex flex-col gap-2">
-                <Button type="button" onClick={useGps} className="h-10 rounded-xl bg-white text-slate-900 hover:bg-slate-50 border border-slate-200 shadow-lg">
+                <Button type="button" onClick={useGps} className="h-10 rounded-xl bg-white !text-black hover:bg-slate-50 border border-slate-200 shadow-lg">
                   <MapPin className="w-4 h-4 mr-2 text-emerald-600" /> My Location
                 </Button>
-                <Button type="button" variant="outline" className="h-10 rounded-xl bg-white text-slate-900 hover:bg-slate-50 border-slate-200 shadow-lg" onClick={() => toast.info('Use mouse/touch zoom controls on the map')}>
+                <Button type="button" variant="outline" className="h-10 rounded-xl bg-white !text-black hover:bg-slate-50 border-slate-200 shadow-lg" onClick={() => toast.info('Use mouse/touch zoom controls on the map')}>
                   <Map className="w-4 h-4 mr-2 text-sky-600" /> Map Controls
                 </Button>
               </div>
@@ -3536,7 +3536,7 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
                 <div className="grid lg:grid-cols-[1fr_180px_180px_180px] gap-3 items-end">
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Selected Location</p>
-                    <p className="mt-1 text-sm sm:text-base font-bold text-slate-900 truncate">{value || (hasPin ? formatCoordinates(latNum, lngNum) : 'Choose your exact location')}</p>
+                    <p className="mt-1 text-sm sm:text-base font-bold !text-black truncate">{value || (hasPin ? formatCoordinates(latNum, lngNum) : 'Choose your exact location')}</p>
                     {hasPin && <p className="text-xs text-slate-500 mt-0.5">{formatCoordinates(latNum, lngNum)}</p>}
                   </div>
                   <Input type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude" className="h-11 rounded-xl bg-white" />
@@ -3824,10 +3824,10 @@ function LocationSearchBox({
             className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border bg-white shadow-xl ring-1 ring-slate-200"
           >
             {loading && predictions.length === 0 && (
-              <div className="px-4 py-3 text-sm text-slate-600 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
+              <div className="px-4 py-3 text-sm !text-black flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
             )}
             {!loading && predictions.length === 0 && locationError && (
-              <div className="px-4 py-3 text-sm text-amber-700 bg-amber-50">{locationError}</div>
+              <div className="px-4 py-3 text-sm !text-black bg-amber-50">{locationError}</div>
             )}
             {predictions.map((p) => (
               <button
@@ -3841,7 +3841,7 @@ function LocationSearchBox({
                   {(p.types || []).includes('establishment') ? <Building2 className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-900 truncate">
+                  <p className="text-sm font-semibold !text-black truncate">
                     {p.structured_formatting?.main_text || p.description}
                   </p>
                   <p className="text-xs text-muted-foreground line-clamp-2">
@@ -4126,12 +4126,12 @@ function WorkerHome({ token, me, onChat }) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-3">
                 <div className="p-3 rounded-2xl border bg-emerald-50 text-emerald-700"><p className="text-xs">Daily pay</p><p className="font-bold">{jobPayLabel(selected)}</p></div>
                 <div className="p-3 rounded-2xl border bg-indigo-50 text-indigo-700"><p className="text-xs">Duration</p><p className="font-bold">{jobDurationLabel(selected)}</p></div>
-                <div className="p-3 rounded-2xl border bg-slate-50 text-slate-700"><p className="text-xs">Workers</p><p className="font-bold">{selected.workers_needed || 1}</p></div>
-                <div className="p-3 rounded-2xl border bg-amber-50 text-amber-700"><p className="text-xs">Shift</p><p className="font-bold capitalize">{selected.shift_timing || 'day'}</p></div>
+                <div className="p-3 rounded-2xl border bg-slate-50 !text-black"><p className="text-xs">Workers</p><p className="font-bold">{selected.workers_needed || 1}</p></div>
+                <div className="p-3 rounded-2xl border bg-amber-50 !text-black"><p className="text-xs">Shift</p><p className="font-bold capitalize">{selected.shift_timing || 'day'}</p></div>
                 <div className="p-3 rounded-2xl border bg-rose-50 text-rose-700"><p className="text-xs">Applied</p><p className="font-bold">{Number(selected.applicants_count || 0)} worker(s)</p></div>
               </div>
               <div className="rounded-2xl border bg-white p-4 space-y-3">
-                <div><p className="text-xs font-semibold text-slate-500">Work details</p><p className="text-sm whitespace-pre-wrap text-slate-700 mt-1">{selected.description || 'No description provided.'}</p></div>
+                <div><p className="text-xs font-semibold text-slate-500">Work details</p><p className="text-sm whitespace-pre-wrap !text-black mt-1">{selected.description || 'No description provided.'}</p></div>
                 <div className="grid sm:grid-cols-2 gap-2 text-sm">
                   <InfoTile label="Skill needed" value={selected.skill_needed || 'Any suitable worker'} />
                   <InfoTile label="Experience" value={selected.experience || 'beginner'} />
@@ -4388,19 +4388,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                   </Button>
                 )}
                 {a.status === 'completed' && !a.feedback_given && (
-                  <Button size="sm" variant="outline" className="flex-1"
-                          onClick={() => {
-                            // Open feedback dialog
-                            const rating = prompt('Rate the company (1-5 stars):');
-                            const feedback = prompt('Write feedback about the company/employer:');
-                            if (rating && feedback) {
-                              api('feedback/company', { method: 'POST', token, body: { application_id: a.id, rating: Number(rating), feedback_text: feedback } })
-                                .then(() => { load(); toast.success('Feedback submitted!'); })
-                                .catch(e => toast.error(e.message));
-                            }
-                          }}>
-                    <Star className="w-4 h-4 mr-1" /> Give Feedback
-                  </Button>
+                  <FeedbackStarsButton token={token} applicationId={a.id} target="company" label="Give Feedback" onDone={load} />
                 )}
                 {a.status === 'completed' && a.feedback_given && (
                   <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-sm font-semibold text-emerald-700">
@@ -4433,19 +4421,19 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                     <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">Work Schedule</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Start</p>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{a.jobs?.start_date ? new Date(a.jobs.start_date).toLocaleDateString() : 'TBD'}</p>
+                        <p className="text-[9px] !text-black dark:text-slate-400">Start</p>
+                        <p className="text-sm font-bold !text-black dark:text-white">{a.jobs?.start_date ? new Date(a.jobs.start_date).toLocaleDateString() : 'TBD'}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Duration</p>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{jobDurationLabel(a.jobs)}</p>
+                        <p className="text-[9px] !text-black dark:text-slate-400">Duration</p>
+                        <p className="text-sm font-bold !text-black dark:text-white">{jobDurationLabel(a.jobs)}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Shift</p>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white capitalize">{a.jobs?.shift_timing || 'Day'}</p>
+                        <p className="text-[9px] !text-black dark:text-slate-400">Shift</p>
+                        <p className="text-sm font-bold !text-black dark:text-white capitalize">{a.jobs?.shift_timing || 'Day'}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Daily Pay</p>
+                        <p className="text-[9px] !text-black dark:text-slate-400">Daily Pay</p>
                         <p className="text-sm font-bold text-emerald-600">{jobPayLabel(a.jobs)}</p>
                       </div>
                     </div>
@@ -4464,7 +4452,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                           <div key={idx} className={`text-center p-2 rounded-lg text-[10px] font-bold transition ${
                             isPresent ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' :
                             isAbsent ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' :
-                            'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                            'bg-slate-200 dark:bg-slate-700 !text-black dark:text-slate-300'
                           }`}>
                             {isPresent ? <Check className="w-4 h-4 mx-auto mb-0.5" /> : isAbsent ? '❌' : ''}
                             <p>{dateStr}</p>
@@ -4491,7 +4479,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
                       <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Location</p>
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mt-1">
+                      <p className="text-sm font-bold !text-black dark:text-slate-300 flex items-center gap-1.5 mt-1">
                         <MapPin className="w-4 h-4 text-emerald-600" />
                         {a.jobs?.location_text}
                       </p>
@@ -4506,7 +4494,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                   
                   <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
                     <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Description</p>
-                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{a.jobs?.description || 'No description provided'}</p>
+                    <p className="text-sm !text-black dark:text-slate-300 leading-relaxed">{a.jobs?.description || 'No description provided'}</p>
                   </div>
                 </motion.div>
               )}
@@ -4540,110 +4528,375 @@ function PhotoPreviewDialog({ photo, title, onClose }) {
 }
 
 
+
+
+function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 'Give Feedback', className = '', size = 'sm', onDone }) {
+  const [open, setOpen] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const endpoint = target === 'company' ? 'feedback/company' : 'feedback/worker';
+  const title = target === 'company' ? 'Rate Company' : 'Rate Worker';
+  const placeholder = target === 'company' ? 'Write your feedback about this company...' : 'Write your feedback about this worker...';
+
+  const submit = async () => {
+    if (!rating) return toast.error('Please select star rating.');
+    if (!feedbackText.trim()) return toast.error('Please write feedback.');
+    try {
+      setSaving(true);
+      await api(endpoint, { method: 'POST', token, body: { application_id: applicationId, rating, feedback_text: feedbackText.trim() } });
+      toast.success('Feedback submitted and saved!');
+      setOpen(false);
+      setRating(0);
+      setFeedbackText('');
+      onDone?.();
+    } catch (e) {
+      toast.error(e.message || 'Unable to submit feedback.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Button size={size} variant="outline" className={className || 'flex-1 border-amber-200 !text-black hover:bg-amber-50'} onClick={() => setOpen(true)}>
+        <Star className="w-4 h-4 mr-1" /> {label}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md rounded-3xl border-0 shadow-2xl bg-white p-0 overflow-hidden">
+          <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-5">
+            <DialogTitle className="text-xl font-black">{title}</DialogTitle>
+            <DialogDescription className="text-white/85">Select the stars and add a clean feedback message.</DialogDescription>
+          </div>
+          <div className="p-5 space-y-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-center">
+              <p className="text-xs font-bold !text-black uppercase tracking-wide mb-2">Your Rating</p>
+              <div className="flex justify-center gap-2">
+                {[1,2,3,4,5].map((n) => (
+                  <button key={n} type="button" onClick={() => setRating(n)} className={`text-4xl leading-none transition ${n <= rating ? 'text-amber-500 scale-110' : 'text-slate-300 hover:text-amber-300'}`}>
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder={placeholder} className="min-h-[120px] rounded-2xl" />
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={submit}>
+                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />} Submit
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function ProfileDetailsDialog({ data, onClose, onChat }) {
   const open = !!data?.profile;
   const p = data?.profile || {};
   const stats = data?.stats || {};
-  const isWorker = p.role === 'worker';
-  const title = isWorker ? (p.full_name || 'Worker profile') : (p.company_name || p.full_name || 'Company profile');
-  const photo = isWorker ? p.photo_url : (p.company_logo || p.photo_url);
+  const profileRole = String(p.role || p.user_role || p.account_type || '').toLowerCase();
+  const hasCompanyIdentity = profileRole.includes('employer') || profileRole.includes('company') || profileRole.includes('business') || !!p.company_name || !!p.company_address || !!p.hr_contact || !!p.official_email || !!p.company_logo || !!p.company_logo_url || !!p.logo_url || !!p.logo;
+  const hasWorkerIdentity = profileRole.includes('worker') || profileRole.includes('employee');
+  const isWorker = hasCompanyIdentity ? false : (hasWorkerIdentity || !!p.skills || !!p.resume_url || !!p.selfie_url || !!p.selfie_front_url);
+  const title = isWorker ? (p.full_name || p.name || 'Worker profile') : (p.company_name || p.full_name || 'Company profile');
+  const photo = isWorker ? (p.selfie_front_url || p.selfie_url || p.photo_url || p.profile_photo_url || p.profile_image_url || p.image_url) : (p.company_logo || p.company_logo_url || p.logo_url || p.logo || p.photo_url || p.profile_photo_url || p.profile_image_url || p.image_url);
+  const resumeUrl = p.resume_url || p.resume || p.resume_file_url || p.cv_url;
   const feedbacks = data?.feedbacks || [];
+  const blackMarks = data?.blackMarks || [];
   const calculatedRatingCount = feedbacks.filter((f) => Number(f.rating) > 0).length;
   const calculatedRatingAverage = calculatedRatingCount ? feedbacks.reduce((sum, f) => sum + Number(f.rating || 0), 0) / calculatedRatingCount : 0;
-  const publicRatingAverage = Number(stats.ratingAverage || 0) || calculatedRatingAverage;
-  const publicRatingCount = Number(stats.ratingCount || stats.feedbackCount || 0) || calculatedRatingCount;
-  const activeHires = data?.activeHires || [];
+  const publicRatingAverage = Number(stats.ratingAverage || stats.average_rating || p.average_rating || 0) || calculatedRatingAverage;
+  const publicRatingCount = Number(stats.ratingCount || stats.feedbackCount || p.feedback_count || 0) || calculatedRatingCount;
   const postedJobs = data?.postedJobs || [];
+  const hiredCount = Number(stats.hiredWorkers || stats.completedHires || stats.completedWorks || 0) || 0;
+  const blackMarkCount = Number(stats.blackMarkCount || p.black_mark_count || blackMarks.length || 0) || 0;
+  const [localBlackMarkCount, setLocalBlackMarkCount] = useState(blackMarkCount);
+  useEffect(() => { setLocalBlackMarkCount(blackMarkCount); }, [blackMarkCount]);
+  const visibleBlackMarkCount = localBlackMarkCount;
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [activePopup, setActivePopup] = useState(null);
+  const [profileFeedbackRating, setProfileFeedbackRating] = useState(5);
+  const [profileFeedbackText, setProfileFeedbackText] = useState('');
+  const [submittingProfileFeedback, setSubmittingProfileFeedback] = useState(false);
+  const [blackReason, setBlackReason] = useState('');
+  const [markingBlack, setMarkingBlack] = useState(false);
+
+  const closePopup = () => setActivePopup(null);
+
+  const markBlackDot = async () => {
+    if (!p.id) return;
+    if (!blackReason.trim()) return toast.error('Please enter a reason before marking black mark.');
+    try {
+      setMarkingBlack(true);
+      await api('blackmarks/mark', { method: 'POST', token: getSavedAccessToken(), body: { profile_id: p.id, reason: blackReason.trim() } });
+      setLocalBlackMarkCount((n) => Number(n || 0) + 1);
+      toast.success('Black mark added to profile.');
+      setBlackReason('');
+      closePopup();
+    } catch (e) {
+      toast.error(e.message || 'Unable to mark black mark.');
+    } finally {
+      setMarkingBlack(false);
+    }
+  };
+
+  const submitProfileFeedback = async () => {
+    if (!p.id) return;
+    if (!profileFeedbackText.trim()) return toast.error('Please write feedback.');
+    try {
+      setSubmittingProfileFeedback(true);
+      await api('profiles/feedback', {
+        method: 'POST',
+        token: getSavedAccessToken(),
+        body: { profile_id: p.id, rating: Number(profileFeedbackRating), feedback_text: profileFeedbackText.trim() }
+      });
+      toast.success('Feedback submitted.');
+      setProfileFeedbackText('');
+      setProfileFeedbackRating(5);
+      closePopup();
+    } catch (e) {
+      toast.error(e.message || 'Unable to submit feedback.');
+    } finally {
+      setSubmittingProfileFeedback(false);
+    }
+  };
+
+  const Stars = ({ value = 0, size = 'text-xl' }) => {
+    const rounded = Math.round(Number(value || 0));
+    return <span className={`${size} font-black text-amber-500`}>{'★'.repeat(rounded)}<span className="text-amber-200">{'★'.repeat(Math.max(0, 5 - rounded))}</span></span>;
+  };
+
+  const ProfileActionButton = ({ children, onClick }) => (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={onClick}
+      className="min-h-16 rounded-3xl border border-slate-300 bg-white !text-black font-black shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all flex items-center justify-center text-sm sm:text-base tracking-tight [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black"
+    >
+      <span className="flex items-center justify-center gap-2 !text-black font-black text-center leading-tight whitespace-normal break-words px-1">{children}</span>
+    </Button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
-      <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden premium-panel max-h-[92vh]">
-        <div className={`p-5 md:p-6 text-white ${isWorker ? 'bg-gradient-to-r from-indigo-700 via-blue-600 to-sky-500' : 'bg-gradient-to-r from-emerald-700 via-green-600 to-teal-500'}`}>
-          <div className="flex items-start gap-4">
-            <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-white/70" title="View profile photo">
-              <Avatar className="w-16 h-16 border-2 border-white/50 shadow-xl"><AvatarImage src={photo} /><AvatarFallback>{initials(title)}</AvatarFallback></Avatar>
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle className="text-xl md:text-2xl truncate">{title}</DialogTitle>
-                {p.verified && <Badge className="bg-white/20 text-white border-white/30"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
+      <DialogContent hideCloseButton={false} className="z-[2147483647] fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-20px)] sm:w-[calc(100vw-40px)] max-w-[1280px] max-h-[calc(100dvh-150px)] sm:max-h-[calc(100dvh-160px)] overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-0 shadow-2xl isolate">
+        <div className="max-h-[calc(100dvh-150px)] sm:max-h-[calc(100dvh-160px)] overflow-y-auto overscroll-contain p-3 sm:p-5 pb-5 sm:pb-6">
+          <div className="mx-auto w-full max-w-[1280px] space-y-3">
+            <div className={`rounded-[2rem] p-4 text-white shadow-xl ${isWorker ? 'bg-gradient-to-r from-indigo-700 via-blue-600 to-sky-500' : 'bg-gradient-to-r from-emerald-700 via-green-600 to-teal-500'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+                <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-white/70" title="View profile image">
+                  <Avatar className="w-16 h-16 border-4 border-white/60 shadow-2xl"><AvatarImage src={photo} /><AvatarFallback>{initials(title)}</AvatarFallback></Avatar>
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-white/80">{isWorker ? 'Worker Profile' : 'Company Profile'}</p>
+                  <DialogTitle className="mt-0.5 text-2xl font-black truncate text-white">{title}</DialogTitle>
+                  <DialogDescription className="mt-1 text-white/90">
+                    {isWorker ? `${p.location_text || p.address || 'Location not added'} · ${p.experience_years || 0} years experience` : `${p.location_text || p.company_address || 'Location not added'} · ${p.official_email || p.email || 'Email not added'}`}
+                  </DialogDescription>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {p.verified && <Badge className="bg-white/20 text-white border-white/30"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
+                    {isWorker && (p.badge_skilled_worker || p.experience_level === 'skilled' || p.experience_level === 'expert') && <Badge className="bg-amber-400 text-white border-white/30"><Award className="w-3.5 h-3.5 mr-1" />Skilled Badge</Badge>}
+                    <Badge className="bg-black/70 text-white border-white/30"><span className="mr-1">●</span>{visibleBlackMarkCount} Black marks</Badge>
+                    <Badge className="bg-white/20 text-white border-white/30">★ {publicRatingCount ? `${publicRatingAverage.toFixed(1)}/5` : 'No rating'}</Badge>
+                  </div>
+                </div>
+                <Button className="rounded-2xl bg-white !text-black hover:bg-white/90" onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Direct Message
+                </Button>
               </div>
-              <DialogDescription className="text-white/85 mt-1">
-                {isWorker ? `${p.experience_years || 0} years experience · ${(p.skills || []).join(', ') || 'Skills not added'}` : `${p.industry || 'Company'} · ${p.location_text || p.company_address || 'Location not added'}`}
-              </DialogDescription>
+            </div>
+
+            {isWorker ? (
+              <div className="rounded-[2rem] border border-blue-100 bg-gradient-to-br from-white via-blue-50/40 to-indigo-50 p-4 sm:p-5 shadow-xl shadow-blue-100/50 min-h-[360px] lg:min-h-[370px]">
+                <div className="grid xl:grid-cols-[1.05fr_1fr_1fr] gap-4 items-stretch">
+                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
+                    <div className="flex items-center gap-4">
+                      <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-blue-500/70" title="View worker image">
+                        <Avatar className="w-20 h-20 rounded-[1.5rem] border-4 border-white shadow-xl bg-blue-50">
+                          <AvatarImage src={photo} />
+                          <AvatarFallback className="rounded-[1.5rem] text-xl bg-blue-100 text-blue-800">{initials(title)}</AvatarFallback>
+                        </Avatar>
+                      </button>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Worker Details</p>
+                        <h3 className="mt-1 text-2xl font-black !text-black break-words">{p.full_name || p.name || title || 'Worker'}</h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {p.verified && <Badge className="bg-blue-100 text-blue-800 border border-blue-200"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
+                          {(p.badge_skilled_worker || p.experience_level === 'skilled' || p.experience_level === 'expert') && <Badge className="bg-amber-100 !text-black border border-amber-200">🏅 Skilled</Badge>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <InfoTile label="Age" value={p.age || '—'} />
+                      <InfoTile label="Gender" value={p.gender || '—'} />
+                      <InfoTile label="Phone" value={p.phone || p.mobile || '—'} />
+                      <InfoTile label="Location" value={p.location_text || p.address || '—'} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
+                    <h3 className="font-black !text-black mb-4 flex items-center gap-2"><Award className="w-5 h-5 text-blue-600" /> Work Profile</h3>
+                    <div className="space-y-3">
+                      <InfoTile label="Skills" value={Array.isArray(p.skills) ? p.skills.join(', ') : (p.skills || '—')} />
+                      <InfoTile label="Experience" value={p.experience_level || `${p.experience_years || 0} years`} />
+                      <InfoTile label="Expected wage" value={fmtMoney(p.expected_daily_wage || 0)} />
+                      <InfoTile label="Languages" value={Array.isArray(p.languages_known) ? p.languages_known.join(', ') : (p.languages_known || '—')} />
+                      <InfoTile label="Availability" value={p.availability || p.available_from || '—'} />
+                      <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
+                        <p className="text-xs font-bold text-slate-500">Resume</p>
+                        {resumeUrl ? (
+                          <Button type="button" variant="outline" className="mt-2 w-full h-10 rounded-2xl bg-white !text-black border-blue-200 hover:bg-blue-50 [&_*]:!!text-black" onClick={() => window.open(resumeUrl, '_blank')}>
+                            <FileText className="w-4 h-4 mr-2" /> View Resume
+                          </Button>
+                        ) : (
+                          <p className="mt-1 text-sm font-semibold !text-black">Resume not uploaded.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-4 shadow-lg min-w-0 h-full">
+                    <h3 className="font-black !text-black mb-3 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Trust & Summary</h3>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <InfoTile label="Rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
+                      <InfoTile label="Feedbacks" value={publicRatingCount || 0} />
+                      <InfoTile label="Works completed" value={stats.completedWorks || stats.completed_works || 0} />
+                      <InfoTile label="Black marks" value={`● ${visibleBlackMarkCount}`} />
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                      <p className="text-xs font-bold text-slate-500">About</p>
+                      <p className="mt-1 text-sm font-semibold !text-black whitespace-pre-wrap break-words">{p.about || p.bio || p.description || 'About details not added.'}</p>
+                    </div>
+                    {resumeUrl ? (
+                      <Button type="button" variant="outline" className="mt-3 w-full h-11 rounded-2xl bg-white !text-black border-blue-200 hover:bg-blue-50 [&_*]:!!text-black" onClick={() => window.open(resumeUrl, '_blank')}>
+                        <FileText className="w-4 h-4 mr-2" /> View Resume
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[2rem] border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/40 to-teal-50 p-4 sm:p-5 shadow-xl shadow-emerald-100/50 min-h-[360px] lg:min-h-[370px]">
+                <div className="grid xl:grid-cols-[1.05fr_1fr_1fr] gap-4 items-stretch">
+                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
+                    <div className="flex items-center gap-4">
+                      <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-emerald-500/70" title="View company image">
+                        <Avatar className="w-20 h-20 rounded-[1.5rem] border-4 border-white shadow-xl bg-emerald-50">
+                          <AvatarImage src={photo} />
+                          <AvatarFallback className="rounded-[1.5rem] text-xl bg-emerald-100 text-emerald-800">{initials(title)}</AvatarFallback>
+                        </Avatar>
+                      </button>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Company Details</p>
+                        <h3 className="mt-1 text-2xl font-black !text-black break-words">{p.company_name || title || 'Company'}</h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {p.verified && <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
+                          <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200">{p.industry || 'Industry not added'}</Badge>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <InfoTile label="Industry" value={p.industry || '—'} />
+                      <InfoTile label="Status" value={p.verified ? 'Verified' : 'Unverified'} />
+                      <InfoTile label="Phone" value={p.hr_contact || p.phone || p.mobile || p.contact_number || '—'} />
+                      <InfoTile label="Location" value={p.location_text || p.company_address || p.address || '—'} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
+                    <h3 className="font-black !text-black mb-4 flex items-center gap-2"><Briefcase className="w-5 h-5 text-emerald-600" /> Company Profile</h3>
+                    <div className="space-y-3">
+                      <InfoTile label="Company name" value={p.company_name || title || '—'} />
+                      <InfoTile label="Official email" value={p.official_email || p.email || p.company_email || '—'} />
+                      <InfoTile label="HR contact" value={p.hr_contact || p.phone || p.mobile || p.contact_number || '—'} />
+                      <InfoTile label="Company address" value={p.company_address || p.location_text || p.address || '—'} />
+                      <InfoTile label="Hiring status" value={p.hiring_status || p.availability || '—'} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-4 shadow-lg min-w-0 h-full">
+                    <h3 className="font-black !text-black mb-3 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Trust & Summary</h3>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <InfoTile label="Rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
+                      <InfoTile label="Feedbacks" value={publicRatingCount || 0} />
+                      <InfoTile label="Hired workers" value={hiredCount || 0} />
+                      <InfoTile label="Black marks" value={`● ${visibleBlackMarkCount}`} />
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                      <p className="text-xs font-bold text-slate-500">About Company</p>
+                      <p className="mt-1 text-sm font-semibold !text-black whitespace-pre-wrap break-words">{p.about_company || p.company_description || p.company_about || p.about || p.description || 'Company details not added.'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid md:grid-cols-3 gap-3">
+              <ProfileActionButton onClick={() => setActivePopup('feedback')}><Star className="w-4 h-4 mr-2" /> Give Feedback</ProfileActionButton>
+              <ProfileActionButton onClick={() => setActivePopup('black')}><span className="mr-2 text-lg leading-none">●</span> Mark Black</ProfileActionButton>
+              <ProfileActionButton onClick={() => setActivePopup('history')}><FileText className="w-4 h-4 mr-2" /> View Feedbacks / Marks</ProfileActionButton>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <Button className={`flex-1 rounded-2xl ${isWorker ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`} onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
+                <MessageSquare className="w-4 h-4 mr-2" /> Message {isWorker ? 'worker' : 'company'}
+              </Button>
+              <Button variant="outline" onClick={onClose} className="flex-1 rounded-2xl">Close</Button>
             </div>
           </div>
         </div>
-        <ScrollArea className="max-h-[72vh]">
-          <div className="p-4 md:p-6 space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              <InfoTile label={isWorker ? 'Works completed' : 'Completed hires'} value={stats.completedWorks || 0} />
-              <InfoTile label="Feedbacks" value={stats.feedbackCount || 0} />
-              <InfoTile
-                label="Public rating"
-                value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'}
-              />
-              <InfoTile label={isWorker ? 'Expected wage' : 'Posted jobs'} value={isWorker ? fmtMoney(p.expected_daily_wage || 0) : (stats.postedJobs || 0)} />
-              <InfoTile label="Location" value={p.location_text || p.company_address || p.address || '—'} />
-            </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h3 className="font-bold mb-3 flex items-center gap-2"><UserCircle className="w-4 h-4" /> Details</h3>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {isWorker ? <>
-                  <InfoTile label="Skills" value={(p.skills || []).join(', ') || '—'} />
-                  <InfoTile label="Experience level" value={p.experience_level || '—'} />
-                  <InfoTile label="Phone" value={p.phone || '—'} />
-                  <InfoTile label="Available" value={p.available ? 'Immediate joiner' : 'Not marked'} />
-                </> : <>
-                  <InfoTile label="Company" value={p.company_name || '—'} />
-                  <InfoTile label="Industry" value={p.industry || '—'} />
-                  <InfoTile label="HR contact" value={p.hr_contact || p.phone || '—'} />
-                  <InfoTile label="Official email" value={p.official_email || p.email || '—'} />
-                </>}
+        {activePopup === 'history' && (
+          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/60 px-4 py-[96px]" onClick={closePopup}>
+            <div className="w-full max-w-5xl max-h-[calc(100dvh-190px)] overflow-hidden rounded-[1.75rem] bg-white !text-black shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 bg-gradient-to-r from-slate-950 to-slate-700 text-white flex items-start justify-between gap-3">
+                <div><h3 className="text-xl font-black">Feedbacks & Black Marks</h3><p className="text-sm text-white/80">Clear history for this profile.</p></div>
+                <Button type="button" variant="secondary" className="rounded-xl bg-slate-700 hover:bg-slate-800 !text-white [&_*]:!text-white" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }} onClick={closePopup}><span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Close</span></Button>
               </div>
-            </div>
-
-            {isWorker && (
-              <div className="rounded-3xl border border-indigo-100 bg-indigo-50/60 p-4">
-                <h3 className="font-bold mb-3 flex items-center gap-2 text-indigo-900"><ClipboardList className="w-4 h-4" /> Work timeline</h3>
-                {activeHires.length === 0 ? <p className="text-sm text-muted-foreground">No accepted or completed work records yet.</p> : (
-                  <div className="space-y-2">{activeHires.map((a) => <div key={a.id} className="bg-white rounded-2xl border p-3 text-sm"><div className="flex justify-between gap-2"><b>{a.jobs?.title}</b><Badge variant="secondary">{a.status}</Badge></div><p className="text-xs text-muted-foreground">{a.jobs?.employers?.company_name} · {a.jobs?.location_text} · {jobPayLabel(a.jobs)}</p></div>)}</div>
-                )}
+              <div className="max-h-[calc(100dvh-310px)] overflow-y-auto p-5 grid md:grid-cols-2 gap-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
+                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 !text-black [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black">
+                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black !text-black">Feedbacks</h4><Badge className="bg-amber-100 !text-black border border-amber-200">{publicRatingCount || 0} total</Badge></div>
+                  {feedbacks.length === 0 ? <p className="text-sm !text-black">No feedback added yet.</p> : <div className="space-y-3">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border border-amber-200 p-4 shadow-sm !text-black [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black"><div className="flex items-center justify-between gap-2"><Stars value={f.rating} /><Badge variant="secondary">{f.created_at ? new Date(f.created_at).toLocaleDateString() : 'Feedback'}</Badge></div><p className="text-sm !text-black mt-2">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>}
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 !text-black [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black">
+                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black !text-black">Black Marks</h4><Badge className="bg-slate-950 text-white">● {visibleBlackMarkCount}</Badge></div>
+                  {blackMarks.length === 0 ? <p className="text-sm !text-black">No black marks added yet.</p> : <div className="space-y-3">{blackMarks.map((m, i) => <div key={i} className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm"><div className="flex items-center justify-between gap-2"><p className="font-black !text-black"><span className="mr-2">●</span>Black mark</p><Badge variant="secondary">{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Mark'}</Badge></div><p className="text-sm !text-black mt-2">{m.reason || 'No reason added.'}</p></div>)}</div>}
+                </div>
               </div>
-            )}
-
-            {!isWorker && (
-              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/60 p-4">
-                <h3 className="font-bold mb-3 flex items-center gap-2 text-emerald-900"><Briefcase className="w-4 h-4" /> Recent job posts</h3>
-                {postedJobs.length === 0 ? <p className="text-sm text-muted-foreground">No public job posts yet.</p> : (
-                  <div className="space-y-2">{postedJobs.map((j) => <div key={j.id} className="bg-white rounded-2xl border p-3 text-sm"><div className="flex justify-between gap-2"><b>{j.title}</b><Badge variant="secondary">{j.status}</Badge></div><p className="text-xs text-muted-foreground">{j.category || 'Job'} · {j.location_text} · {jobPayLabel(j)}</p></div>)}</div>
-                )}
-              </div>
-            )}
-
-            <div className="rounded-3xl border border-amber-100 bg-amber-50/70 p-4">
-              <h3 className="font-bold mb-1 flex items-center gap-2 text-amber-900"><Star className="w-4 h-4" /> Public feedback</h3>
-              <p className="text-xs text-amber-800/80 mb-3">
-                {publicRatingCount
-                  ? `Average rating: ${publicRatingAverage.toFixed(1)}/5 from ${publicRatingCount} feedbacks.`
-                  : `No public rating yet. Ratings update after each feedback.`}
-              </p>
-              {feedbacks.length === 0 ? <p className="text-sm text-muted-foreground">No feedback added yet.</p> : (
-                <div className="space-y-2">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border p-3"><p className="text-sm font-semibold text-amber-500">{'★'.repeat(Math.floor(Number(f.rating || 0)))}<span className="text-amber-200">{'★'.repeat(Math.max(0, 5-Math.floor(Number(f.rating || 0))))}</span></p><p className="text-sm text-slate-700 mt-1">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button className={`flex-1 ${isWorker ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`} onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
-                <MessageSquare className="w-4 h-4 mr-2" /> Message {isWorker ? 'worker' : 'company'}
-              </Button>
-              <Button variant="outline" onClick={onClose} className="flex-1">Close</Button>
             </div>
           </div>
-        </ScrollArea>
+        )}
+
+        {activePopup === 'feedback' && (
+          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/60 px-4 py-[96px]" onClick={closePopup}>
+            <div className="w-full max-w-xl max-h-[calc(100dvh-190px)] rounded-[1.75rem] bg-white !text-black shadow-2xl border border-amber-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 bg-gradient-to-r from-amber-500 to-orange-500 text-white"><h3 className="text-xl font-black text-white">Give Feedback</h3><p className="text-sm text-white/90">Select stars and write feedback.</p></div>
+              <div className="p-5 space-y-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
+                <div className="flex justify-center gap-2">{[1,2,3,4,5].map((n) => <button key={n} type="button" onClick={() => setProfileFeedbackRating(n)} className={`text-4xl ${n <= profileFeedbackRating ? "!text-amber-500" : "!text-slate-300"}`} style={{ color: n <= profileFeedbackRating ? "#f59e0b" : "#cbd5e1", WebkitTextFillColor: n <= profileFeedbackRating ? "#f59e0b" : "#cbd5e1" }}>★</button>)}</div>
+                <Textarea value={profileFeedbackText} onChange={(e) => setProfileFeedbackText(e.target.value)} placeholder="Write clear feedback" className="min-h-[120px] rounded-2xl bg-white !text-black placeholder:!text-slate-500 border-slate-300 focus:border-amber-400 focus:ring-amber-200" />
+                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white !text-black border-slate-300 hover:bg-slate-50 [&_*]:!text-black" style={{ color: "#000000", WebkitTextFillColor: "#000000" }} onClick={closePopup}><span style={{ color: "#000000", WebkitTextFillColor: "#000000" }}>Cancel</span></Button><Button type="button" disabled={submittingProfileFeedback} onClick={submitProfileFeedback} className="rounded-xl bg-amber-500 hover:bg-amber-600 !text-white [&_*]:!text-white" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>{submittingProfileFeedback ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}<span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Submit</span></Button></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activePopup === 'black' && (
+          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/60 px-4 py-[96px]" onClick={closePopup}>
+            <div className="w-full max-w-xl max-h-[calc(100dvh-190px)] rounded-[1.75rem] bg-white !text-black shadow-2xl border border-slate-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 bg-gradient-to-r from-slate-950 to-slate-700 text-white"><h3 className="text-xl font-black text-white">Mark Black</h3><p className="text-sm text-white/90">Add a reason before marking this profile.</p></div>
+              <div className="p-5 space-y-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
+                <Textarea value={blackReason} onChange={(e) => setBlackReason(e.target.value)} placeholder="Reason for black mark" className="min-h-[120px] rounded-2xl bg-white !text-black placeholder:!text-slate-500 border-slate-300 focus:border-slate-500 focus:ring-slate-200" />
+                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white !text-black border-slate-300 hover:bg-slate-50 [&_*]:!text-black" style={{ color: "#000000", WebkitTextFillColor: "#000000" }} onClick={closePopup}><span style={{ color: "#000000", WebkitTextFillColor: "#000000" }}>Cancel</span></Button><Button type="button" disabled={markingBlack} onClick={markBlackDot} className="rounded-xl bg-slate-950 hover:bg-black !text-white [&_*]:!text-white" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>{markingBlack ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <span className="mr-2" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>●</span>}<span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Mark</span></Button></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <PhotoPreviewDialog photo={photoPreview?.photo} title={photoPreview?.title} onClose={() => setPhotoPreview(null)} />
       </DialogContent>
-      <PhotoPreviewDialog photo={photoPreview?.photo} title={photoPreview?.title} onClose={() => setPhotoPreview(null)} />
     </Dialog>
   );
 }
@@ -4760,7 +5013,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
 
       {hasSaved && !editingLocation ? (
         <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-1">
-          <p className="text-sm font-semibold text-slate-800 truncate">{value}</p>
+          <p className="text-sm font-semibold !text-black truncate">{value}</p>
           <p className="text-xs text-slate-500">{formatCoordinates(latitude, longitude)}</p>
         </div>
       ) : (
@@ -4775,7 +5028,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
             helper={helper}
             onChange={(loc) => { userTouchedLocationRef.current = true; onChange?.(loc); }}
           />
-          <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+          <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 !text-black'}`}>
             {canSaveLocation ? 'Exact GPS selected. Click Save to store it.' : 'Search/select one exact place or use current GPS before saving.'}
           </div>
         </div>
@@ -4913,7 +5166,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
           {lockedVerified ? (
             <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
           ) : status === 'submitted' || status === 'pending' ? (
-            <Badge className="bg-amber-100 text-amber-700">Pending Approval</Badge>
+            <Badge className="bg-amber-100 !text-black">Pending Approval</Badge>
           ) : status === 'modified' ? (
             <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
           ) : status === 'saved' ? (
@@ -5164,7 +5417,7 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
     <div className={`h-full min-h-[168px] rounded-3xl border p-4 flex flex-col justify-between shadow-sm hover:shadow-lg transition ${theme.card}`}>
       <div>
         <div className="flex items-center justify-between gap-2">
-          <Label className="font-semibold text-slate-900">{label}</Label>
+          <Label className="font-semibold !text-black">{label}</Label>
           {verified && hasFile && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 shadow-sm">
               <CheckCircle2 className="w-3.5 h-3.5" /> Verified
@@ -5190,7 +5443,7 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
       </div>
       <div className="mt-3 min-h-[18px]">
         {hasFile && <p className={`text-xs font-medium ${theme.link}`}>Uploaded document can be changed anytime.</p>}
-        {verified && !hasFile && !optional && <p className="text-xs text-amber-700">Missing file</p>}
+        {verified && !hasFile && !optional && <p className="text-xs !text-black">Missing file</p>}
       </div>
     </div>
   );
@@ -5390,7 +5643,7 @@ function pickProfileRating(extra = {}) {
 function TopProfileStarRating({ value = 0, count = 0, color = 'indigo' }) {
   const rating = Math.max(0, Math.min(5, Number(value || 0)));
   const filled = Math.floor(rating);
-  const labelClass = 'border-amber-300 bg-amber-50 text-amber-800 shadow-sm shadow-amber-100';
+  const labelClass = 'border-amber-300 bg-amber-50 !text-black shadow-sm shadow-amber-100';
   return (
     <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 ${labelClass}`}>
       <span className="flex items-center gap-0.5" aria-label={`Rating ${rating.toFixed(1)} out of 5`}>
@@ -5454,6 +5707,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       selfie_left_url: me.extra?.selfie_left_url || '',
       selfie_right_url: me.extra?.selfie_right_url || '',
       certificate_url: me.extra?.certificate_url || '',
+      resume_url: me.extra?.resume_url || '',
       mobile_verified: !!me.extra?.mobile_verified,
       selfie_verified: !!me.extra?.selfie_verified,
       badge_verified_worker: !!me.extra?.badge_verified_worker,
@@ -5512,6 +5766,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     place_name: form.place_name || '',
     previous_employer_reference: form.previous_employer_reference || '',
     bio: form.bio || '',
+    resume_url: form.resume_url || '',
   });
 
   const buildWorkerDocumentPayload = () => ({
@@ -5660,7 +5915,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               {workerTopStatus === 'verified' ? (
                 <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : workerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 !text-black shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
                 <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
@@ -5855,6 +6110,19 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             <Label>Bio<span className="text-red-500 ml-0.5">*</span></Label>
             <Textarea required rows={3} value={form.bio || ''} onChange={(e) => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="Tell employers about yourself" />
           </div>
+          <div className="sm:col-span-2 rounded-3xl border border-indigo-100 bg-indigo-50/50 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <Label>Resume upload <span className="text-xs font-normal text-muted-foreground">optional</span></Label>
+                <p className="text-xs text-muted-foreground mt-1">Upload resume so employers can view it from your profile.</p>
+                {form.resume_url && <button type="button" onClick={() => window.open(form.resume_url, '_blank')} className="mt-2 text-xs font-bold text-indigo-700 hover:underline">View uploaded resume</button>}
+              </div>
+              <label className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-semibold text-indigo-700 cursor-pointer hover:bg-indigo-50">
+                <Upload className="w-4 h-4" /> {form.resume_url ? 'Change Resume' : 'Upload Resume'}
+                <input type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'resume', token); setForm(f => ({ ...f, resume_url: url })); toast.success('Resume uploaded. Click Send for Verification to update profile.'); } catch (err) { toast.error(err.message || 'Resume upload failed'); } finally { e.target.value = ''; } }} />
+              </label>
+            </div>
+          </div>
           <div className="sm:col-span-2">
             <SectionVerificationAction
               token={token}
@@ -5908,7 +6176,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Signed in as</p>
+                <p className="text-sm font-semibold !text-black">Signed in as</p>
                 <p className="text-sm text-muted-foreground truncate mt-1">{me.profile?.email}</p>
                 {me.profile?.login_id && (
                   <p className="text-xs text-indigo-700 mt-2">Login ID: <b>{me.profile.login_id}</b></p>
@@ -5916,7 +6184,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               </div>
 
               <div className="rounded-2xl border p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-900">Quick actions</p>
+                <p className="text-sm font-semibold !text-black">Quick actions</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -6311,7 +6579,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             <ShieldCheck className="w-4 h-4" /> Done
           </div>
         ) : (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm !text-black">
             Open the camera and keep your full face inside the green frame. It will auto capture.
           </div>
         )}
@@ -6357,7 +6625,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
                   <div className="pointer-events-none absolute inset-3 rounded-[1.5rem] border border-emerald-200/80" />
                   <div className="pointer-events-none absolute left-4 right-4 top-6 h-[2px] rounded-full bg-emerald-300/90 shadow-[0_0_16px_rgba(52,211,153,.95)] animate-[selfieScan_2.3s_ease-in-out_infinite]" />
                   <div className="absolute top-3 left-3 rounded-full bg-emerald-600/95 px-3 py-1 text-xs font-semibold text-white shadow">Front face only</div>
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-slate-800 max-w-[90%] text-center">{faceMessage}</div>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold !text-black max-w-[90%] text-center">{faceMessage}</div>
                 </>
               ) : capturedPreview ? (
                 <img src={capturedPreview} alt="Captured front selfie" className="absolute inset-0 w-full h-full object-contain bg-slate-950" />
@@ -6372,7 +6640,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             {capturedPreview && !cameraOn && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Front face captured successfully.</div>
             )}
-            {cameraError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{cameraError}</div>}
+            {cameraError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs !text-black">{cameraError}</div>}
           </div>
 
           <canvas ref={canvasRef} className="hidden" />
@@ -6523,7 +6791,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
       )}
 
       {sent && (
-        <div className="mt-3 text-sm text-slate-600">
+        <div className="mt-3 text-sm !text-black">
           OTP sent to <span className="font-semibold">{normalized}</span>. {countdown > 0 ? `You can resend in ${countdown}s.` : 'You can resend now.'}
         </div>
       )}
@@ -6594,7 +6862,7 @@ function Field({ label, v, on, type = 'text', required = true, maxLength, inputM
       <Label>{label}{required ? <span className="text-red-500 ml-0.5">*</span> : null}</Label>
       {prefix ? (
         <div className="flex h-11 w-full items-center overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
-          <span className="inline-flex h-full shrink-0 items-center whitespace-nowrap border-r bg-slate-50 px-3 text-sm font-semibold leading-none text-slate-700">{prefix}</span>
+          <span className="inline-flex h-full shrink-0 items-center whitespace-nowrap border-r bg-slate-50 px-3 text-sm font-semibold leading-none !text-black">{prefix}</span>
           <Input
             type={type}
             value={value}
@@ -6965,7 +7233,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                   <p className="text-xs text-muted-foreground truncate">{j.location_text} · {jobDurationLabel(j)}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
-                  {Number(j.pending_count || 0) > 0 && <Badge className="bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">New {Number(j.pending_count || 0)}</Badge>}
+                  {Number(j.pending_count || 0) > 0 && <Badge className="bg-amber-100 !text-black border border-amber-200 animate-pulse">New {Number(j.pending_count || 0)}</Badge>}
                   <Badge className={j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : ''} variant={j.status === 'open' ? 'default' : 'secondary'}>{j.status}</Badge>
                 </div>
               </div>
@@ -7010,8 +7278,8 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
 
             <div className="max-h-[76vh] overflow-y-auto p-3 sm:p-5 space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[11px] text-slate-500 font-semibold">Total applicants</p><p className="text-2xl font-extrabold text-slate-900">{applicants.length}</p></div>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm"><p className="text-[11px] text-amber-700 font-semibold">Pending</p><p className="text-2xl font-extrabold text-amber-800">{applicants.filter(a => a.status === 'pending').length}</p></div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[11px] text-slate-500 font-semibold">Total applicants</p><p className="text-2xl font-extrabold !text-black">{applicants.length}</p></div>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm"><p className="text-[11px] !text-black font-semibold">Pending</p><p className="text-2xl font-extrabold !text-black">{applicants.filter(a => a.status === 'pending').length}</p></div>
                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 shadow-sm"><p className="text-[11px] text-indigo-700 font-semibold">Invited</p><p className="text-2xl font-extrabold text-indigo-800">{applicants.filter(a => a.status === 'accepted').length}</p></div>
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm"><p className="text-[11px] text-emerald-700 font-semibold">Ongoing</p><p className="text-2xl font-extrabold text-emerald-800">{applicants.filter(a => a.status === 'ongoing').length}</p></div>
               </div>
@@ -7019,7 +7287,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
               {!loadingApp && applicants.length === 0 && (
                 <div className="rounded-3xl border border-dashed border-emerald-200 bg-white p-10 text-center shadow-sm">
                   <Users className="w-10 h-10 mx-auto text-emerald-600" />
-                  <p className="mt-3 font-extrabold text-slate-900">No applicants yet</p>
+                  <p className="mt-3 font-extrabold !text-black">No applicants yet</p>
                   <p className="text-sm text-slate-500">Waiting for workers to apply for this job.</p>
                 </div>
               )}
@@ -7032,10 +7300,10 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                       <Avatar className="cursor-pointer h-14 w-14 ring-4 ring-emerald-50" onClick={() => openProfileDetails(a.worker_id)}><AvatarImage src={up.photo_url} /><AvatarFallback>{initials(up.full_name || up.email)}</AvatarFallback></Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-extrabold text-slate-900 truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
-                          <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : a.status === 'pending' ? 'bg-amber-100 text-amber-800 border border-amber-200' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
+                          <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-extrabold !text-black truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
+                          <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : a.status === 'pending' ? 'bg-amber-100 !text-black border border-amber-200' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
                         </div>
-                        <p className="text-xs text-slate-600 truncate mt-1">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
+                        <p className="text-xs !text-black truncate mt-1">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
                         <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                           <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">₹{a.workers?.expected_daily_wage || 0}/day</span>
                           <span className="rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">{a.workers?.experience_years || 0}y exp</span>
@@ -7069,18 +7337,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                     {a.status === 'completed' && (
                       <div className="flex gap-2 mt-3">
                         {!a.feedback_given ? (
-                          <Button size="sm" variant="outline" className="flex-1"
-                                  onClick={() => {
-                                    const rating = prompt('Rate the worker (1-5 stars):');
-                                    const feedback = prompt('Write feedback about the worker/employee:');
-                                    if (rating && feedback) {
-                                      api('feedback/worker', { method: 'POST', token, body: { application_id: a.id, rating: Number(rating), feedback_text: feedback } })
-                                        .then(() => { toast.success('Feedback submitted!'); if (openJob) openApplicants(openJob); })
-                                        .catch(e => toast.error(e.message));
-                                    }
-                                  }}>
-                            <Star className="w-4 h-4 mr-1" /> Rate Worker
-                          </Button>
+                          <FeedbackStarsButton token={token} applicationId={a.id} target="worker" label="Rate Worker" onDone={() => openJob && openApplicants(openJob)} />
                         ) : (
                           <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-sm font-semibold text-emerald-700">
                             Feedback Done
@@ -7107,7 +7364,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
 }
 
 function StatCard({ label, value, icon: Icon, color }) {
-  const map = { emerald: 'bg-emerald-50 text-emerald-700 shadow-emerald-100', indigo: 'bg-indigo-50 text-indigo-700 shadow-indigo-100', amber: 'bg-amber-50 text-amber-700 shadow-amber-100' };
+  const map = { emerald: 'bg-emerald-50 text-emerald-700 shadow-emerald-100', indigo: 'bg-indigo-50 text-indigo-700 shadow-indigo-100', amber: 'bg-amber-50 !text-black shadow-amber-100' };
   const border = { emerald: 'hover:border-emerald-200', indigo: 'hover:border-indigo-200', amber: 'hover:border-amber-200' };
   return (
     <motion.div whileHover={{ y: -3, scale: 1.01 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
@@ -7636,7 +7893,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                         type="button"
                         key={key}
                         onClick={() => setF(s => ({ ...s, [key]: typeof s[key] === 'boolean' ? !s[key] : (s[key] === 'yes' ? 'no' : 'yes') }))}
-                        className={`h-8 rounded-lg border text-[10px] font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
+                        className={`h-8 rounded-lg border text-[10px] font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 !text-black'}`}
                       >
                         {label}
                       </button>
@@ -7808,10 +8065,12 @@ function HiredJobs({ token, jobs, reload, onChat }) {
   };
 
   const completeJobWithPayment = async (appId, method = 'upi') => {
+    const paymentMethod = method === 'manual' ? 'manual' : 'upi';
+    const paymentLabel = paymentMethod === 'manual' ? 'Manual Payment' : 'UPI / GPay Payment';
+    const ok = confirm(`Are you sure the job is completed and ${paymentLabel} is done?`);
+    if (!ok) return;
     setProcessingPayment(true);
     try {
-      const paymentMethod = method === 'manual' ? 'manual' : 'upi';
-      const paymentLabel = paymentMethod === 'manual' ? 'Manual Payment' : 'UPI / GPay Payment';
       await api(`applications/${appId}`, {
         method: 'PATCH',
         token,
@@ -7983,7 +8242,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           </p>
                         </div>
                         <div className="rounded-xl bg-amber-50 dark:bg-amber-950 p-3 text-center">
-                          <p className="text-xl font-bold text-amber-700 dark:text-amber-300">
+                          <p className="text-xl font-bold !text-black dark:text-amber-300">
                             {unMarkedDays}
                           </p>
                           <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
@@ -7991,10 +8250,10 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           </p>
                         </div>
                         <div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-3 text-center">
-                          <p className="text-xl font-bold text-slate-700 dark:text-slate-300">
+                          <p className="text-xl font-bold !text-black dark:text-slate-300">
                             {jobDates.length}
                           </p>
-                          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">
+                          <p className="text-[10px] !text-black dark:text-slate-400 mt-0.5">
                             Total Days
                           </p>
                         </div>
@@ -8003,7 +8262,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       {/* Status Note */}
                       {!canMarkAttendance && app.status !== 'completed' && (
                         <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
-                          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                          <p className="text-sm font-semibold !text-black dark:text-amber-300">
                             ⏳ Waiting for employee acceptance
                           </p>
                           <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
@@ -8025,7 +8284,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
 
                       {/* Detailed Attendance Calendar */}
                       <div className="mb-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Job Schedule & Attendance</p>
+                        <p className="text-sm font-bold !text-black dark:text-slate-300 mb-3">Job Schedule & Attendance</p>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                           {jobDates.map((date) => {
                             const attRec = getAttendanceForDate(attRecs, date);
@@ -8050,7 +8309,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                                 <p className="text-[11px] font-bold tracking-[0.18em] text-slate-500 dark:text-slate-300 uppercase">
                                   {dayName}
                                 </p>
-                                <p className="text-2xl font-black my-2 text-slate-950 dark:text-white">
+                                <p className="text-2xl font-black my-2 !text-black dark:text-white">
                                   {dayNum}
                                 </p>
                                 {(attRec?.status === 'present' || attRec?.status === 'completed') && (
@@ -8078,10 +8337,10 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       {/* Plan Based Attendance Action */}
                       {selectedDate && canMarkAttendance && (
                         <div className="mb-4 p-3 rounded-xl border bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-700">
-                          <p className="text-sm font-semibold mb-1 text-amber-700 dark:text-amber-300">
+                          <p className="text-sm font-semibold mb-1 !text-black dark:text-amber-300">
                             Manual attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>
-                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                          <p className="text-xs !text-black dark:text-amber-300">
                             Manual attendance is enabled. GPS attendance can still be marked by the worker from their ongoing job page.
                           </p>
                           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -8142,22 +8401,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                         )}
 
                         {app.status === 'completed' && !app.feedback_given && (
-                          <Button
-                            size="sm"
-                            className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
-                            onClick={() => {
-                              const rating = prompt('Rate the worker (1-5 stars):');
-                              const feedback = prompt('Write feedback about the worker/employee:');
-                              if (rating && feedback) {
-                                api('feedback/worker', { method: 'POST', token, body: { application_id: app.id, rating: Number(rating), feedback_text: feedback } })
-                                  .then(() => { toast.success('Feedback submitted and saved!'); if (selectedJob) openJobDetails(selectedJob); reload?.(); })
-                                  .catch(e => toast.error(e.message));
-                              }
-                            }}
-                          >
-                            <Star className="w-4 h-4 mr-2" />
-                            Give Feedback
-                          </Button>
+                          <FeedbackStarsButton token={token} applicationId={app.id} target="worker" label="Give Feedback" className="flex-1 bg-amber-500 hover:bg-amber-600 text-white border-0" onDone={() => { if (selectedJob) openJobDetails(selectedJob); reload?.(); }} />
                         )}
 
                         {app.status === 'completed' && app.feedback_given && (
@@ -8248,7 +8492,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {/* Worker Info */}
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Worker Information</p>
+                <p className="text-sm font-bold !text-black dark:text-slate-300 mb-3">Worker Information</p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Name:</span>
@@ -8334,7 +8578,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
 
               {/* Confirmation Message */}
               <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
-                <p className="text-sm text-amber-700 dark:text-amber-300">
+                <p className="text-sm !text-black dark:text-amber-300">
                   Choose Manual Payment to mark offline payment, or use UPI/GPay using the worker UPI ID / QR code shown above. After payment, mark it paid to complete the job.
                 </p>
               </div>
@@ -8350,7 +8594,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                 onClick={() => completeJobWithPayment(completionDialogApp.id, 'manual')}
               >
                 {processingPayment ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                Manual Payment
+                Manual Payment Done
               </Button>
               <Button
                 variant="outline"
@@ -8358,7 +8602,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                 onClick={() => openUpiPaymentApp(completionDialogApp)}
                 className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
               >
-                UPI / GPay
+                Open UPI / GPay
               </Button>
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white"
@@ -8366,7 +8610,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                 onClick={() => completeJobWithPayment(completionDialogApp.id, 'upi')}
               >
                 {processingPayment ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                Mark UPI Paid
+                UPI Payment Done
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -8761,7 +9005,7 @@ useEffect(() => {
               {employerTopStatus === 'verified' ? (
                 <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : employerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 !text-black shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
                 <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
@@ -8896,7 +9140,7 @@ useEffect(() => {
 
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Signed in as</p>
+                <p className="text-sm font-semibold !text-black">Signed in as</p>
                 <p className="text-sm text-muted-foreground truncate mt-1">{me.profile?.email}</p>
                 {me.profile?.login_id && (
                   <p className="text-xs text-emerald-700 mt-2">Login ID: <b>{me.profile.login_id}</b></p>
@@ -8904,7 +9148,7 @@ useEffect(() => {
               </div>
 
               <div className="rounded-2xl border p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-900">Quick actions</p>
+                <p className="text-sm font-semibold !text-black">Quick actions</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -9229,11 +9473,11 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl text-slate-950">
+          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl !text-black">
             <Sparkles className="w-6 h-6 text-sky-700" />
             {planTitle}
           </DialogTitle>
-          <DialogDescription className="text-slate-700">
+          <DialogDescription className="!text-black">
             {planDescription} Select a plan to continue with Razorpay payment.
           </DialogDescription>
         </DialogHeader>
@@ -9241,8 +9485,8 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
         <div className="mt-4 rounded-2xl bg-white/90 border border-sky-100 p-3 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <p className="text-sm font-bold text-slate-900">Current plan for this account</p>
-              <p className="text-xs text-slate-600 truncate">{me?.profile?.email || 'Current signed-in account'}</p>
+              <p className="text-sm font-bold !text-black">Current plan for this account</p>
+              <p className="text-xs !text-black truncate">{me?.profile?.email || 'Current signed-in account'}</p>
             </div>
             <Badge className="bg-emerald-600 text-white px-3 py-1 text-sm">{getSubscriptionLabel(currentPlan)}</Badge>
           </div>
@@ -9279,7 +9523,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
                 )}
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-extrabold text-slate-950">{plan.name}</h3>
+                    <h3 className="text-lg font-extrabold !text-black">{plan.name}</h3>
                     <p className="mt-1 text-2xl font-black text-sky-800">{plan.price}</p>
                     <p className="mt-1 text-xs font-bold text-emerald-700">Validity: {getPlanValidityLabel(plan, isEmployer ? 'employer' : 'worker')}</p>
                   </div>
@@ -9288,7 +9532,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
 
                 <div className="mt-4 flex-1 space-y-2">
                   {plan.features.map((feature) => (
-                    <div key={feature} className="flex items-start gap-2 text-sm text-slate-700">
+                    <div key={feature} className="flex items-start gap-2 text-sm !text-black">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
                       <span>{feature}</span>
                     </div>
@@ -9314,11 +9558,11 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     <Dialog open={!!paymentPlan} onOpenChange={(next) => { if (!paymentBusy && !next) setPaymentPlan(null); }}>
       <DialogContent className="max-w-lg rounded-3xl border-emerald-100 bg-white p-5 sm:p-6 shadow-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl text-slate-950">
+          <DialogTitle className="flex items-center gap-2 text-xl !text-black">
             <IndianRupee className="h-5 w-5 text-emerald-700" />
             Confirm Subscription Payment
           </DialogTitle>
-          <DialogDescription className="text-slate-600">
+          <DialogDescription className="!text-black">
             Review your plan and continue to Razorpay checkout.
           </DialogDescription>
         </DialogHeader>
@@ -9329,8 +9573,8 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-emerald-700">Selected plan</p>
-                  <h3 className="text-2xl font-black text-slate-950">{paymentPlan.name}</h3>
-                  <p className="mt-1 text-sm text-slate-600">{isEmployer ? 'Employer subscription' : 'Worker subscription'}</p>
+                  <h3 className="text-2xl font-black !text-black">{paymentPlan.name}</h3>
+                  <p className="mt-1 text-sm !text-black">{isEmployer ? 'Employer subscription' : 'Worker subscription'}</p>
                   <p className="mt-1 text-xs font-bold text-emerald-700">Validity: {getPlanValidityLabel(paymentPlan, isEmployer ? 'employer' : 'worker')}</p>
                 </div>
                 <Badge className="bg-emerald-600 text-white">{getPlanDisplayPrice(paymentPlan, isEmployer ? 'employer' : 'worker')}</Badge>
@@ -9338,10 +9582,10 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-bold text-slate-900">Features included</p>
+              <p className="text-sm font-bold !text-black">Features included</p>
               <div className="mt-3 space-y-2">
                 {paymentPlan.features.slice(0, 5).map((feature) => (
-                  <div key={feature} className="flex items-start gap-2 text-sm text-slate-700">
+                  <div key={feature} className="flex items-start gap-2 text-sm !text-black">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
                     <span>{feature}</span>
                   </div>
@@ -9436,11 +9680,11 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl text-slate-950">
+          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl !text-black">
             <MessageSquare className="w-6 h-6 text-sky-700" />
             Help & Support
           </DialogTitle>
-          <DialogDescription className="text-slate-700">
+          <DialogDescription className="!text-black">
             Chat with Work2Wish admin support for this {isEmployer ? 'employer' : 'employee'} account.
           </DialogDescription>
         </DialogHeader>
@@ -9453,8 +9697,8 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
               onClick={() => setCategory(item.title)}
               className={`text-left rounded-2xl border p-4 shadow-sm transition ${category === item.title ? 'border-sky-500 bg-sky-100 ring-2 ring-sky-200' : 'border-sky-100 bg-white hover:bg-sky-50'}`}
             >
-              <p className="text-sm font-extrabold text-slate-950">{item.title}</p>
-              <p className="mt-1 text-xs text-slate-600 leading-relaxed">{item.text}</p>
+              <p className="text-sm font-extrabold !text-black">{item.title}</p>
+              <p className="mt-1 text-xs !text-black leading-relaxed">{item.text}</p>
             </button>
           ))}
         </div>
@@ -9462,20 +9706,20 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
         <div className="mt-5 rounded-3xl border border-sky-100 bg-white/95 p-4 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <p className="text-base font-extrabold text-slate-950">Admin Support Chat</p>
-              <p className="text-xs text-slate-600 truncate">{me?.profile?.email || 'Current signed-in account'} • {category}</p>
+              <p className="text-base font-extrabold !text-black">Admin Support Chat</p>
+              <p className="text-xs !text-black truncate">{me?.profile?.email || 'Current signed-in account'} • {category}</p>
             </div>
             <Badge className="bg-emerald-600 text-white">UI only</Badge>
           </div>
 
           <div className="mt-4 max-h-72 overflow-y-auto space-y-3 rounded-2xl bg-sky-50/70 p-3 border border-sky-100">
             {messages.length === 0 ? (
-              <div className="rounded-2xl bg-white p-4 text-sm text-slate-700 border border-sky-100">
+              <div className="rounded-2xl bg-white p-4 text-sm !text-black border border-sky-100">
                 No support messages yet. Select a category, type your issue, and send it to admin support.
               </div>
             ) : messages.map((msg, index) => (
               <div key={`${msg.time}-${index}`} className={`flex ${msg.from === 'You' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${msg.from === 'You' ? 'bg-sky-700 text-white' : 'bg-white text-slate-800 border border-sky-100'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${msg.from === 'You' ? 'bg-sky-700 text-white' : 'bg-white !text-black border border-sky-100'}`}>
                   <p className={`text-xs font-bold ${msg.from === 'You' ? 'text-sky-100' : 'text-sky-700'}`}>{msg.from}</p>
                   <p className="mt-1 leading-relaxed">{msg.text}</p>
                   <p className={`mt-2 text-[10px] ${msg.from === 'You' ? 'text-sky-100' : 'text-slate-500'}`}>{msg.time}</p>
@@ -9489,7 +9733,7 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type your issue here..."
-              className="min-h-[88px] bg-white text-slate-950 placeholder:text-slate-400 border-sky-200"
+              className="min-h-[88px] bg-white !text-black placeholder:text-slate-400 border-sky-200"
             />
             <Button type="button" onClick={sendSupportMessage} className="h-full min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl">
               <Send className="w-4 h-4 mr-2" />
@@ -9623,7 +9867,7 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
               <div className="shrink-0 p-4 border-b bg-white">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-900">Chats</h2>
+                    <h2 className="text-2xl font-bold !text-black">Chats</h2>
                     <p className="text-[11px] text-slate-500">Select a conversation to continue.</p>
                   </div>
                   <Button variant="ghost" size="icon" onClick={loadThreads} className="rounded-full">
@@ -9638,7 +9882,7 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
 
               <div className="flex-1 min-h-0 overflow-y-auto bg-white">
                 {authError && (
-                  <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm !text-black">
                     {authError}
                   </div>
                 )}
@@ -9677,7 +9921,7 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p onClick={(e) => { e.stopPropagation(); openProfileDetails(t.peer_id); }} className="font-semibold truncate text-slate-900 hover:underline">{t.peer_name || 'Unknown user'}</p>
+                          <p onClick={(e) => { e.stopPropagation(); openProfileDetails(t.peer_id); }} className="font-semibold truncate !text-black hover:underline">{t.peer_name || 'Unknown user'}</p>
                           {t.last_message && <span className="text-[11px] text-slate-500 shrink-0">{new Date(t.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                         </div>
                         <p className="text-sm text-slate-500 truncate mt-0.5">{t.last_message?.content || 'Start a conversation'}</p>
@@ -9825,21 +10069,21 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
             <AvatarFallback className="bg-emerald-100 text-emerald-700">{initials(peer.peer_name)}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <button type="button" onClick={onProfile} className="font-semibold truncate text-slate-900 hover:underline text-left">{peer.peer_name || 'Chat'}</button>
+            <button type="button" onClick={onProfile} className="font-semibold truncate !text-black hover:underline text-left">{peer.peer_name || 'Chat'}</button>
             <p className="text-[11px] text-slate-500">Active conversation</p>
           </div>
         </div>
         <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Online</Badge>
       </div>
 
-      {error && <div className="shrink-0 mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{error}</div>}
+      {error && <div className="shrink-0 mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs !text-black">{error}</div>}
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto bg-white px-4 py-4 md:px-8 space-y-3">
         {messages.length === 0 && !error && (
           <div className="h-full grid place-items-center text-center">
             <div className="rounded-2xl bg-slate-50 px-6 py-5 shadow-sm">
               <MessageSquare className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-              <p className="font-semibold text-slate-700">Start a conversation</p>
+              <p className="font-semibold !text-black">Start a conversation</p>
               <p className="text-sm text-slate-500">Say hi to begin chatting 👋</p>
             </div>
           </div>
@@ -9855,7 +10099,7 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
                   <AvatarFallback className="bg-emerald-100 text-emerald-700 text-[10px]">{initials(peer.peer_name)}</AvatarFallback>
                 </Avatar>
               )}
-              <div className={`group relative max-w-[78%] md:max-w-[62%] rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${mine ? 'bg-emerald-50 border-emerald-100 text-slate-900 rounded-br-md' : 'bg-white border-slate-200 text-slate-900 rounded-bl-md'}`}>
+              <div className={`group relative max-w-[78%] md:max-w-[62%] rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${mine ? 'bg-emerald-50 border-emerald-100 !text-black rounded-br-md' : 'bg-white border-slate-200 !text-black rounded-bl-md'}`}>
                 <p className={`whitespace-pre-wrap break-words leading-relaxed ${deleted ? 'italic text-slate-500' : ''}`}>{m.content}</p>
                 <div className="flex items-center justify-end gap-2 mt-1.5">
                   {m.edited_at && !deleted && <span className="text-[10px] text-slate-400">edited</span>}

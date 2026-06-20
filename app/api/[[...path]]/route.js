@@ -1249,7 +1249,7 @@ async function route(request, { params }) {
       const { data: user, error: userError } = await admin.from('user_profiles').select('*').eq('id', profileId).maybeSingle();
       if (userError) return err(userError.message, 400);
       if (!user) return err('Profile not found', 404);
-      let extra = null, completedWorks = 0, feedbacks = [], postedJobs = [], activeHires = [], ratingAverage = 0, ratingCount = 0, ratingEligibleCount = 0;
+      let extra = null, completedWorks = 0, feedbacks = [], blackMarks = [], postedJobs = [], activeHires = [], ratingAverage = 0, ratingCount = 0, ratingEligibleCount = 0;
       if (user.role === 'worker') {
         const { data: worker } = await admin.from('workers').select('*').eq('user_id', profileId).maybeSingle();
         extra = worker || {};
@@ -1283,8 +1283,20 @@ async function route(request, { params }) {
         const { count } = await admin.from('applications').select('id,jobs!inner(employer_id)', { count: 'exact', head: true }).eq('jobs.employer_id', profileId).eq('status', 'completed');
         completedWorks = count || 0;
       }
+      let blackMarkCount = Number(user.black_mark_count || extra?.black_mark_count || 0) || 0;
+      try {
+        const { count: bmCount } = await admin.from('profile_black_marks').select('id', { count: 'exact', head: true }).eq('profile_id', profileId).eq('status', 'active');
+        blackMarkCount = bmCount || blackMarkCount;
+        const { data: bmRows } = await admin.from('profile_black_marks')
+          .select('reason,created_at,marked_by,status')
+          .eq('profile_id', profileId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(20);
+        blackMarks = bmRows || [];
+      } catch {}
       return json({
-        profile: { ...user, ...extra, role: user.role, id: user.id },
+        profile: { ...user, ...extra, role: user.role, id: user.id, black_mark_count: blackMarkCount },
         stats: {
           completedWorks,
           feedbackCount: ratingCount || feedbacks.length,
@@ -1293,8 +1305,10 @@ async function route(request, { params }) {
           ratingCount,
           ratingEligibleCount,
           ratingReady: ratingEligibleCount >= 5,
+          blackMarkCount,
         },
         feedbacks,
+        blackMarks,
         postedJobs,
         activeHires,
       });
@@ -2063,10 +2077,118 @@ async function route(request, { params }) {
       return json({ feedback: data });
     }
 
+
+    if (path === 'profiles/feedback' && method === 'POST') {
+      const body = await request.json();
+      const profileId = body.profile_id;
+      const cleanRating = Number(body.rating);
+      const cleanFeedback = String(body.feedback_text || '').trim();
+      if (!profileId) return err('Profile is required.', 400);
+      if (profileId === me.id) return err('You cannot rate your own profile.', 400);
+      if (!Number.isFinite(cleanRating) || cleanRating < 1 || cleanRating > 5) return err('Please select a rating from 1 to 5 stars.', 400);
+      if (!cleanFeedback) return err('Please add feedback before submitting.', 400);
+
+      const { data: target } = await admin.from('user_profiles').select('id,role').eq('id', profileId).maybeSingle();
+      if (!target) return err('Profile not found.', 404);
+
+      if (target.role === 'worker' || target.role === 'employee') {
+        const { data: existing } = await admin.from('worker_feedbacks')
+          .select('id')
+          .eq('worker_id', profileId)
+          .eq('employer_id', me.id)
+          .is('application_id', null)
+          .maybeSingle();
+        if (existing) return err('You already gave profile feedback.', 409);
+        const { data, error } = await admin.from('worker_feedbacks').insert({
+          employer_id: me.id,
+          worker_id: profileId,
+          application_id: null,
+          rating: cleanRating,
+          feedback_text: cleanFeedback,
+        }).select().single();
+        if (error) return err(error.message, 400);
+        try {
+          const { data: ratings } = await admin.from('worker_feedbacks').select('rating').eq('worker_id', profileId);
+          const rows = ratings || [];
+          const count = rows.length;
+          const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+          await admin.from('workers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', profileId);
+        } catch {}
+        await notify(admin, profileId, 'New profile feedback', 'Someone added feedback to your worker profile.', 'feedback', profileId);
+        return json({ feedback: data });
+      }
+
+      const { data: existing } = await admin.from('company_feedbacks')
+        .select('id')
+        .eq('company_id', profileId)
+        .eq('worker_id', me.id)
+        .is('application_id', null)
+        .maybeSingle();
+      if (existing) return err('You already gave profile feedback.', 409);
+      const { data, error } = await admin.from('company_feedbacks').insert({
+        worker_id: me.id,
+        company_id: profileId,
+        application_id: null,
+        rating: cleanRating,
+        feedback_text: cleanFeedback,
+      }).select().single();
+      if (error) return err(error.message, 400);
+      try {
+        const { data: ratings } = await admin.from('company_feedbacks').select('rating').eq('company_id', profileId);
+        const rows = ratings || [];
+        const count = rows.length;
+        const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+        await admin.from('employers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', profileId);
+      } catch {}
+      await notify(admin, profileId, 'New company feedback', 'Someone added feedback to your company profile.', 'feedback', profileId);
+      return json({ feedback: data });
+    }
+
     // Backward-compatible alias: employer-to-worker feedback uses the worker feedback table.
     if (path === 'feedback/employer' && method === 'POST') {
       const body = await request.json();
       return err('Use feedback/worker for employer-to-worker feedback.', 410);
+    }
+
+
+
+    // ---------- Black mark routes ----------
+    if (path === 'blackmarks/mark' && method === 'POST') {
+      const body = await request.json();
+      const profileId = body.profile_id;
+      const reason = String(body.reason || '').trim();
+      if (!profileId) return err('Profile is required.', 400);
+      if (!reason) return err('Reason is required.', 400);
+      if (profileId === me.id) return err('You cannot mark your own profile.', 400);
+
+      const { data: target } = await admin.from('user_profiles').select('id,role').eq('id', profileId).maybeSingle();
+      if (!target) return err('Profile not found.', 404);
+
+      const payload = {
+        profile_id: profileId,
+        marked_by: me.id,
+        reason,
+        status: 'active',
+        created_at: nowIso,
+        updated_at: nowIso
+      };
+      let { data, error } = await admin.from('profile_black_marks').insert(payload).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('duplicate')) {
+        return err('You already marked this profile.', 409);
+      }
+      if (error) return err(error.message, 400);
+
+      const { count } = await admin.from('profile_black_marks')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', profileId)
+        .eq('status', 'active');
+      try {
+        await admin.from('user_profiles').update({ black_mark_count: count || 0, updated_at: nowIso }).eq('id', profileId);
+        if (target.role === 'worker') await admin.from('workers').update({ black_mark_count: count || 0 }).eq('user_id', profileId);
+        if (target.role === 'employer') await admin.from('employers').update({ black_mark_count: count || 0 }).eq('user_id', profileId);
+      } catch {}
+      await notify(admin, profileId, 'Black mark added', 'A black mark was added to your profile after a report.', 'profile', profileId);
+      return json({ black_mark: data, black_mark_count: count || 0 });
     }
 
     // ---------- Worker routes ----------
