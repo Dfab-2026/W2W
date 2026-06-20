@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAdmin, getUserFromRequest } from '@/lib/supabase/admin';
 import { Resend } from 'resend';
 
+export const runtime = 'nodejs';
+
 const json = (data, status = 200) => NextResponse.json(data, { status });
 const err  = (message, status = 400) => NextResponse.json({ error: message }, { status });
 
@@ -134,11 +136,56 @@ function planFeatures(role, planName) {
   return { plan_name: plan, ...(plans[roleKey][plan] || plans[roleKey].Free) };
 }
 
+
+async function sendDevicePush(admin, userIds, payload) {
+  try {
+    const ids = Array.isArray(userIds) ? userIds.filter(Boolean) : [userIds].filter(Boolean);
+    if (!ids.length) return;
+    if (!process.env.VAPID_PRIVATE_KEY || !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return;
+
+    const webpushModule = await import('web-push');
+    const webpush = webpushModule.default || webpushModule;
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:support@work2wish.com',
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+
+    const { data: subs } = await admin
+      .from('user_push_subscriptions')
+      .select('id,user_id,endpoint,p256dh,auth')
+      .in('user_id', ids)
+      .eq('enabled', true);
+
+    for (const sub of subs || []) {
+      try {
+        await webpush.sendNotification({
+          endpoint: sub.endpoint,
+          keys: { p256dh: sub.p256dh, auth: sub.auth },
+        }, JSON.stringify({
+          title: payload.title || 'Work2Wish',
+          body: payload.body || payload.message || 'You have a new update',
+          url: payload.url || '/',
+          type: payload.type || 'update',
+          related_id: payload.related_id || null,
+        }));
+      } catch (e) {
+        if ([404, 410].includes(Number(e?.statusCode))) {
+          await admin.from('user_push_subscriptions').update({ enabled: false, updated_at: new Date().toISOString() }).eq('id', sub.id);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('device push skipped:', e?.message);
+  }
+}
+
 async function notify(admin, userId, title, body, type, relatedId) {
   try {
     await admin.from('notifications').insert({
       user_id: userId, title, body, type, related_id: relatedId || null,
     });
+    await sendDevicePush(admin, userId, { title, body, type, related_id: relatedId || null });
   } catch (e) { console.warn('notify failed', e?.message); }
 }
 
@@ -1367,6 +1414,39 @@ async function route(request, { params }) {
       return json({ application: data });
     }
 
+
+    // ---------- Device Push Notifications ----------
+    if (path === 'push/subscribe' && method === 'POST') {
+      const body = await request.json();
+      const subscription = body?.subscription || {};
+      const endpoint = subscription?.endpoint;
+      const p256dh = subscription?.keys?.p256dh;
+      const authKey = subscription?.keys?.auth;
+      if (!endpoint || !p256dh || !authKey) return err('Invalid notification subscription', 400);
+
+      const payload = {
+        user_id: me.id,
+        endpoint,
+        p256dh,
+        auth: authKey,
+        permission: body?.permission || 'granted',
+        user_agent: body?.user_agent || null,
+        enabled: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await admin
+        .from('user_push_subscriptions')
+        .upsert(payload, { onConflict: 'user_id,endpoint' });
+      if (error) return err(error.message, 400);
+      return json({ ok: true });
+    }
+
+    if (path === 'push/test' && method === 'POST') {
+      await notify(admin, me.id, 'Work2Wish notifications enabled', 'You will receive important job, application, attendance and verification updates on this device.', 'device_push_test', me.id);
+      return json({ ok: true });
+    }
+
     // ---------- Jobs ----------
     if (path === 'jobs' && method === 'GET') {
       const url = new URL(request.url);
@@ -1483,6 +1563,11 @@ async function route(request, { params }) {
       await logActivity(admin, me.id, 'posted_job', { job_id: data.id, title: data.title, daily_pay: data.daily_pay }, me.id);
       const { data: adminsForJob } = await admin.from('user_profiles').select('id').eq('role', 'admin').eq('blocked', false);
       for (const a of adminsForJob || []) await notify(admin, a.id, 'New job posted', `${body.title} was posted by an employer.`, 'job_post', data.id);
+
+      const { data: workersForJob } = await admin.from('user_profiles').select('id').eq('role', 'worker').eq('blocked', false);
+      for (const w of workersForJob || []) {
+        await notify(admin, w.id, 'New job posted', `${body.title} is available at ${locationText || 'a company location'}.`, 'new_job_posted', data.id);
+      }
       return json({ job: data });
     }
 

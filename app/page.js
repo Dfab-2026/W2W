@@ -10,7 +10,7 @@ import {
   Hammer, Users, ClipboardList, Clock, CheckCircle2, XCircle, MessageSquare,
   Edit3, Camera, ChevronLeft, Filter, Banknote, Upload, ArrowLeft, Image as ImgIcon,
   Mail, KeyRound, Hash, Copy, Eye, EyeOff, Lock, ShieldAlert, X,
-  FileText, Tag, IndianRupee, Calendar, Award, Check, UserCircle, Sun, Moon, Globe2, Trash2, CheckCheck, Save
+  FileText, Tag, IndianRupee, Calendar, Award, Check, UserCircle, Sun, Moon, Globe2, Languages, Trash2, CheckCheck, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createPortal } from 'react-dom';
@@ -346,6 +346,55 @@ async function api(path, { method = 'GET', body, token } = {}) {
     throw new Error(message);
   }
   return data;
+}
+
+
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function enableDeviceNotifications(token) {
+  if (typeof window === 'undefined') return;
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    try { toast.info('Notifications are disabled. You can enable them from browser settings anytime.'); } catch {}
+    return;
+  }
+
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!publicKey) {
+    try { toast.info('Notification permission enabled. Add NEXT_PUBLIC_VAPID_PUBLIC_KEY to enable background push alerts.'); } catch {}
+    return;
+  }
+
+  const registration = await navigator.serviceWorker.register('/w2w-service-worker.js');
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
+
+  await api('push/subscribe', {
+    method: 'POST',
+    token,
+    body: {
+      subscription: subscription.toJSON ? subscription.toJSON() : subscription,
+      permission,
+      user_agent: navigator.userAgent,
+    },
+  });
+
+  try { toast.success('Device notifications enabled'); } catch {}
 }
 
 async function uploadFile(file, kind, token) {
@@ -834,6 +883,8 @@ const [lang, setLang] = useState('en');
     window.dispatchEvent(new CustomEvent('w2w-language-change', { detail: next }));
     setTimeout(() => applyDashboardLanguage(next), 50);
     setTimeout(() => applyDashboardLanguage(next), 300);
+    setTimeout(() => applyDashboardLanguage(next), 900);
+    setTimeout(() => applyDashboardLanguage(next), 1600);
     toast.success(`Language: ${next.toUpperCase()}`);
   };
   return (
@@ -841,9 +892,9 @@ const [lang, setLang] = useState('en');
       <SelectTrigger
         title="Language"
         aria-label="Language"
-        className="h-11 w-11 min-w-11 aspect-square rounded-full bg-[#07183f] border border-sky-300/30 p-0 grid place-items-center text-white hover:bg-[#0b2a68] shadow-md transition-colors overflow-hidden"
+        className="h-11 w-11 min-w-11 aspect-square rounded-full bg-white/95 border border-sky-300 p-0 grid place-items-center text-[#07183f] hover:bg-sky-50 shadow-md transition-colors overflow-hidden"
       >
-        <Globe2 className="w-4 h-4" />
+        <Languages className="w-5 h-5" />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="en">English</SelectItem>
@@ -988,6 +1039,7 @@ export default function App() {
           saveSession(payload.session, payload.role, payload.profile);
           setAuth(payload);
           setScreen(fin.role === 'admin' ? 'admin-app' : fin.role === 'employer' ? 'employer-app' : 'worker-app');
+          setTimeout(() => enableDeviceNotifications(payload.session?.access_token).catch(() => {}), 600);
           if (typeof window !== 'undefined' && window.location.hash) {
             window.history.replaceState({}, '', window.location.pathname);
           }
@@ -1033,6 +1085,7 @@ export default function App() {
     } catch {}
     setAuth(payload);
     setScreen(data.role === 'admin' ? 'admin-app' : data.role === 'employer' ? 'employer-app' : 'worker-app');
+    setTimeout(() => enableDeviceNotifications(payload.session?.access_token).catch(() => {}), 600);
     toast.success('Welcome to Work2Wish!');
   };
 
@@ -3038,7 +3091,7 @@ function WorkerApp({ auth, onLogout }) {
   };
 
   return (
-    <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
+    <div className="w2w-dashboard-shell h-[100dvh] max-h-[100dvh] bg-slate-50 overflow-hidden flex flex-col">
       {/* top bar — premium */}
       <header className="bg-gradient-to-r from-[#04112f] via-[#071f55] to-[#0b3b91] backdrop-blur-xl border-b border-blue-400/20 shrink-0 z-10 shadow-[0_10px_34px_rgba(7,31,85,0.30)]">
         <div className="container py-2.5 flex items-center justify-between gap-3">
@@ -7122,7 +7175,7 @@ function EmployerApp({ auth, onLogout }) {
   };
 
   return (
-    <div className="h-screen bg-slate-50 overflow-hidden flex flex-col">
+    <div className="w2w-dashboard-shell h-[100dvh] max-h-[100dvh] bg-slate-50 overflow-hidden flex flex-col">
       <header className="bg-gradient-to-r from-[#04112f] via-[#071f55] to-[#0b3b91] backdrop-blur-xl border-b border-blue-400/20 shrink-0 z-10 shadow-[0_10px_34px_rgba(7,31,85,0.30)]">
         <div className="container py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -7720,8 +7773,8 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
   };
 
   return (
-    <div className="h-full min-h-0 overflow-hidden bg-slate-50 flex items-start justify-center px-1 pt-1 pb-1">
-      <Card className="w-full max-w-[1320px] h-[calc(100vh-132px)] max-h-[calc(100vh-132px)] overflow-hidden rounded-3xl premium-card shadow-xl flex flex-col bg-white">
+    <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 flex items-start md:items-center justify-center px-2 pt-3 pb-24 md:py-2">
+      <Card className="w-full max-w-[1320px] min-h-0 h-auto md:h-full max-h-none md:max-h-full overflow-hidden rounded-3xl premium-card shadow-xl flex flex-col bg-white">
         <CardHeader className="shrink-0 border-b px-4 py-2 md:px-5 md:py-2 bg-gradient-to-r from-emerald-50 via-white to-indigo-50">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
@@ -7742,7 +7795,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
           </div>
         </CardHeader>
 
-        <CardContent className="flex-1 min-h-0 overflow-hidden p-3 bg-white text-sm">
+        <CardContent className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 pb-24 md:pb-3 bg-white text-sm max-h-[calc(100dvh-170px)] md:max-h-none">
           <AnimatePresence mode="wait">
             {step === 1 && (
               <motion.form
@@ -7751,9 +7804,9 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 18 }}
                 onSubmit={nextStep}
-                className="h-full min-h-0 flex flex-col gap-2"
+                className="min-h-0 md:min-h-full flex flex-col gap-2"
               >
-                <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-2 content-start pr-1">
+                <div className="flex-1 min-h-0 overflow-visible grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3 content-start pr-0">
                   <div className="md:col-span-2 space-y-1">
                     <Label className="text-xs font-semibold">Job title<span className="text-red-500 ml-0.5">*</span></Label>
                     <Input className="h-10 text-sm rounded-xl" value={f.title} onChange={e => setF(s => ({ ...s, title: e.target.value }))} placeholder="Enter role name, e.g. TIG Welder, CNC Operator" required />
@@ -7774,7 +7827,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                       <SelectContent>
                         <SelectItem value="daily">Daily pay</SelectItem>
                         <SelectItem value="hourly">Hour pay</SelectItem>
-                        
+                        <SelectItem value="both">Daily + Hour pay</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -7868,9 +7921,9 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -18 }}
                 onSubmit={submit}
-                className="h-full min-h-0 flex flex-col justify-between gap-2"
+                className="min-h-0 md:min-h-full flex flex-col justify-between gap-2"
               >
-                <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 md:grid-cols-12 gap-2 pr-0 content-start">
+                <div className="flex-1 min-h-0 overflow-visible grid grid-cols-1 md:grid-cols-12 gap-2 pr-0 content-start">
                   <div className="md:col-span-12 space-y-0.5">
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-1.5 flex flex-col gap-1">
                       <div className="min-w-0">
@@ -9329,7 +9382,7 @@ function getSubscriptionExpiryDate(plan, role) {
 function getPlanAmountPaise(plan, role) {
   const workerAmounts = {
     Free: 0,
-    Basic: 9900,
+    Basic: 19900,
     Growth: 29900,
     Premium: 59900,
   };
@@ -9346,7 +9399,7 @@ function getPlanAmountPaise(plan, role) {
 function getPlanDisplayPrice(plan, role) {
   const workerPrices = {
     Free: '₹0',
-    Basic: '₹99 / 1 Month',
+    Basic: '₹199 / 1 Month',
     Growth: '₹299 / 6 Months',
     Premium: '₹599 / 12 Months',
   };
@@ -9395,7 +9448,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   }, [open, planStorageKey]);
 
   const employeePlans = [
-    { name: 'Basic', price: '₹99 / 1 Month', highlight: false, validityMonths: 1, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
+    { name: 'Basic', price: '₹199 / 1 Month', highlight: false, validityMonths: 1, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
     { name: 'Growth', price: '₹299 / 6 Months', highlight: true, validityMonths: 6, features: ['Unlimited job applications', 'Priority-based visibility', 'Skill badge', 'Interview notifications', 'Better search ranking'] },
     { name: 'Premium', price: '₹599 / 12 Months', highlight: false, validityMonths: 12, features: ['Verified badge', 'Direct chat with employers', 'Faster matching', 'Top visibility', 'High-paying jobs access'] },
   ];

@@ -1193,3 +1193,51 @@ span[class*="bg-emerald-600"] *, div[class*="bg-emerald-600"] *, button[class*="
     white-space: normal;
   }
 }
+
+/* Work2Wish mobile containment and language wrapping fixes */
+@media (max-width: 768px) {
+  .w2w-dashboard-shell {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+  .container {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  main {
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  header, nav {
+    flex-shrink: 0 !important;
+  }
+  nav {
+    position: relative;
+    bottom: auto;
+    z-index: 50;
+  }
+  .premium-card,
+  [class*="rounded-3xl"],
+  [class*="rounded-2xl"] {
+    max-width: 100%;
+  }
+  h1, h2, h3, p, span, label, button, div {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  button, input, textarea, [role="button"] {
+    max-width: 100%;
+  }
+  form label,
+  form p,
+  form span,
+  form button {
+    white-space: normal !important;
+    line-height: 1.25;
+  }
+}
