@@ -1203,7 +1203,7 @@ function AdminAccessButton({ onAuthed }) {
           <DialogTitle>Admin verification</DialogTitle>
           <DialogDescription>Login with the email you marked as admin in Supabase.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-3">
+        <form onSubmit={submit} className="space-y-2 sm:space-y-3">
           <div>
             <Label>Admin email</Label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
@@ -1974,7 +1974,7 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
 
   return (
     <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-sky-50 grid lg:grid-cols-2 relative">
+      className="min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-gradient-to-br from-slate-50 via-white to-sky-50 grid lg:grid-cols-2 relative">
       {/* left: marketing with 3D depth */}
       <div className="hidden lg:flex flex-col justify-center p-10 bg-gradient-to-br from-[#061a4d] via-[#0b67bd] to-[#9ee8ff] text-white relative overflow-hidden">
         <GradientMesh />
@@ -2020,17 +2020,17 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
       </div>
 
       {/* right: form */}
-      <div className="flex flex-col items-center justify-center p-6 sm:p-10 relative">
-        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center px-4 py-3 sm:p-10 relative overflow-hidden">
+        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md max-h-[calc(100dvh-24px)] overflow-visible flex flex-col justify-center">
+          <div className="lg:hidden flex items-center gap-2 mb-3 sm:mb-8">
             <div className="w-12 h-12 rounded-xl bg-white grid place-items-center shadow-sm ring-1 ring-sky-100 p-1"><Work2WishLogo className="w-full h-full" /></div>
             <span className="text-xl font-extrabold">Work2Wish</span>
           </div>
-          <h2 className="text-3xl font-extrabold tracking-tight">Welcome back</h2>
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">Welcome back</h2>
           <p className="text-muted-foreground mt-1">Log in to continue.</p>
 
-          <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
-            <label className="flex items-start gap-3 text-xs leading-5 text-slate-700">
+          <div className="mt-3 sm:mt-5 rounded-2xl border border-sky-100 bg-sky-50/60 p-2.5 sm:p-3">
+            <label className="flex items-start gap-2.5 text-[11px] sm:text-xs leading-4 sm:leading-5 text-slate-700">
               <input
                 type="checkbox"
                 checked={googleTermsAccepted}
@@ -2052,7 +2052,7 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
           </div>
 
           <motion.div whileHover={{ y: googleTermsAccepted ? -2 : 0 }} whileTap={{ scale: googleTermsAccepted ? 0.99 : 1 }}>
-            <Button variant="outline" className={`w-full h-12 mt-3 transition-shadow ${googleTermsAccepted ? 'hover:shadow-md' : 'opacity-60 cursor-not-allowed'}`}
+            <Button variant="outline" className={`w-full h-10 sm:h-12 mt-2 sm:mt-3 transition-shadow text-sm ${googleTermsAccepted ? 'hover:shadow-md' : 'opacity-60 cursor-not-allowed'}`}
                     onClick={google}
                     disabled={!googleTermsAccepted}>
               <svg className="w-5 h-5 mr-2" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.1 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.4 1.1 7.4 2.8l5.7-5.7C33.6 6.5 29 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16.1 19 13 24 13c2.8 0 5.4 1.1 7.4 2.8l5.7-5.7C33.6 6.5 29 4.5 24 4.5 16.4 4.5 9.8 8.6 6.3 14.7z"/><path fill="#4CAF50" d="M24 43.5c5 0 9.5-1.9 12.9-5l-6-4.9c-2 1.4-4.4 2.4-6.9 2.4-5.3 0-9.7-3-11.3-7l-6.5 5C9.5 39.4 16.1 43.5 24 43.5z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 1.9-1.9 3.5-3.4 4.7l6 4.9C40 35.1 43.5 30 43.5 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
@@ -2060,13 +2060,13 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
             </Button>
           </motion.div>
 
-          <div className="flex items-center gap-3 my-6">
+          <div className="flex items-center gap-3 my-3 sm:my-6">
             <Separator className="flex-1" />
             <span className="text-xs text-muted-foreground">OR</span>
             <Separator className="flex-1" />
           </div>
 
-          <form onSubmit={submit} className="space-y-3">
+          <form onSubmit={submit} className="space-y-2 sm:space-y-3">
             <div>
               <Label>Email or Login ID</Label>
               <div className="relative">
@@ -2084,13 +2084,13 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
               <PasswordInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
             </div>
             <motion.div whileTap={{ scale: 0.98 }}>
-              <Button type="submit" disabled={busy} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-shadow">
+              <Button type="submit" disabled={busy} className="w-full h-10 sm:h-11 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-shadow">
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Log in <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
             </motion.div>
           </form>
 
-          <p className="text-center text-sm text-muted-foreground mt-6">
+          <p className="text-center text-xs sm:text-sm text-muted-foreground mt-3 sm:mt-6">
             New to Work2Wish?{' '}
             <button onClick={onGotoSignup} className="text-indigo-600 font-semibold hover:underline">Create an account</button>
           </p>
@@ -2122,7 +2122,7 @@ function ForgotEmail({ onSent, onBack }) {
       <GradientMesh />
       <Button variant="ghost" size="sm" onClick={onBack} className="self-start m-6 relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
       <div className="flex-1 flex items-center justify-center px-6 relative">
-        <Tilt3D className="w-full max-w-md">
+        <Tilt3D className="w-full max-w-md max-h-[calc(100dvh-24px)] overflow-visible flex flex-col justify-center">
           <Card className="shadow-2xl border-0 ring-1 ring-black/5">
             <CardHeader className="text-center pb-2">
               <motion.div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-[#061a4d] to-[#0b8fe8] grid place-items-center text-white mb-3"
@@ -2133,7 +2133,7 @@ function ForgotEmail({ onSent, onBack }) {
               <CardDescription>No worries — we'll email you a 6-digit code to reset it.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={submit} className="space-y-3">
+              <form onSubmit={submit} className="space-y-2 sm:space-y-3">
                 <div>
                   <Label>Email</Label>
                   <div className="relative">
@@ -2185,7 +2185,7 @@ function ForgotReset({ email, onAuthed, onBack }) {
       <GradientMesh />
       <Button variant="ghost" size="sm" onClick={onBack} className="self-start m-6 relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
       <div className="flex-1 flex items-center justify-center px-6 relative">
-        <Tilt3D className="w-full max-w-md">
+        <Tilt3D className="w-full max-w-md max-h-[calc(100dvh-24px)] overflow-visible flex flex-col justify-center">
           <Card className="shadow-2xl border-0 ring-1 ring-black/5">
             <CardHeader className="text-center pb-2">
               <motion.div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-[#061a4d] to-[#21b7ff] grid place-items-center text-white mb-3"
@@ -2231,19 +2231,19 @@ function ForgotReset({ email, onAuthed, onBack }) {
 function SignupRolePicker({ onPick, onBack }) {
   return (
     <motion.div key="signup-role" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 p-6 flex flex-col relative overflow-hidden">
+      className="min-h-[100dvh] max-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-sky-50 px-4 py-3 sm:p-6 flex flex-col relative overflow-hidden">
       <GradientMesh />
       <div className="relative z-10 flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={onBack} className="relative"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
       </div>
-      <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full relative">
-        <motion.h1 className="text-4xl sm:text-5xl font-extrabold text-center"
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center max-w-3xl mx-auto w-full relative">
+        <motion.h1 className="text-2xl sm:text-5xl font-extrabold text-center leading-tight"
           initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
           How will you use Work2Wish?
         </motion.h1>
         <p className="text-muted-foreground mt-2 text-center">Choose your role — you can't change this later.</p>
 
-        <div className="grid sm:grid-cols-2 gap-5 mt-10 w-full" style={{ perspective: 1200 }}>
+        <div className="grid sm:grid-cols-2 gap-3 sm:gap-5 mt-5 sm:mt-10 w-full" style={{ perspective: 1200 }}>
           {[
             { role: 'worker', icon: HardHat, color: 'indigo', title: "I'm a worker", sub: 'Find daily / short-term jobs near me' },
             { role: 'employer', icon: Briefcase, color: 'emerald', title: "I'm an employer", sub: 'Post jobs and hire skilled workers' },
@@ -2254,14 +2254,14 @@ function SignupRolePicker({ onPick, onBack }) {
               transition={{ delay: 0.1 + i * 0.1, type: 'spring', stiffness: 90 }}>
               <Tilt3D max={20}>
                 <button onClick={() => onPick(r.role)}
-                  className={`w-full text-left p-7 bg-white rounded-2xl border-2 hover:border-${r.color}-500 hover:shadow-2xl transition-shadow group block`}>
-                  <motion.div className={`w-16 h-16 rounded-2xl grid place-items-center text-white ${r.color === 'indigo' ? 'bg-gradient-to-br from-[#061a4d] to-[#0b8fe8]' : 'bg-gradient-to-br from-[#061a4d] to-[#21b7ff]'} shadow-lg`}
+                  className={`w-full text-left p-4 sm:p-7 bg-white rounded-2xl border-2 hover:border-${r.color}-500 hover:shadow-2xl transition-shadow group block`}>
+                  <motion.div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-2xl grid place-items-center text-white ${r.color === 'indigo' ? 'bg-gradient-to-br from-[#061a4d] to-[#0b8fe8]' : 'bg-gradient-to-br from-[#061a4d] to-[#21b7ff]'} shadow-lg`}
                     whileHover={{ rotate: [0, -8, 8, 0] }} transition={{ duration: 0.6 }}>
                     <r.icon className="w-8 h-8" />
                   </motion.div>
-                  <p className="font-bold text-2xl mt-5">{r.title}</p>
+                  <p className="font-bold text-xl sm:text-2xl mt-3 sm:mt-5">{r.title}</p>
                   <p className="text-sm text-muted-foreground mt-1">{r.sub}</p>
-                  <div className={`mt-5 inline-flex items-center text-sm font-semibold ${r.color === 'indigo' ? 'text-indigo-600' : 'text-emerald-600'} group-hover:translate-x-1 transition-transform`}>
+                  <div className={`mt-3 sm:mt-5 inline-flex items-center text-sm font-semibold ${r.color === 'indigo' ? 'text-indigo-600' : 'text-emerald-600'} group-hover:translate-x-1 transition-transform`}>
                     Continue <ArrowRight className="w-4 h-4 ml-1" />
                   </div>
                 </button>
@@ -2329,7 +2329,7 @@ function SignupForm({ data, onChange, onSent, onBack }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={submit} className="space-y-3">
+            <form onSubmit={submit} className="space-y-2 sm:space-y-3">
               <div>
                 <Label>Full name</Label>
                 <Input
@@ -6762,7 +6762,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
       )}
 
       <Dialog open={open} onOpenChange={(v) => v ? setOpen(true) : closeVerification()}>
-        <DialogContent className="w-[94vw] max-w-[760px] max-h-[96vh] overflow-hidden rounded-3xl p-4">
+        <DialogContent className="w-[96vw] max-w-[760px] max-h-[96dvh] overflow-y-auto rounded-3xl p-3 sm:p-4">
           <DialogHeader>
             <DialogTitle>Front face auto capture</DialogTitle>
             <DialogDescription>Keep your full front face inside the green frame. It captures automatically when your face is clear.</DialogDescription>
@@ -6783,7 +6783,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
                 />
               ))}
             </div>
-            <div className="relative mx-auto h-[430px] w-[680px] max-w-[88vw] rounded-[2rem] border-[5px] border-emerald-500 bg-slate-950 overflow-hidden grid place-items-center shadow-[0_0_0_4px_rgba(16,185,129,0.12),0_20px_45px_rgba(15,23,42,0.25)]">
+            <div className="relative mx-auto h-[min(430px,52dvh)] w-[680px] max-w-[88vw] rounded-[2rem] border-[5px] border-emerald-500 bg-slate-950 overflow-hidden grid place-items-center shadow-[0_0_0_4px_rgba(16,185,129,0.12),0_20px_45px_rgba(15,23,42,0.25)]">
               {cameraOn ? (
                 <>
                   <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 w-full h-full object-contain bg-slate-950 scale-x-[-1]" />
@@ -6813,10 +6813,10 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
 
           <style>{`@keyframes selfieParticleMove { 0% { transform: translate3d(0, 0, 0); opacity: .18; } 50% { transform: translate3d(16px, -24px, 0); opacity: .65; } 100% { transform: translate3d(-8px, -52px, 0); opacity: .18; } } @keyframes selfieScan { 0% { transform: translateY(0); opacity:.45; } 50% { transform: translateY(370px); opacity:1; } 100% { transform: translateY(0); opacity:.45; } }`}</style>
 
-          <DialogFooter className="gap-2 sm:gap-2 shrink-0 flex-wrap">
-            <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop camera' : 'Start camera'}</Button>
-            <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate || cameraOn} onClick={startCamera}>Retake</Button>
-            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || !allowSelfieUpdate || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for review'}</Button>
+          <DialogFooter className="gap-2 sm:gap-2 shrink-0 !flex !flex-row !flex-nowrap items-center justify-between">
+            <Button type="button" variant="outline" className="flex-1 min-w-0 px-2 text-xs sm:text-sm whitespace-nowrap" disabled={busy || disabled || !allowSelfieUpdate} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop camera' : 'Start camera'}</Button>
+            <Button type="button" variant="outline" className="flex-1 min-w-0 px-2 text-xs sm:text-sm whitespace-nowrap" disabled={busy || disabled || !allowSelfieUpdate || cameraOn} onClick={startCamera}>Retake</Button>
+            <Button type="button" className="flex-1 min-w-0 px-2 text-xs sm:text-sm whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || !allowSelfieUpdate || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
