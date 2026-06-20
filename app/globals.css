@@ -1130,66 +1130,66 @@ span[class*="bg-emerald-600"] *, div[class*="bg-emerald-600"] *, button[class*="
   stroke: #ffffff !important;
 }
 
-
-/* Work2Wish final mobile/text safety */
-html, body {
-  max-width: 100%;
-  overflow-x: hidden;
-  -webkit-text-size-adjust: 100%;
+/* ============================================================
+   Work2Wish mobile layout safety patch
+   - header/footer stay fixed inside app shell
+   - only middle content scrolls
+   - long words/addresses/emails wrap neatly on mobile
+   ============================================================ */
+@layer base {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    overscroll-behavior: none;
+  }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-.profile-section-card,
-.premium-panel {
-  max-width: 100%;
-}
-
-.w2w-verify-button,
-.w2w-verify-button * {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
-}
-
-.w2w-verify-idle {
-  background-color: #dc2626 !important;
-  border-color: #dc2626 !important;
-}
-
-.w2w-verify-pending {
-  background-color: #f59e0b !important;
-  border-color: #f59e0b !important;
-}
-
-.w2w-verify-done {
-  background-color: #16a34a !important;
-  border-color: #16a34a !important;
+@layer utilities {
+  .w2w-scroll-area {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .w2w-safe-text {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+  }
 }
 
 @media (max-width: 640px) {
-  .profile-section-card {
-    border-radius: 1.25rem !important;
-  }
-
-  .profile-section-header {
-    padding: 0.9rem !important;
-  }
-
-  .w2w-verify-button {
-    width: 100% !important;
-    min-width: 0 !important;
-  }
-
-  input,
-  textarea,
-  select,
-  button {
-    font-size: 16px;
-  }
-
   .container {
+    width: 100%;
     max-width: 100%;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  main {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  main *,
+  .premium-card,
+  .profile-section-card,
+  .premium-job-card,
+  .premium-job-mini,
+  .rounded-xl,
+  .rounded-2xl,
+  .rounded-3xl {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  button,
+  .badge,
+  [class*="Badge"] {
+    white-space: normal;
   }
 }

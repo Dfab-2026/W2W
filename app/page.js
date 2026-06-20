@@ -113,6 +113,33 @@ function getSubscriptionExpiryKey(role, profile) {
   return `w2w-subscription-expiry-${normalizedRole}-${identity}`;
 }
 
+function getProfileSignupDate(profile = null) {
+  const raw = profile?.created_at || profile?.createdAt || profile?.signup_date || profile?.registered_at || profile?.joined_at || profile?.user_created_at;
+  const parsed = raw ? new Date(raw) : null;
+  return parsed && Number.isFinite(parsed.getTime()) ? parsed : new Date();
+}
+
+function getThreeMonthTrialWindow(profile = null) {
+  const startedAt = getProfileSignupDate(profile);
+  const expiresAt = new Date(startedAt);
+  expiresAt.setMonth(expiresAt.getMonth() + 3);
+  return { startedAt, expiresAt };
+}
+
+function getDaysRemainingUntil(dateValue) {
+  const endMs = new Date(dateValue).getTime();
+  if (!Number.isFinite(endMs)) return 0;
+  return Math.max(0, Math.ceil((endMs - Date.now()) / (1000 * 60 * 60 * 24)));
+}
+
+function getTrialProgressPercent(startValue, endValue) {
+  const startMs = new Date(startValue).getTime();
+  const endMs = new Date(endValue).getTime();
+  const nowMs = Date.now();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 0;
+  return Math.max(0, Math.min(100, Math.round(((nowMs - startMs) / (endMs - startMs)) * 100)));
+}
+
 function getFreeTrialKeys(role, profile) {
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   const identity = getSubscriptionIdentity(normalizedRole, profile);
@@ -128,12 +155,18 @@ function getActiveFreeProTrial(role = 'worker', profile = null) {
   if (typeof window === 'undefined') return null;
   const keys = getFreeTrialKeys(role, profile);
   try {
-    const startedAt = localStorage.getItem(keys.started);
-    const expiresAt = localStorage.getItem(keys.expires);
-    if (!startedAt || !expiresAt) return null;
-    const expiresMs = new Date(expiresAt).getTime();
-    if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) return null;
-    return { started_at: startedAt, expires_at: expiresAt };
+    const { startedAt, expiresAt } = getThreeMonthTrialWindow(profile);
+    const storedStart = localStorage.getItem(keys.started);
+    const storedExpiry = localStorage.getItem(keys.expires);
+    const finalStartedAt = (profile?.created_at || profile?.createdAt || profile?.signup_date || profile?.registered_at || profile?.joined_at || profile?.user_created_at) ? startedAt : (storedStart ? new Date(storedStart) : startedAt);
+    const finalExpiresAt = (profile?.created_at || profile?.createdAt || profile?.signup_date || profile?.registered_at || profile?.joined_at || profile?.user_created_at) ? expiresAt : (storedExpiry ? new Date(storedExpiry) : expiresAt);
+    if (!Number.isFinite(finalExpiresAt.getTime()) || finalExpiresAt.getTime() <= Date.now()) return null;
+    return {
+      started_at: finalStartedAt.toISOString(),
+      expires_at: finalExpiresAt.toISOString(),
+      days_remaining: getDaysRemainingUntil(finalExpiresAt),
+      progress_percent: getTrialProgressPercent(finalStartedAt, finalExpiresAt),
+    };
   } catch { return null; }
 }
 
@@ -148,24 +181,40 @@ function ensureFreeProTrial(role = 'worker', profile = null) {
     if (savedPlan && savedPlan !== 'Free' && savedPlan !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[savedPlan]) {
       return { active: false, created: false, paid: true };
     }
-    const active = getActiveFreeProTrial(normalizedRole, profile);
-    if (active) return { active: true, created: false, ...active };
-    const hadTrial = localStorage.getItem(keys.started);
-    const expiredAt = localStorage.getItem(keys.expires);
-    if (hadTrial && expiredAt && new Date(expiredAt).getTime() <= Date.now()) {
-      return { active: false, created: false, expired: true, expires_at: expiredAt };
+
+    const { startedAt, expiresAt } = getThreeMonthTrialWindow(profile);
+    const startedIso = startedAt.toISOString();
+    const expiresIso = expiresAt.toISOString();
+    const existingStart = localStorage.getItem(keys.started);
+    const hasSignupDate = !!(profile?.created_at || profile?.createdAt || profile?.signup_date || profile?.registered_at || profile?.joined_at || profile?.user_created_at);
+    const finalStartedIso = hasSignupDate ? startedIso : (existingStart || startedIso);
+    let finalExpiresAt = hasSignupDate ? expiresAt : new Date(localStorage.getItem(keys.expires) || expiresIso);
+    if (!Number.isFinite(finalExpiresAt.getTime())) finalExpiresAt = expiresAt;
+    const finalExpiresIso = finalExpiresAt.toISOString();
+
+    localStorage.setItem(keys.started, finalStartedIso);
+    localStorage.setItem(keys.expires, finalExpiresIso);
+
+    if (finalExpiresAt.getTime() <= Date.now()) {
+      localStorage.setItem(planKey, 'Free');
+      localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, 'Free');
+      return { active: false, created: false, expired: true, expires_at: finalExpiresIso };
     }
-    const startedAt = new Date();
-    const expiresAt = new Date(startedAt);
-    expiresAt.setDate(expiresAt.getDate() + FREE_PRO_TRIAL_DAYS);
-    localStorage.setItem(keys.started, startedAt.toISOString());
-    localStorage.setItem(keys.expires, expiresAt.toISOString());
+
     localStorage.setItem(planKey, FREE_PRO_TRIAL_PLAN);
     localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, FREE_PRO_TRIAL_PLAN);
-    localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), expiresAt.toISOString());
-    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, expiresAt.toISOString());
-    window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: normalizedRole, plan: FREE_PRO_TRIAL_PLAN, expires_at: expiresAt.toISOString() } }));
-    return { active: true, created: true, started_at: startedAt.toISOString(), expires_at: expiresAt.toISOString() };
+    localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), finalExpiresIso);
+    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, finalExpiresIso);
+    window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: normalizedRole, plan: FREE_PRO_TRIAL_PLAN, expires_at: finalExpiresIso } }));
+
+    return {
+      active: true,
+      created: !existingStart,
+      started_at: finalStartedIso,
+      expires_at: finalExpiresIso,
+      days_remaining: getDaysRemainingUntil(finalExpiresAt),
+      progress_percent: getTrialProgressPercent(finalStartedIso, finalExpiresIso),
+    };
   } catch { return { active: false, created: false }; }
 }
 
@@ -196,8 +245,8 @@ function getSubscriptionFeatures(role = 'worker', profile = null) {
 function SubscriptionLock({ title = 'Upgrade required', description = 'This feature is not available in your current plan.' }) {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
-      <p className="text-sm font-bold !text-black">{title}</p>
-      <p className="mt-1 text-xs !text-black">{description}</p>
+      <p className="text-sm font-bold text-amber-800">{title}</p>
+      <p className="mt-1 text-xs text-amber-700">{description}</p>
     </div>
   );
 }
@@ -605,6 +654,42 @@ const trExtraMap = {
   }
 };
 
+const trCommonPhraseMap = {
+  ta: {
+    'Free Pro Trial':'இலவச ப்ரோ ட்ரையல்','3 Month Free Trial':'3 மாத இலவச ட்ரையல்','Free Trial':'இலவச ட்ரையல்','Trial ends on':'ட்ரையல் முடியும் தேதி','Days remaining':'மீதமுள்ள நாட்கள்','days remaining':'மீதமுள்ள நாட்கள்','Subscription required':'சந்தா தேவை','Subscribe Now':'இப்போது சந்தா செலுத்து','Current Plan':'தற்போதைய திட்டம்','Plan expires on':'திட்டம் முடியும் தேதி','Premium access enabled':'பிரீமியம் அணுகல் இயக்கப்பட்டது','All features enabled':'அனைத்து அம்சங்களும் இயக்கப்பட்டுள்ளன',
+    'Find':'தேடு','My Jobs':'என் வேலைகள்','Chats':'அரட்டைகள்','Worker portal':'தொழிலாளர் போர்டல்','Employer portal':'நியமிப்பாளர் போர்டல்','Admin portal':'நிர்வாக போர்டல்','English':'English','Tamil':'தமிழ்','Hindi':'हिन्दी','Kannada':'ಕನ್ನಡ','Telugu':'తెలుగు',
+    'Send for Verification':'சரிபார்ப்புக்கு அனுப்பு','Pending Approval':'ஒப்புதல் நிலுவை','Done':'முடிந்தது','Save Changes':'மாற்றங்களை சேமி','Change Location':'இடம் மாற்று','Saved GPS':'சேமித்த GPS','Attendance GPS':'வருகை GPS','Radius':'சுற்றளவு','Custom radius':'தனிப்பயன் சுற்றளவு','Save GPS':'GPS சேமி',
+    'Give Feedback':'கருத்து கொடு','Mark Black':'கருப்பு குறி இடு','View Feedbacks / Marks':'கருத்துகள் / குறிகள் பார்','Average rating':'சராசரி மதிப்பீடு','Feedbacks':'கருத்துகள்','Black marks':'கருப்பு குறிகள்','Direct Message':'நேரடி செய்தி','Message worker':'தொழிலாளருக்கு செய்தி','Message Employer':'நியமிப்பாளருக்கு செய்தி','Close':'மூடு',
+    'Company Profile':'நிறுவன சுயவிவரம்','Worker Profile':'தொழிலாளர் சுயவிவரம்','Company Details':'நிறுவன விவரங்கள்','Company Statistics':'நிறுவன புள்ளிவிவரங்கள்','Ratings, Feedbacks & Marks':'மதிப்பீடுகள், கருத்துகள் & குறிகள்','Posted jobs':'பதிவிட்ட வேலைகள்','Hired workers':'நியமிக்கப்பட்ட தொழிலாளர்கள்','Company name':'நிறுவன பெயர்','HR Contact':'HR தொடர்பு','Contact':'தொடர்பு','Works completed':'முடித்த வேலைகள்','Resume not uploaded.':'ரெஸ்யூம் பதிவேற்றப்படவில்லை.',
+    'Complete & Pay':'முடித்து பணம் செலுத்து','Manual Payment':'கைமுறை கட்டணம்','UPI / GPay Payment':'UPI / GPay கட்டணம்','Mark as Paid':'பணம் செலுத்தியது என குறி','Payment Status':'கட்டண நிலை','Already applied':'ஏற்கனவே விண்ணப்பித்துள்ளீர்கள்','You have already applied for this job.':'இந்த வேலைக்கு ஏற்கனவே விண்ணப்பித்துள்ளீர்கள்.'
+  },
+  hi: {
+    'Free Pro Trial':'फ्री प्रो ट्रायल','3 Month Free Trial':'3 महीने का फ्री ट्रायल','Free Trial':'फ्री ट्रायल','Trial ends on':'ट्रायल समाप्ति तारीख','Days remaining':'दिन बाकी','days remaining':'दिन बाकी','Subscription required':'सदस्यता आवश्यक','Subscribe Now':'अभी सदस्यता लें','Current Plan':'वर्तमान प्लान','Plan expires on':'प्लान समाप्ति तारीख','Premium access enabled':'प्रीमियम एक्सेस चालू','All features enabled':'सभी सुविधाएं चालू',
+    'Find':'खोजें','My Jobs':'मेरी नौकरियां','Chats':'चैट','Worker portal':'वर्कर पोर्टल','Employer portal':'एम्प्लॉयर पोर्टल','Admin portal':'एडमिन पोर्टल','English':'English','Tamil':'தமிழ்','Hindi':'हिन्दी','Kannada':'ಕನ್ನಡ','Telugu':'తెలుగు',
+    'Send for Verification':'सत्यापन के लिए भेजें','Pending Approval':'अनुमोदन लंबित','Done':'पूर्ण','Save Changes':'बदलाव सेव करें','Change Location':'स्थान बदलें','Saved GPS':'सेव GPS','Attendance GPS':'उपस्थिति GPS','Radius':'रेडियस','Custom radius':'कस्टम रेडियस','Save GPS':'GPS सेव करें',
+    'Give Feedback':'फीडबैक दें','Mark Black':'ब्लैक मार्क करें','View Feedbacks / Marks':'फीडबैक / मार्क्स देखें','Average rating':'औसत रेटिंग','Feedbacks':'फीडबैक','Black marks':'ब्लैक मार्क्स','Direct Message':'डायरेक्ट मैसेज','Message worker':'वर्कर को मैसेज','Message Employer':'एम्प्लॉयर को मैसेज','Close':'बंद करें',
+    'Company Profile':'कंपनी प्रोफाइल','Worker Profile':'वर्कर प्रोफाइल','Company Details':'कंपनी विवरण','Company Statistics':'कंपनी आंकड़े','Ratings, Feedbacks & Marks':'रेटिंग, फीडबैक और मार्क्स','Posted jobs':'पोस्ट की गई नौकरियां','Hired workers':'नियुक्त वर्कर','Company name':'कंपनी का नाम','HR Contact':'HR संपर्क','Contact':'संपर्क','Works completed':'पूरे किए गए काम','Resume not uploaded.':'रिज्यूमे अपलोड नहीं किया गया.',
+    'Complete & Pay':'पूरा करें और भुगतान करें','Manual Payment':'मैनुअल भुगतान','UPI / GPay Payment':'UPI / GPay भुगतान','Mark as Paid':'भुगतान हुआ चिह्नित करें','Payment Status':'भुगतान स्थिति','Already applied':'पहले ही आवेदन किया','You have already applied for this job.':'आप इस नौकरी के लिए पहले ही आवेदन कर चुके हैं.'
+  },
+  kn: {
+    'Free Pro Trial':'ಉಚಿತ ಪ್ರೋ ಟ್ರಯಲ್','3 Month Free Trial':'3 ತಿಂಗಳ ಉಚಿತ ಟ್ರಯಲ್','Free Trial':'ಉಚಿತ ಟ್ರಯಲ್','Trial ends on':'ಟ್ರಯಲ್ ಮುಗಿಯುವ ದಿನಾಂಕ','Days remaining':'ಉಳಿದ ದಿನಗಳು','days remaining':'ಉಳಿದ ದಿನಗಳು','Subscription required':'ಚಂದಾದಾರಿಕೆ ಅಗತ್ಯ','Subscribe Now':'ಈಗ ಚಂದಾದಾರರಾಗಿ','Current Plan':'ಪ್ರಸ್ತುತ ಯೋಜನೆ','Plan expires on':'ಯೋಜನೆ ಮುಗಿಯುವ ದಿನಾಂಕ','Premium access enabled':'ಪ್ರೀಮಿಯಂ ಪ್ರವೇಶ ಸಕ್ರಿಯ','All features enabled':'ಎಲ್ಲ ವೈಶಿಷ್ಟ್ಯಗಳು ಸಕ್ರಿಯ',
+    'Find':'ಹುಡುಕಿ','My Jobs':'ನನ್ನ ಕೆಲಸಗಳು','Chats':'ಚಾಟ್‌ಗಳು','Worker portal':'ಕಾರ್ಮಿಕ ಪೋರ್ಟಲ್','Employer portal':'ನಿಯೋಜಕ ಪೋರ್ಟಲ್','Admin portal':'ನಿರ್ವಾಹಕ ಪೋರ್ಟಲ್','English':'English','Tamil':'தமிழ்','Hindi':'हिन्दी','Kannada':'ಕನ್ನಡ','Telugu':'తెలుగు',
+    'Send for Verification':'ಪರಿಶೀಲನೆಗೆ ಕಳುಹಿಸಿ','Pending Approval':'ಅನುಮೋದನೆ ಬಾಕಿ','Done':'ಮುಗಿದಿದೆ','Save Changes':'ಬದಲಾವಣೆ ಉಳಿಸಿ','Change Location':'ಸ್ಥಳ ಬದಲಿಸಿ','Saved GPS':'ಉಳಿಸಿದ GPS','Attendance GPS':'ಹಾಜರಾತಿ GPS','Radius':'ಅಂತರ','Custom radius':'ಕಸ್ಟಮ್ ಅಂತರ','Save GPS':'GPS ಉಳಿಸಿ',
+    'Give Feedback':'ಪ್ರತಿಕ್ರಿಯೆ ನೀಡಿ','Mark Black':'ಬ್ಲ್ಯಾಕ್ ಮಾರ್ಕ್ ಮಾಡಿ','View Feedbacks / Marks':'ಪ್ರತಿಕ್ರಿಯೆ / ಗುರುತುಗಳನ್ನು ನೋಡಿ','Average rating':'ಸರಾಸರಿ ರೇಟಿಂಗ್','Feedbacks':'ಪ್ರತಿಕ್ರಿಯೆಗಳು','Black marks':'ಬ್ಲ್ಯಾಕ್ ಮಾರ್ಕ್‌ಗಳು','Direct Message':'ನೇರ ಸಂದೇಶ','Message worker':'ಕಾರ್ಮಿಕರಿಗೆ ಸಂದೇಶ','Message Employer':'ನಿಯೋಜಕರಿಗೆ ಸಂದೇಶ','Close':'ಮುಚ್ಚಿ',
+    'Company Profile':'ಕಂಪನಿ ಪ್ರೊಫೈಲ್','Worker Profile':'ಕಾರ್ಮಿಕ ಪ್ರೊಫೈಲ್','Company Details':'ಕಂಪನಿ ವಿವರಗಳು','Company Statistics':'ಕಂಪನಿ ಅಂಕಿಅಂಶಗಳು','Ratings, Feedbacks & Marks':'ರೇಟಿಂಗ್, ಪ್ರತಿಕ್ರಿಯೆ & ಗುರುತುಗಳು','Posted jobs':'ಪೋಸ್ಟ್ ಮಾಡಿದ ಕೆಲಸಗಳು','Hired workers':'ನೇಮಕಗೊಂಡ ಕಾರ್ಮಿಕರು','Company name':'ಕಂಪನಿ ಹೆಸರು','HR Contact':'HR ಸಂಪರ್ಕ','Contact':'ಸಂಪರ್ಕ','Works completed':'ಮುಗಿದ ಕೆಲಸಗಳು','Resume not uploaded.':'ರೆಸ್ಯೂಮ್ ಅಪ್‌ಲೋಡ್ ಆಗಿಲ್ಲ.',
+    'Complete & Pay':'ಮುಗಿಸಿ ಪಾವತಿಸಿ','Manual Payment':'ಮ್ಯಾನುಯಲ್ ಪಾವತಿ','UPI / GPay Payment':'UPI / GPay ಪಾವತಿ','Mark as Paid':'ಪಾವತಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತು','Payment Status':'ಪಾವತಿ ಸ್ಥಿತಿ','Already applied':'ಈಗಾಗಲೇ ಅರ್ಜಿ ಸಲ್ಲಿಸಲಾಗಿದೆ','You have already applied for this job.':'ನೀವು ಈ ಕೆಲಸಕ್ಕೆ ಈಗಾಗಲೇ ಅರ್ಜಿ ಸಲ್ಲಿಸಿದ್ದೀರಿ.'
+  },
+  te: {
+    'Free Pro Trial':'ఉచిత ప్రో ట్రయల్','3 Month Free Trial':'3 నెలల ఉచిత ట్రయల్','Free Trial':'ఉచిత ట్రయల్','Trial ends on':'ట్రయల్ ముగింపు తేదీ','Days remaining':'మిగిలిన రోజులు','days remaining':'మిగిలిన రోజులు','Subscription required':'చందా అవసరం','Subscribe Now':'ఇప్పుడే చందా తీసుకోండి','Current Plan':'ప్రస్తుత ప్లాన్','Plan expires on':'ప్లాన్ ముగింపు తేదీ','Premium access enabled':'ప్రీమియం యాక్సెస్ ప్రారంభమైంది','All features enabled':'అన్ని ఫీచర్లు ప్రారంభమయ్యాయి',
+    'Find':'వెతుకు','My Jobs':'నా ఉద్యోగాలు','Chats':'చాట్లు','Worker portal':'వర్కర్ పోర్టల్','Employer portal':'ఎంప్లాయర్ పోర్టల్','Admin portal':'అడ్మిన్ పోర్టల్','English':'English','Tamil':'தமிழ்','Hindi':'हिन्दी','Kannada':'ಕನ್ನಡ','Telugu':'తెలుగు',
+    'Send for Verification':'ధృవీకరణకు పంపండి','Pending Approval':'ఆమోదం పెండింగ్','Done':'పూర్తయింది','Save Changes':'మార్పులు సేవ్ చేయండి','Change Location':'స్థానం మార్చండి','Saved GPS':'సేవ్ చేసిన GPS','Attendance GPS':'హాజరు GPS','Radius':'రేడియస్','Custom radius':'కస్టమ్ రేడియస్','Save GPS':'GPS సేవ్ చేయండి',
+    'Give Feedback':'ఫీడ్‌బ్యాక్ ఇవ్వండి','Mark Black':'బ్లాక్ మార్క్ చేయండి','View Feedbacks / Marks':'ఫీడ్‌బ్యాక్ / మార్కులు చూడండి','Average rating':'సగటు రేటింగ్','Feedbacks':'ఫీడ్‌బ్యాక్‌లు','Black marks':'బ్లాక్ మార్కులు','Direct Message':'నేరుగా సందేశం','Message worker':'వర్కర్‌కు సందేశం','Message Employer':'ఎంప్లాయర్‌కు సందేశం','Close':'మూసివేయండి',
+    'Company Profile':'కంపెనీ ప్రొఫైల్','Worker Profile':'వర్కర్ ప్రొఫైల్','Company Details':'కంపెనీ వివరాలు','Company Statistics':'కంపెనీ గణాంకాలు','Ratings, Feedbacks & Marks':'రేటింగ్‌లు, ఫీడ్‌బ్యాక్‌లు & మార్కులు','Posted jobs':'పోస్ట్ చేసిన ఉద్యోగాలు','Hired workers':'నియమించిన వర్కర్లు','Company name':'కంపెనీ పేరు','HR Contact':'HR సంప్రదింపు','Contact':'సంప్రదింపు','Works completed':'పూర్తి చేసిన పనులు','Resume not uploaded.':'రెజ్యూమ్ అప్‌లోడ్ కాలేదు.',
+    'Complete & Pay':'పూర్తి చేసి చెల్లించండి','Manual Payment':'మాన్యువల్ చెల్లింపు','UPI / GPay Payment':'UPI / GPay చెల్లింపు','Mark as Paid':'చెల్లించినట్లు గుర్తించు','Payment Status':'చెల్లింపు స్థితి','Already applied':'ఇప్పటికే దరఖాస్తు చేశారు','You have already applied for this job.':'మీరు ఈ ఉద్యోగానికి ఇప్పటికే దరఖాస్తు చేశారు.'
+  }
+};
+
+
 
 const shouldTranslateRawText = (text) => {
   const t = String(text || '').trim();
@@ -618,7 +703,8 @@ const shouldTranslateRawText = (text) => {
 const translateExactText = (value, lang) => {
   const map = trMap[lang] || {};
   const extraMap = trExtraMap[lang] || {};
-  const wordMap = { ...(trWordMap[lang] || {}), ...extraMap, ...map };
+  const commonMap = trCommonPhraseMap[lang] || {};
+  const wordMap = { ...(trWordMap[lang] || {}), ...extraMap, ...commonMap, ...map };
   if (!value || lang === 'en') return value;
   const raw = String(value);
   if (!shouldTranslateRawText(raw)) return value;
@@ -627,8 +713,8 @@ const translateExactText = (value, lang) => {
   const trimmed = raw.trim();
   const star = /\*\s*$/.test(trimmed) ? ' *' : '';
   const clean = trimmed.replace(/\s*\*\s*$/, '');
-  if (map[trimmed] || extraMap[trimmed]) return `${leading}${map[trimmed] || extraMap[trimmed]}${trailing}`;
-  if (map[clean] || extraMap[clean]) return `${leading}${map[clean] || extraMap[clean]}${star}${trailing}`;
+  if (map[trimmed] || extraMap[trimmed] || commonMap[trimmed]) return `${leading}${map[trimmed] || extraMap[trimmed] || commonMap[trimmed]}${trailing}`;
+  if (map[clean] || extraMap[clean] || commonMap[clean]) return `${leading}${map[clean] || extraMap[clean] || commonMap[clean]}${star}${trailing}`;
 
   let out = clean;
   const entries = Object.entries(wordMap).sort((a, b) => b[0].length - a[0].length);
@@ -648,6 +734,7 @@ function applyDashboardLanguage(lang) {
   if (typeof window === 'undefined' || !document?.body) return;
   const map = trMap[lang] || {};
   const extraMap = trExtraMap[lang] || {};
+  const commonMap = trCommonPhraseMap[lang] || {};
   const skipTags = new Set(['SCRIPT', 'STYLE', 'TEXTAREA']);
   const translateNode = (node) => {
     if (!node || !node.parentElement || skipTags.has(node.parentElement.tagName)) return;
@@ -668,7 +755,7 @@ function applyDashboardLanguage(lang) {
       const dataKey = `w2wOriginal${attr.replace(/[^a-z]/gi, '')}`;
       if (!el.dataset[dataKey]) el.dataset[dataKey] = el.getAttribute(attr) || '';
       const original = el.dataset[dataKey];
-      el.setAttribute(attr, lang === 'en' ? original : (map[original] || extraMap[original] || translateExactText(original, lang)));
+      el.setAttribute(attr, lang === 'en' ? original : (map[original] || extraMap[original] || commonMap[original] || translateExactText(original, lang)));
     });
   });
 }
@@ -704,7 +791,7 @@ function ThemeToggle() {
       <SelectTrigger
         title="Theme"
         aria-label="Theme"
-        className="h-10 w-10 rounded-full bg-[#07183f] border border-sky-300/30 px-0 grid place-items-center text-white hover:bg-[#0b2a68] shadow-sm transition-colors"
+        className="h-11 w-11 min-w-11 aspect-square rounded-full bg-[#07183f] border border-sky-300/30 p-0 grid place-items-center text-white hover:bg-[#0b2a68] shadow-md transition-colors overflow-hidden"
       >
         <ThemeIcon className="w-4 h-4" />
       </SelectTrigger>
@@ -754,7 +841,7 @@ const [lang, setLang] = useState('en');
       <SelectTrigger
         title="Language"
         aria-label="Language"
-        className="h-10 w-10 rounded-full bg-[#07183f] border border-sky-300/30 px-0 grid place-items-center text-white hover:bg-[#0b2a68] shadow-sm transition-colors"
+        className="h-11 w-11 min-w-11 aspect-square rounded-full bg-[#07183f] border border-sky-300/30 p-0 grid place-items-center text-white hover:bg-[#0b2a68] shadow-md transition-colors overflow-hidden"
       >
         <Globe2 className="w-4 h-4" />
       </SelectTrigger>
@@ -792,7 +879,7 @@ function MaintenanceScreen({ settings, isAdmin = false, onRefresh }) {
             Estimated time: {settings?.maintenance_eta || '30 minutes'}
           </div>
           {isAdmin && <Badge className="bg-emerald-500/20 text-emerald-100 border border-emerald-300/30">Admin access allowed</Badge>}
-          <Button onClick={onRefresh} className="bg-white !text-black hover:bg-slate-100">Refresh</Button>
+          <Button onClick={onRefresh} className="bg-white text-slate-900 hover:bg-slate-100">Refresh</Button>
         </CardContent>
       </Card>
     </div>
@@ -1073,7 +1160,7 @@ function AdminAccessButton({ onAuthed }) {
             <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
           </div>
           <Button type="submit" disabled={busy} className="w-full bg-sky-600 hover:bg-sky-700 text-white">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Verify Admin <ArrowRight className="w-4 h-4 ml-2" /></>}
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Verify Admin <ArrowRight className="w-4 h-4 ml-2" /></>}
           </Button>
         </form>
       </DialogContent>
@@ -1326,7 +1413,7 @@ function AdminApp({ auth, onLogout }) {
           </div>
           <div className="flex gap-2 items-center">
             <NotificationCenter token={token} userId={auth?.profile?.id} channelKey="admin" accent="amber" />
-            <Button variant="outline" onClick={loadUsers} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : 'Refresh'}</Button>
+            <Button variant="outline" onClick={loadUsers} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}</Button>
             <Button onClick={onLogout} className="bg-emerald-600 hover:bg-emerald-700"><LogOut className="w-4 h-4 mr-2" /> Logout</Button>
           </div>
         </div>
@@ -1335,7 +1422,7 @@ function AdminApp({ auth, onLogout }) {
       <main className="container py-6 space-y-5">
         <div className="grid lg:grid-cols-6 sm:grid-cols-3 gap-3">
           {[
-            ['Total users', adminStats.total, '!text-black'],
+            ['Total users', adminStats.total, 'text-slate-900'],
             ['Workers', adminStats.workers, 'text-blue-700'],
             ['Employers', adminStats.employers, 'text-emerald-700'],
             ['Pending verify', adminStats.pending, 'text-amber-600'],
@@ -1364,7 +1451,7 @@ function AdminApp({ auth, onLogout }) {
         {adminTab === 'maintenance' && (
           <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 shadow-sm">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 !text-black" /> App Update / Maintenance Mode</CardTitle>
+              <CardTitle className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-amber-700" /> App Update / Maintenance Mode</CardTitle>
               <CardDescription>Turn this ON before deployment or database changes. Workers and employers will see an update screen. Admin remains allowed.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1429,7 +1516,7 @@ function AdminApp({ auth, onLogout }) {
           <CardContent>
             <div className="overflow-x-auto rounded-xl border">
               <table className="w-full text-sm bg-white">
-                <thead className="bg-slate-100 !text-black">
+                <thead className="bg-slate-100 text-slate-600">
                   <tr>
                     <th className="text-left p-3">User</th>
                     <th className="text-left p-3">Role</th>
@@ -1470,7 +1557,7 @@ function AdminApp({ auth, onLogout }) {
                             const submittedAt = u.verification_submitted_at ? new Date(u.verification_submitted_at) : null;
                             const verifiedAt = u.verified_at ? new Date(u.verified_at) : null;
                             const needsReview = submittedAt && (!verifiedAt || submittedAt.getTime() > verifiedAt.getTime());
-                            if (needsReview) return <Badge className="bg-amber-100 !text-black block w-fit">Updated</Badge>;
+                            if (needsReview) return <Badge className="bg-amber-100 text-amber-800 block w-fit">Updated</Badge>;
                           } catch (e) {}
                           return null;
                         })()}
@@ -1563,7 +1650,7 @@ function AdminApp({ auth, onLogout }) {
                       <InfoTile label={selected.role === 'worker' ? 'Aadhaar' : 'Company PAN'} value={selected.role === 'worker' ? selected.aadhaar_number : selected.pan_number} />
                       {selected.role === 'worker' && <InfoTile label="PAN" value={selected.pan_number} />}
                       {selected.role === 'employer' && <InfoTile label="GST" value={selected.gst_number} />}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid sm:grid-cols-2 gap-3">
                         {selected.role === 'worker' && <AdminDocPreview title="Aadhaar front" url={selected.aadhaar_front_url} />}
                         {selected.role === 'worker' && <AdminDocPreview title="Aadhaar back" url={selected.aadhaar_back_url} />}
                         <AdminDocPreview title={selected.role === 'employer' ? 'Company PAN front' : 'PAN front'} url={selected.pan_image_url} />
@@ -1591,7 +1678,7 @@ function AdminApp({ auth, onLogout }) {
                   const submittedAt = selected.verification_submitted_at ? new Date(selected.verification_submitted_at) : null;
                   const verifiedAt = selected.verified_at ? new Date(selected.verified_at) : null;
                   const needsReview = submittedAt && (!verifiedAt || submittedAt.getTime() > verifiedAt.getTime());
-                  if (needsReview) return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm !text-black"><Badge className="bg-amber-100 !text-black mr-2">Updated</Badge>Documents changed. Review all three sections and verify account again.</div>;
+                  if (needsReview) return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><Badge className="bg-amber-100 text-amber-800 mr-2">Updated</Badge>Documents changed. Review all three sections and verify account again.</div>;
                 } catch (e) {}
                 return null;
               })()}
@@ -1675,20 +1762,20 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
   const styles = {
     indigo: 'border-indigo-200 bg-indigo-50/60 text-indigo-800',
     emerald: 'border-emerald-200 bg-emerald-50/60 text-emerald-800',
-    amber: 'border-amber-200 bg-amber-50/60 !text-black',
+    amber: 'border-amber-200 bg-amber-50/60 text-amber-800',
   };
   const button = verified
     ? 'w2w-verify-button w2w-verify-done border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:!opacity-100 disabled:bg-emerald-600 disabled:text-white disabled:cursor-default'
     : 'w2w-verify-button w2w-verify-idle border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700';
   const buttonStyle = verified
-    ? { backgroundColor: '#16a34a', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#16a34a' }
-    : { backgroundColor: '#dc2626', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#dc2626' };
+    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
+    : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
   return (
     <div className={`rounded-3xl border ${styles[tone] || styles.indigo} p-4 shadow-sm`}>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h3 className="font-extrabold flex items-center gap-2">{icon}{title}</h3>
-          <Badge className={verified ? 'mt-2 bg-emerald-100 text-emerald-800 border border-emerald-200' : 'mt-2 bg-white !text-black border border-slate-200'}>{verified ? 'Section verified' : 'Review pending'}</Badge>
+          <Badge className={verified ? 'mt-2 bg-emerald-100 text-emerald-800 border border-emerald-200' : 'mt-2 bg-white text-slate-600 border border-slate-200'}>{verified ? 'Section verified' : 'Review pending'}</Badge>
         </div>
         <Button size="sm" variant="outline" disabled={disabled || verified} onClick={onVerify} className={button} style={buttonStyle}>
           <CheckCircle2 className="w-4 h-4 mr-1" /> {verified ? 'Done' : 'Verify'}
@@ -1723,7 +1810,7 @@ function AdminCompactList({ title, icon, rows = [], empty = 'No records.' }) {
 function AdminCheck({ label, checked, onChange }) {
   return (
     <label className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${checked ? 'bg-emerald-50 border-emerald-300 shadow-sm' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
-      <span className="font-semibold !text-black">{label}</span>
+      <span className="font-semibold text-slate-800">{label}</span>
       <span className="flex items-center gap-2">
         <span className={`text-xs font-bold rounded-full px-2.5 py-1 ${checked ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{checked ? 'Verified' : 'Not verified'}</span>
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-emerald-600" />
@@ -1735,8 +1822,8 @@ function AdminCheck({ label, checked, onChange }) {
 function StatusPill({ label, ok }) {
   return (
     <div className={`rounded-2xl border px-4 py-3 flex items-center justify-between ${ok ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-      <span className="text-sm font-semibold !text-black">{label}</span>
-      <Badge className={ok ? 'bg-emerald-600 text-white' : 'bg-slate-200 !text-black'}>{ok ? 'Verified' : 'Pending'}</Badge>
+      <span className="text-sm font-semibold text-slate-700">{label}</span>
+      <Badge className={ok ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}>{ok ? 'Verified' : 'Pending'}</Badge>
     </div>
   );
 }
@@ -1917,7 +2004,7 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
             </div>
             <motion.div whileTap={{ scale: 0.98 }}>
               <Button type="submit" disabled={busy} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-shadow">
-                {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Log in <ArrowRight className="w-4 h-4 ml-2" /></>}
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Log in <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
             </motion.div>
           </form>
@@ -1975,7 +2062,7 @@ function ForgotEmail({ onSent, onBack }) {
                 </div>
                 <motion.div whileTap={{ scale: 0.98 }}>
                   <Button type="submit" disabled={busy} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700">
-                    {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Send reset code <Send className="w-4 h-4 ml-2" /></>}
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Send reset code <Send className="w-4 h-4 ml-2" /></>}
                   </Button>
                 </motion.div>
               </form>
@@ -2046,7 +2133,7 @@ function ForgotReset({ email, onAuthed, onBack }) {
               <motion.div whileTap={{ scale: 0.98 }}>
                 <Button onClick={submit} disabled={busy || code.length !== 6}
                         className="w-full h-11 bg-indigo-600 hover:bg-indigo-700">
-                  {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Reset password <CheckCircle2 className="w-4 h-4 ml-2" /></>}
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Reset password <CheckCircle2 className="w-4 h-4 ml-2" /></>}
                 </Button>
               </motion.div>
             </CardContent>
@@ -2217,7 +2304,7 @@ function SignupForm({ data, onChange, onSent, onBack }) {
               </div>
               <Button type="submit" disabled={busy}
                       className={`w-full h-11 ${accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Send OTP <Send className="w-4 h-4 ml-2" /></>}
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Send OTP <Send className="w-4 h-4 ml-2" /></>}
               </Button>
               <p className="text-xs text-muted-foreground text-center">A 6-digit code will be sent to your email.</p>
             </form>
@@ -2296,7 +2383,7 @@ function SignupOTP({ data, onAuthed, onBack }) {
             </div>
             <Button onClick={verify} disabled={busy || code.length !== 6}
                     className={`w-full h-11 ${accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Verify & continue <CheckCircle2 className="w-4 h-4 ml-2" /></>}
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Verify & continue <CheckCircle2 className="w-4 h-4 ml-2" /></>}
             </Button>
             <div className="text-center text-sm text-muted-foreground">
               {secondsLeft > 0 ? (
@@ -2372,7 +2459,7 @@ function NotificationCenter({
       }
     : accent === 'amber'
       ? {
-          soft: 'bg-amber-50 !text-black border-amber-200',
+          soft: 'bg-amber-50 text-amber-700 border-amber-200',
           ring: 'ring-amber-100',
           icon: 'from-amber-500 to-orange-600',
           button: 'bg-amber-600 hover:bg-amber-700 text-white',
@@ -2492,7 +2579,7 @@ function NotificationCenter({
       <Button
         size="icon"
         variant="outline"
-        className="relative rounded-full bg-white/95 !text-black border-white/70 shadow-sm hover:bg-white"
+        className="relative rounded-full bg-white/95 text-slate-800 border-white/70 shadow-sm hover:bg-white"
         onClick={openPanel}
       >
         <Bell className="w-5 h-5" />
@@ -2532,13 +2619,13 @@ function NotificationCenter({
                       size="icon"
                       variant="ghost"
                       onClick={() => selected ? setSelected(null) : closePanel()}
-                      className="h-10 w-10 rounded-2xl bg-white !text-black border border-slate-200 shadow-sm hover:bg-slate-50 shrink-0"
+                      className="h-10 w-10 rounded-2xl bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 shrink-0"
                       title={selected ? 'Back to notifications' : 'Close notifications'}
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </Button>
                     <div className="min-w-0">
-                      <h2 className="font-extrabold text-lg !text-black truncate">
+                      <h2 className="font-extrabold text-lg text-slate-950 truncate">
                         {selected ? 'Notification Details' : 'Notifications'}
                       </h2>
                       <p className="text-xs text-slate-500 mt-0.5">
@@ -2558,7 +2645,7 @@ function NotificationCenter({
                             setNotifications(prev => prev.map(n => ({ ...n, read: true })));
                             toast.success('All marked as read');
                           }}
-                          className="h-9 rounded-xl text-xs !text-black hover:bg-white"
+                          className="h-9 rounded-xl text-xs text-slate-700 hover:bg-white"
                         >
                           Mark read
                         </Button>
@@ -2575,10 +2662,10 @@ function NotificationCenter({
                     <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${accentClasses.icon} text-white flex items-center justify-center shadow-lg mb-4`}>
                       <Bell className="w-7 h-7" />
                     </div>
-                    <h3 className="text-xl font-extrabold !text-black leading-tight">
+                    <h3 className="text-xl font-extrabold text-slate-950 leading-tight">
                       {selected?.title || 'Notification'}
                     </h3>
-                    <p className="mt-3 text-sm !text-black leading-relaxed whitespace-pre-wrap">
+                    <p className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                       {selected?.message || 'No details'}
                     </p>
                   </div>
@@ -2600,7 +2687,7 @@ function NotificationCenter({
 
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Received</p>
-                      <p className="mt-2 text-sm font-semibold !text-black">
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
                         {selected?.created_at ? new Date(selected.created_at).toLocaleString() : 'Unknown'}
                       </p>
                       <p className="text-xs text-slate-500 mt-1">{timeAgo(selected?.created_at)}</p>
@@ -2639,7 +2726,7 @@ function NotificationCenter({
                       <div className="w-16 h-16 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-4">
                         <Bell className="w-8 h-8 text-slate-400" />
                       </div>
-                      <p className="font-bold !text-black">No notifications</p>
+                      <p className="font-bold text-slate-900">No notifications</p>
                       <p className="text-sm text-slate-500 mt-1">Updates will appear here when available.</p>
                     </div>
                   ) : (
@@ -2660,7 +2747,7 @@ function NotificationCenter({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="font-extrabold text-sm !text-black truncate">
+                                <p className="font-extrabold text-sm text-slate-950 truncate">
                                   {item.title || 'Notification'}
                                 </p>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -2677,7 +2764,7 @@ function NotificationCenter({
                               <ArrowRight className="w-4 h-4 text-slate-400 shrink-0 mt-1" />
                             </div>
 
-                            <p className="text-xs !text-black mt-2 line-clamp-2 leading-snug">
+                            <p className="text-xs text-slate-600 mt-2 line-clamp-2 leading-snug">
                               {item.message || 'Tap to open related page'}
                             </p>
 
@@ -2793,7 +2880,7 @@ function AccountActivitySheet({ token, accent = 'indigo' }) {
                       </div>
                       {a.details && Object.keys(a.details || {}).length > 0 && (
                         <div className="mt-3 rounded-xl border bg-slate-50 p-3 space-y-1">
-                          {detailsToWords(a.details).map((line, idx) => <p key={idx} className="text-[11px] !text-black capitalize">{line}</p>)}
+                          {detailsToWords(a.details).map((line, idx) => <p key={idx} className="text-[11px] text-slate-700 capitalize">{line}</p>)}
                         </div>
                       )}
                     </div>
@@ -2826,12 +2913,13 @@ function FreeProTrialDialog({ role = 'worker', trial, onOpenSubscription, onClos
           {isExpired ? <ShieldAlert className="h-8 w-8" /> : <Sparkles className="h-8 w-8" />}
         </div>
         <DialogHeader>
-          <DialogTitle className="text-2xl font-black !text-black">{title}</DialogTitle>
-          <DialogDescription className="!text-black">{message}</DialogDescription>
+          <DialogTitle className="text-2xl font-black text-slate-950">{title}</DialogTitle>
+          <DialogDescription className="text-slate-700">{message}</DialogDescription>
         </DialogHeader>
         {!isExpired && trial.expires_at && (
           <div className="rounded-2xl border border-emerald-100 bg-white/80 p-3 text-sm font-bold text-emerald-800">
-            Pro access valid until {new Date(trial.expires_at).toLocaleDateString()}
+            <p>Pro access valid until {new Date(trial.expires_at).toLocaleDateString()}</p>
+            <p className="mt-1 text-xs text-emerald-700">{getDaysRemainingUntil(trial.expires_at)} days remaining</p>
           </div>
         )}
         <DialogFooter className="sm:justify-center gap-2">
@@ -3491,11 +3579,11 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
         >
           <div className="h-screen w-screen overflow-hidden bg-white flex flex-col rounded-none">
             <div className="relative z-30 h-16 shrink-0 bg-white/95 backdrop-blur-xl border-b border-slate-200 shadow-sm px-4 flex items-center justify-between gap-3">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-10 rounded-xl bg-slate-100 !text-black hover:bg-slate-200 border-slate-200">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-10 rounded-xl bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">
                 <ArrowLeft className="w-4 h-4 mr-2" /> Back
               </Button>
               <div className="text-center min-w-0">
-                <DialogTitle className="text-base sm:text-lg font-extrabold !text-black truncate">Select Location</DialogTitle>
+                <DialogTitle className="text-base sm:text-lg font-extrabold text-slate-900 truncate">Select Location</DialogTitle>
                 <DialogDescription className="text-xs text-slate-500 truncate">Use GPS or enter coordinates, then confirm the pin.</DialogDescription>
               </div>
               <Button type="button" onClick={savePin} className={`h-10 rounded-xl text-white ${isEmerald ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-indigo-700 hover:bg-indigo-800'}`}>
@@ -3524,10 +3612,10 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
               </div>
 
               <div className="absolute right-4 top-4 z-30 flex flex-col gap-2">
-                <Button type="button" onClick={useGps} className="h-10 rounded-xl bg-white !text-black hover:bg-slate-50 border border-slate-200 shadow-lg">
+                <Button type="button" onClick={useGps} className="h-10 rounded-xl bg-white text-slate-900 hover:bg-slate-50 border border-slate-200 shadow-lg">
                   <MapPin className="w-4 h-4 mr-2 text-emerald-600" /> My Location
                 </Button>
-                <Button type="button" variant="outline" className="h-10 rounded-xl bg-white !text-black hover:bg-slate-50 border-slate-200 shadow-lg" onClick={() => toast.info('Use mouse/touch zoom controls on the map')}>
+                <Button type="button" variant="outline" className="h-10 rounded-xl bg-white text-slate-900 hover:bg-slate-50 border-slate-200 shadow-lg" onClick={() => toast.info('Use mouse/touch zoom controls on the map')}>
                   <Map className="w-4 h-4 mr-2 text-sky-600" /> Map Controls
                 </Button>
               </div>
@@ -3536,7 +3624,7 @@ function MapPinPicker({ value = '', latitude, longitude, color = 'indigo', onPic
                 <div className="grid lg:grid-cols-[1fr_180px_180px_180px] gap-3 items-end">
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Selected Location</p>
-                    <p className="mt-1 text-sm sm:text-base font-bold !text-black truncate">{value || (hasPin ? formatCoordinates(latNum, lngNum) : 'Choose your exact location')}</p>
+                    <p className="mt-1 text-sm sm:text-base font-bold text-slate-900 truncate">{value || (hasPin ? formatCoordinates(latNum, lngNum) : 'Choose your exact location')}</p>
                     {hasPin && <p className="text-xs text-slate-500 mt-0.5">{formatCoordinates(latNum, lngNum)}</p>}
                   </div>
                   <Input type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude" className="h-11 rounded-xl bg-white" />
@@ -3809,11 +3897,11 @@ function LocationSearchBox({
           />
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
             <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-7 px-2" title="Search and select typed location">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <Search className="w-4 h-4" />}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">Search</span>
             </Button>
             <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={useCurrent} disabled={gpsLoading} className={`h-7 px-2 text-white ${buttonClass}`} title="Use current GPS">
-              {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <MapPin className="w-4 h-4" />}
+              {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">GPS</span>
             </Button>
           </div>
@@ -3824,10 +3912,10 @@ function LocationSearchBox({
             className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border bg-white shadow-xl ring-1 ring-slate-200"
           >
             {loading && predictions.length === 0 && (
-              <div className="px-4 py-3 text-sm !text-black flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin !text-white" /> Searching places...</div>
+              <div className="px-4 py-3 text-sm text-slate-600 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
             )}
             {!loading && predictions.length === 0 && locationError && (
-              <div className="px-4 py-3 text-sm !text-black bg-amber-50">{locationError}</div>
+              <div className="px-4 py-3 text-sm text-amber-700 bg-amber-50">{locationError}</div>
             )}
             {predictions.map((p) => (
               <button
@@ -3841,7 +3929,7 @@ function LocationSearchBox({
                   {(p.types || []).includes('establishment') ? <Building2 className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold !text-black truncate">
+                  <p className="text-sm font-semibold text-slate-900 truncate">
                     {p.structured_formatting?.main_text || p.description}
                   </p>
                   <p className="text-xs text-muted-foreground line-clamp-2">
@@ -4093,7 +4181,7 @@ function WorkerHome({ token, me, onChat }) {
             <Button onClick={load} className="rounded-2xl h-11 px-5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-lg shadow-indigo-600/20"><Filter className="w-4 h-4 mr-1" />Search</Button>
             <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-1 shadow-sm" title="Nearby search">
               <Button type="button" size="icon" variant="ghost" onClick={loadNearbyJobs} disabled={locationLoading} className="h-9 w-9 rounded-xl text-indigo-700 hover:bg-indigo-50" title="Search using current GPS location">
-                {locationLoading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <MapPin className="w-4 h-4" />}
+                {locationLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
               </Button>
               <Button type="button" size="icon" variant="ghost" onClick={loadNearbyFromSavedLocation} disabled={locationLoading} className="h-9 w-9 rounded-xl text-emerald-700 hover:bg-emerald-50" title="Search using saved profile location">
                 <Map className="w-4 h-4" />
@@ -4126,12 +4214,12 @@ function WorkerHome({ token, me, onChat }) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-3">
                 <div className="p-3 rounded-2xl border bg-emerald-50 text-emerald-700"><p className="text-xs">Daily pay</p><p className="font-bold">{jobPayLabel(selected)}</p></div>
                 <div className="p-3 rounded-2xl border bg-indigo-50 text-indigo-700"><p className="text-xs">Duration</p><p className="font-bold">{jobDurationLabel(selected)}</p></div>
-                <div className="p-3 rounded-2xl border bg-slate-50 !text-black"><p className="text-xs">Workers</p><p className="font-bold">{selected.workers_needed || 1}</p></div>
-                <div className="p-3 rounded-2xl border bg-amber-50 !text-black"><p className="text-xs">Shift</p><p className="font-bold capitalize">{selected.shift_timing || 'day'}</p></div>
+                <div className="p-3 rounded-2xl border bg-slate-50 text-slate-700"><p className="text-xs">Workers</p><p className="font-bold">{selected.workers_needed || 1}</p></div>
+                <div className="p-3 rounded-2xl border bg-amber-50 text-amber-700"><p className="text-xs">Shift</p><p className="font-bold capitalize">{selected.shift_timing || 'day'}</p></div>
                 <div className="p-3 rounded-2xl border bg-rose-50 text-rose-700"><p className="text-xs">Applied</p><p className="font-bold">{Number(selected.applicants_count || 0)} worker(s)</p></div>
               </div>
               <div className="rounded-2xl border bg-white p-4 space-y-3">
-                <div><p className="text-xs font-semibold text-slate-500">Work details</p><p className="text-sm whitespace-pre-wrap !text-black mt-1">{selected.description || 'No description provided.'}</p></div>
+                <div><p className="text-xs font-semibold text-slate-500">Work details</p><p className="text-sm whitespace-pre-wrap text-slate-700 mt-1">{selected.description || 'No description provided.'}</p></div>
                 <div className="grid sm:grid-cols-2 gap-2 text-sm">
                   <InfoTile label="Skill needed" value={selected.skill_needed || 'Any suitable worker'} />
                   <InfoTile label="Experience" value={selected.experience || 'beginner'} />
@@ -4421,19 +4509,19 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                     <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-2">Work Schedule</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <p className="text-[9px] !text-black dark:text-slate-400">Start</p>
-                        <p className="text-sm font-bold !text-black dark:text-white">{a.jobs?.start_date ? new Date(a.jobs.start_date).toLocaleDateString() : 'TBD'}</p>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Start</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{a.jobs?.start_date ? new Date(a.jobs.start_date).toLocaleDateString() : 'TBD'}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] !text-black dark:text-slate-400">Duration</p>
-                        <p className="text-sm font-bold !text-black dark:text-white">{jobDurationLabel(a.jobs)}</p>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Duration</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{jobDurationLabel(a.jobs)}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] !text-black dark:text-slate-400">Shift</p>
-                        <p className="text-sm font-bold !text-black dark:text-white capitalize">{a.jobs?.shift_timing || 'Day'}</p>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Shift</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white capitalize">{a.jobs?.shift_timing || 'Day'}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] !text-black dark:text-slate-400">Daily Pay</p>
+                        <p className="text-[9px] text-slate-600 dark:text-slate-400">Daily Pay</p>
                         <p className="text-sm font-bold text-emerald-600">{jobPayLabel(a.jobs)}</p>
                       </div>
                     </div>
@@ -4452,7 +4540,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                           <div key={idx} className={`text-center p-2 rounded-lg text-[10px] font-bold transition ${
                             isPresent ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' :
                             isAbsent ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' :
-                            'bg-slate-200 dark:bg-slate-700 !text-black dark:text-slate-300'
+                            'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                           }`}>
                             {isPresent ? <Check className="w-4 h-4 mx-auto mb-0.5" /> : isAbsent ? '❌' : ''}
                             <p>{dateStr}</p>
@@ -4479,7 +4567,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
                       <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Location</p>
-                      <p className="text-sm font-bold !text-black dark:text-slate-300 flex items-center gap-1.5 mt-1">
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mt-1">
                         <MapPin className="w-4 h-4 text-emerald-600" />
                         {a.jobs?.location_text}
                       </p>
@@ -4494,7 +4582,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                   
                   <div className="rounded-lg bg-white/95 dark:bg-slate-800 p-3 border border-emerald-100 dark:border-emerald-800 shadow-sm">
                     <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1">Description</p>
-                    <p className="text-sm !text-black dark:text-slate-300 leading-relaxed">{a.jobs?.description || 'No description provided'}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{a.jobs?.description || 'No description provided'}</p>
                   </div>
                 </motion.div>
               )}
@@ -4559,7 +4647,7 @@ function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 
 
   return (
     <>
-      <Button size={size} variant="outline" className={className || 'flex-1 border-amber-200 !text-black hover:bg-amber-50'} onClick={() => setOpen(true)}>
+      <Button size={size} variant="outline" className={className || 'flex-1 border-amber-200 text-amber-700 hover:bg-amber-50'} onClick={() => setOpen(true)}>
         <Star className="w-4 h-4 mr-1" /> {label}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -4568,9 +4656,9 @@ function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 
             <DialogTitle className="text-xl font-black">{title}</DialogTitle>
             <DialogDescription className="text-white/85">Select the stars and add a clean feedback message.</DialogDescription>
           </div>
-          <div className="p-5 space-y-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
+          <div className="p-5 space-y-4">
             <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-center">
-              <p className="text-xs font-bold !text-black uppercase tracking-wide mb-2">Your Rating</p>
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Your Rating</p>
               <div className="flex justify-center gap-2">
                 {[1,2,3,4,5].map((n) => (
                   <button key={n} type="button" onClick={() => setRating(n)} className={`text-4xl leading-none transition ${n <= rating ? 'text-amber-500 scale-110' : 'text-slate-300 hover:text-amber-300'}`}>
@@ -4674,160 +4762,157 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
       type="button"
       variant="outline"
       onClick={onClick}
-      className="min-h-16 rounded-3xl border border-slate-300 bg-white !text-black font-black shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all flex items-center justify-center text-sm sm:text-base tracking-tight [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black"
+      className="h-16 rounded-3xl border border-slate-200 bg-white text-slate-950 font-black shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all flex items-center justify-center text-base tracking-tight"
     >
-      <span className="flex items-center justify-center gap-2 !text-black font-black text-center leading-tight whitespace-normal break-words px-1">{children}</span>
+      {children}
     </Button>
   );
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
-      <DialogContent hideCloseButton={false} className="z-[2147483647] fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-20px)] sm:w-[calc(100vw-40px)] max-w-[1280px] max-h-[calc(100dvh-150px)] sm:max-h-[calc(100dvh-160px)] overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-0 shadow-2xl isolate">
-        <div className="max-h-[calc(100dvh-150px)] sm:max-h-[calc(100dvh-160px)] overflow-y-auto overscroll-contain p-3 sm:p-5 pb-5 sm:pb-6">
-          <div className="mx-auto w-full max-w-[1280px] space-y-3">
-            <div className={`rounded-[2rem] p-4 text-white shadow-xl ${isWorker ? 'bg-gradient-to-r from-indigo-700 via-blue-600 to-sky-500' : 'bg-gradient-to-r from-emerald-700 via-green-600 to-teal-500'}`}>
+      <DialogContent hideCloseButton={false} className="z-[9990] w-[calc(100vw-40px)] max-w-[calc(100vw-60px)] max-h-[calc(100vh-32px)] overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-0 shadow-2xl">
+        <div className="max-h-[calc(100vh-32px)] overflow-y-auto p-[30px]">
+          <div className="mx-auto w-full max-w-[1600px] space-y-5">
+            <div className={`rounded-[2rem] p-6 text-white shadow-xl ${isWorker ? 'bg-gradient-to-r from-indigo-700 via-blue-600 to-sky-500' : 'bg-gradient-to-r from-emerald-700 via-green-600 to-teal-500'}`}>
               <div className="flex flex-col sm:flex-row sm:items-center gap-5">
                 <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-white/70" title="View profile image">
-                  <Avatar className="w-16 h-16 border-4 border-white/60 shadow-2xl"><AvatarImage src={photo} /><AvatarFallback>{initials(title)}</AvatarFallback></Avatar>
+                  <Avatar className="w-24 h-24 border-4 border-white/60 shadow-2xl"><AvatarImage src={photo} /><AvatarFallback>{initials(title)}</AvatarFallback></Avatar>
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-white/80">{isWorker ? 'Worker Profile' : 'Company Profile'}</p>
-                  <DialogTitle className="mt-0.5 text-2xl font-black truncate text-white">{title}</DialogTitle>
-                  <DialogDescription className="mt-1 text-white/90">
+                  <DialogTitle className="mt-1 text-3xl font-black truncate text-white">{title}</DialogTitle>
+                  <DialogDescription className="mt-2 text-white/90">
                     {isWorker ? `${p.location_text || p.address || 'Location not added'} · ${p.experience_years || 0} years experience` : `${p.location_text || p.company_address || 'Location not added'} · ${p.official_email || p.email || 'Email not added'}`}
                   </DialogDescription>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     {p.verified && <Badge className="bg-white/20 text-white border-white/30"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
                     {isWorker && (p.badge_skilled_worker || p.experience_level === 'skilled' || p.experience_level === 'expert') && <Badge className="bg-amber-400 text-white border-white/30"><Award className="w-3.5 h-3.5 mr-1" />Skilled Badge</Badge>}
                     <Badge className="bg-black/70 text-white border-white/30"><span className="mr-1">●</span>{visibleBlackMarkCount} Black marks</Badge>
                     <Badge className="bg-white/20 text-white border-white/30">★ {publicRatingCount ? `${publicRatingAverage.toFixed(1)}/5` : 'No rating'}</Badge>
                   </div>
                 </div>
-                <Button className="rounded-2xl bg-white !text-black hover:bg-white/90" onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
+                <Button className="rounded-2xl bg-white text-slate-950 hover:bg-white/90" onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
                   <MessageSquare className="w-4 h-4 mr-2" /> Direct Message
                 </Button>
               </div>
             </div>
 
             {isWorker ? (
-              <div className="rounded-[2rem] border border-blue-100 bg-gradient-to-br from-white via-blue-50/40 to-indigo-50 p-4 sm:p-5 shadow-xl shadow-blue-100/50 min-h-[360px] lg:min-h-[370px]">
-                <div className="grid xl:grid-cols-[1.05fr_1fr_1fr] gap-4 items-stretch">
-                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
-                    <div className="flex items-center gap-4">
-                      <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-blue-500/70" title="View worker image">
-                        <Avatar className="w-20 h-20 rounded-[1.5rem] border-4 border-white shadow-xl bg-blue-50">
-                          <AvatarImage src={photo} />
-                          <AvatarFallback className="rounded-[1.5rem] text-xl bg-blue-100 text-blue-800">{initials(title)}</AvatarFallback>
-                        </Avatar>
-                      </button>
-                      <div className="min-w-0">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Worker Details</p>
-                        <h3 className="mt-1 text-2xl font-black !text-black break-words">{p.full_name || p.name || title || 'Worker'}</h3>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {p.verified && <Badge className="bg-blue-100 text-blue-800 border border-blue-200"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
-                          {(p.badge_skilled_worker || p.experience_level === 'skilled' || p.experience_level === 'expert') && <Badge className="bg-amber-100 !text-black border border-amber-200">🏅 Skilled</Badge>}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <InfoTile label="Age" value={p.age || '—'} />
-                      <InfoTile label="Gender" value={p.gender || '—'} />
-                      <InfoTile label="Phone" value={p.phone || p.mobile || '—'} />
-                      <InfoTile label="Location" value={p.location_text || p.address || '—'} />
+              <div className="grid lg:grid-cols-3 gap-5">
+                <div className="rounded-[2rem] border border-blue-100 bg-white p-6 shadow-xl shadow-blue-100/40 min-h-[520px]">
+                  <div className="flex items-center gap-4 mb-5">
+                    <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-blue-500/70" title="View worker image">
+                      <Avatar className="w-24 h-24 rounded-[1.5rem] border-4 border-white shadow-xl bg-blue-50">
+                        <AvatarImage src={photo} />
+                        <AvatarFallback className="rounded-[1.5rem] text-xl bg-blue-100 text-blue-800">{initials(title)}</AvatarFallback>
+                      </Avatar>
+                    </button>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Worker Profile</p>
+                      <h3 className="mt-1 text-2xl font-black text-slate-950 break-words">{p.full_name || p.name || title || 'Worker'}</h3>
+                      {(p.badge_skilled_worker || p.experience_level === 'skilled' || p.experience_level === 'expert') && (
+                        <Badge className="mt-2 bg-amber-100 text-amber-800 border border-amber-200">🏅 Skilled Worker</Badge>
+                      )}
                     </div>
                   </div>
-
-                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
-                    <h3 className="font-black !text-black mb-4 flex items-center gap-2"><Award className="w-5 h-5 text-blue-600" /> Work Profile</h3>
-                    <div className="space-y-3">
-                      <InfoTile label="Skills" value={Array.isArray(p.skills) ? p.skills.join(', ') : (p.skills || '—')} />
-                      <InfoTile label="Experience" value={p.experience_level || `${p.experience_years || 0} years`} />
-                      <InfoTile label="Expected wage" value={fmtMoney(p.expected_daily_wage || 0)} />
-                      <InfoTile label="Languages" value={Array.isArray(p.languages_known) ? p.languages_known.join(', ') : (p.languages_known || '—')} />
-                      <InfoTile label="Availability" value={p.availability || p.available_from || '—'} />
-                      <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
-                        <p className="text-xs font-bold text-slate-500">Resume</p>
-                        {resumeUrl ? (
-                          <Button type="button" variant="outline" className="mt-2 w-full h-10 rounded-2xl bg-white !text-black border-blue-200 hover:bg-blue-50 [&_*]:!!text-black" onClick={() => window.open(resumeUrl, '_blank')}>
-                            <FileText className="w-4 h-4 mr-2" /> View Resume
-                          </Button>
-                        ) : (
-                          <p className="mt-1 text-sm font-semibold !text-black">Resume not uploaded.</p>
-                        )}
-                      </div>
-                    </div>
+                  <div className="space-y-3">
+                    <InfoTile label="Name" value={p.full_name || p.name || title || '—'} />
+                    <InfoTile label="Age" value={p.age || '—'} />
+                    <InfoTile label="Gender" value={p.gender || '—'} />
+                    <InfoTile label="Location" value={p.location_text || p.address || '—'} />
+                    <InfoTile label="Works completed" value={stats.completedWorks || stats.completed_works || 0} />
                   </div>
+                </div>
 
-                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-4 shadow-lg min-w-0 h-full">
-                    <h3 className="font-black !text-black mb-3 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Trust & Summary</h3>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <InfoTile label="Rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
-                      <InfoTile label="Feedbacks" value={publicRatingCount || 0} />
-                      <InfoTile label="Works completed" value={stats.completedWorks || stats.completed_works || 0} />
-                      <InfoTile label="Black marks" value={`● ${visibleBlackMarkCount}`} />
-                    </div>
-                    <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                <div className="rounded-[2rem] border border-blue-100 bg-white p-6 shadow-xl shadow-blue-100/40 min-h-[520px]">
+                  <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Award className="w-5 h-5 text-blue-600" /> Skills & About</h3>
+                  <div className="space-y-3">
+                    <InfoTile label="Skills" value={Array.isArray(p.skills) ? p.skills.join(', ') : (p.skills || '—')} />
+                    <InfoTile label="Languages" value={Array.isArray(p.languages_known) ? p.languages_known.join(', ') : (p.languages_known || '—')} />
+                    <InfoTile label="Experience" value={p.experience_level || `${p.experience_years || 0} years`} />
+                    <InfoTile label="Expected wage" value={fmtMoney(p.expected_daily_wage || 0)} />
+                    <InfoTile label="Availability" value={p.availability || p.available_from || '—'} />
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
                       <p className="text-xs font-bold text-slate-500">About</p>
-                      <p className="mt-1 text-sm font-semibold !text-black whitespace-pre-wrap break-words">{p.about || p.bio || p.description || 'About details not added.'}</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">{p.about || p.bio || p.description || 'About details not added.'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-blue-100 bg-white p-6 shadow-xl shadow-blue-100/40 min-h-[520px]">
+                  <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Rating, Resume & Marks</h3>
+                  <div className="space-y-3">
+                    <InfoTile label="Average rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
+                    <InfoTile label="Feedbacks" value={publicRatingCount || 0} />
+                    <InfoTile label="Black marks" value={`● ${visibleBlackMarkCount}`} />
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-center">
+                      <Stars value={publicRatingAverage} size="text-3xl" />
+                      <p className="mt-2 text-sm font-bold text-amber-900">{publicRatingCount ? `${publicRatingAverage.toFixed(1)} from ${publicRatingCount} feedbacks` : 'No feedback yet'}</p>
                     </div>
                     {resumeUrl ? (
-                      <Button type="button" variant="outline" className="mt-3 w-full h-11 rounded-2xl bg-white !text-black border-blue-200 hover:bg-blue-50 [&_*]:!!text-black" onClick={() => window.open(resumeUrl, '_blank')}>
+                      <Button type="button" variant="outline" className="w-full h-12 rounded-2xl bg-white text-slate-950 border-blue-200 hover:bg-blue-50" onClick={() => window.open(resumeUrl, '_blank')}>
                         <FileText className="w-4 h-4 mr-2" /> View Resume
                       </Button>
-                    ) : null}
+                    ) : (
+                      <p className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-600">Resume not uploaded.</p>
+                    )}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="rounded-[2rem] border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/40 to-teal-50 p-4 sm:p-5 shadow-xl shadow-emerald-100/50 min-h-[360px] lg:min-h-[370px]">
-                <div className="grid xl:grid-cols-[1.05fr_1fr_1fr] gap-4 items-stretch">
-                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
-                    <div className="flex items-center gap-4">
-                      <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-emerald-500/70" title="View company image">
-                        <Avatar className="w-20 h-20 rounded-[1.5rem] border-4 border-white shadow-xl bg-emerald-50">
-                          <AvatarImage src={photo} />
-                          <AvatarFallback className="rounded-[1.5rem] text-xl bg-emerald-100 text-emerald-800">{initials(title)}</AvatarFallback>
-                        </Avatar>
-                      </button>
-                      <div className="min-w-0">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Company Details</p>
-                        <h3 className="mt-1 text-2xl font-black !text-black break-words">{p.company_name || title || 'Company'}</h3>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {p.verified && <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified</Badge>}
-                          <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200">{p.industry || 'Industry not added'}</Badge>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <InfoTile label="Industry" value={p.industry || '—'} />
-                      <InfoTile label="Status" value={p.verified ? 'Verified' : 'Unverified'} />
-                      <InfoTile label="Phone" value={p.hr_contact || p.phone || p.mobile || p.contact_number || '—'} />
-                      <InfoTile label="Location" value={p.location_text || p.company_address || p.address || '—'} />
+              <div className="grid lg:grid-cols-3 gap-5">
+                <div className="rounded-[2rem] border border-emerald-100 bg-white p-6 shadow-xl shadow-emerald-100/40 min-h-[520px]">
+                  <div className="flex items-center gap-4 mb-5">
+                    <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-emerald-500/70" title="View company image">
+                      <Avatar className="w-24 h-24 rounded-[1.5rem] border-4 border-white shadow-xl bg-emerald-50">
+                        <AvatarImage src={photo} />
+                        <AvatarFallback className="rounded-[1.5rem] text-xl bg-emerald-100 text-emerald-800">{initials(title)}</AvatarFallback>
+                      </Avatar>
+                    </button>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Company Profile</p>
+                      <h3 className="mt-1 text-2xl font-black text-slate-950 break-words">{p.company_name || title || 'Company'}</h3>
+                      {p.verified && (
+                        <Badge className="mt-2 bg-emerald-100 text-emerald-800 border border-emerald-200"><ShieldCheck className="w-3.5 h-3.5 mr-1" />Verified Company</Badge>
+                      )}
                     </div>
                   </div>
-
-                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-5 shadow-lg h-full">
-                    <h3 className="font-black !text-black mb-4 flex items-center gap-2"><Briefcase className="w-5 h-5 text-emerald-600" /> Company Profile</h3>
-                    <div className="space-y-3">
-                      <InfoTile label="Company name" value={p.company_name || title || '—'} />
-                      <InfoTile label="Official email" value={p.official_email || p.email || p.company_email || '—'} />
-                      <InfoTile label="HR contact" value={p.hr_contact || p.phone || p.mobile || p.contact_number || '—'} />
-                      <InfoTile label="Company address" value={p.company_address || p.location_text || p.address || '—'} />
-                      <InfoTile label="Hiring status" value={p.hiring_status || p.availability || '—'} />
-                    </div>
+                  <div className="space-y-3">
+                    <InfoTile label="Company name" value={p.company_name || title || '—'} />
+                    <InfoTile label="Location" value={p.location_text || p.company_address || p.address || '—'} />
+                    <InfoTile label="HR Contact" value={p.hr_contact || p.phone || p.mobile || p.contact_number || '—'} />
+                    <InfoTile label="Email" value={p.official_email || p.email || p.company_email || '—'} />
                   </div>
+                </div>
 
-                  <div className="rounded-[1.75rem] bg-white/90 border border-white p-4 shadow-lg min-w-0 h-full">
-                    <h3 className="font-black !text-black mb-3 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Trust & Summary</h3>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <InfoTile label="Rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
-                      <InfoTile label="Feedbacks" value={publicRatingCount || 0} />
-                      <InfoTile label="Hired workers" value={hiredCount || 0} />
-                      <InfoTile label="Black marks" value={`● ${visibleBlackMarkCount}`} />
-                    </div>
-                    <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                <div className="rounded-[2rem] border border-emerald-100 bg-white p-6 shadow-xl shadow-emerald-100/40 min-h-[520px]">
+                  <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Briefcase className="w-5 h-5 text-emerald-600" /> Company Details</h3>
+                  <div className="space-y-3">
+                    <InfoTile label="Posted jobs" value={stats.postedJobs || postedJobs.length || 0} />
+                    <InfoTile label="Hired workers" value={hiredCount || 0} />
+                    <InfoTile label="Industry" value={p.industry || '—'} />
+                    <InfoTile label="Company type" value={p.company_type || p.business_type || '—'} />
+                    <InfoTile label="Company size" value={p.company_size || p.employee_count || '—'} />
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
                       <p className="text-xs font-bold text-slate-500">About Company</p>
-                      <p className="mt-1 text-sm font-semibold !text-black whitespace-pre-wrap break-words">{p.about_company || p.company_description || p.company_about || p.about || p.description || 'Company details not added.'}</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">{p.about || p.company_about || p.description || 'Company details not added.'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-emerald-100 bg-white p-6 shadow-xl shadow-emerald-100/40 min-h-[520px]">
+                  <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Ratings, Feedbacks & Marks</h3>
+                  <div className="space-y-3">
+                    <InfoTile label="Average rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
+                    <InfoTile label="Feedbacks" value={publicRatingCount || 0} />
+                    <InfoTile label="Black marks" value={`● ${visibleBlackMarkCount}`} />
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-center">
+                      <Stars value={publicRatingAverage} size="text-3xl" />
+                      <p className="mt-2 text-sm font-bold text-amber-900">{publicRatingCount ? `${publicRatingAverage.toFixed(1)} from ${publicRatingCount} feedbacks` : 'No feedback yet'}</p>
+                    </div>
+                    <div className="rounded-2xl border border-red-100 bg-red-50/80 p-4 text-center">
+                      <p className="text-2xl font-black text-red-600">● {visibleBlackMarkCount}</p>
+                      <p className="text-sm font-bold text-red-900">Black Marks</p>
                     </div>
                   </div>
                 </div>
@@ -4844,26 +4929,26 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
               <Button className={`flex-1 rounded-2xl ${isWorker ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`} onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
                 <MessageSquare className="w-4 h-4 mr-2" /> Message {isWorker ? 'worker' : 'company'}
               </Button>
-              <Button variant="outline" onClick={onClose} className="flex-1 rounded-2xl"><span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Close</span></Button>
+              <Button variant="outline" onClick={onClose} className="flex-1 rounded-2xl">Close</Button>
             </div>
           </div>
         </div>
 
         {activePopup === 'history' && (
-          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/60 px-4 py-[96px]" onClick={closePopup}>
-            <div className="w-full max-w-5xl max-h-[calc(100dvh-190px)] overflow-hidden rounded-[1.75rem] bg-white !text-black shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/55 p-[30px]" onClick={closePopup}>
+            <div className="w-full max-w-4xl max-h-[calc(100vh-60px)] overflow-hidden rounded-[2rem] bg-white text-slate-950 shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
               <div className="p-5 bg-gradient-to-r from-slate-950 to-slate-700 text-white flex items-start justify-between gap-3">
                 <div><h3 className="text-xl font-black">Feedbacks & Black Marks</h3><p className="text-sm text-white/80">Clear history for this profile.</p></div>
-                <Button type="button" variant="secondary" className="rounded-xl bg-slate-700 hover:bg-slate-800 !text-white [&_*]:!text-white" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }} onClick={closePopup}><span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Close</span></Button>
+                <Button type="button" variant="secondary" className="rounded-xl bg-white/20 text-white hover:bg-white/30" onClick={closePopup}>Close</Button>
               </div>
-              <div className="max-h-[calc(100dvh-310px)] overflow-y-auto p-5 grid md:grid-cols-2 gap-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
-                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 !text-black [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black">
-                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black !text-black">Feedbacks</h4><Badge className="bg-amber-100 !text-black border border-amber-200">{publicRatingCount || 0} total</Badge></div>
-                  {feedbacks.length === 0 ? <p className="text-sm !text-black">No feedback added yet.</p> : <div className="space-y-3">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border border-amber-200 p-4 shadow-sm !text-black [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black"><div className="flex items-center justify-between gap-2"><Stars value={f.rating} /><Badge variant="secondary">{f.created_at ? new Date(f.created_at).toLocaleDateString() : 'Feedback'}</Badge></div><p className="text-sm !text-black mt-2">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>}
+              <div className="max-h-[70vh] overflow-y-auto p-5 grid md:grid-cols-2 gap-4">
+                <div className="rounded-3xl border border-amber-100 bg-amber-50/60 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black text-amber-900">Feedbacks</h4><Badge className="bg-amber-100 text-amber-800 border border-amber-200">{publicRatingCount || 0} total</Badge></div>
+                  {feedbacks.length === 0 ? <p className="text-sm text-slate-600">No feedback added yet.</p> : <div className="space-y-3">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border border-amber-100 p-4 shadow-sm"><div className="flex items-center justify-between gap-2"><Stars value={f.rating} /><Badge variant="secondary">{f.created_at ? new Date(f.created_at).toLocaleDateString() : 'Feedback'}</Badge></div><p className="text-sm text-slate-700 mt-2">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>}
                 </div>
-                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 !text-black [&_*]:!text-black !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000] [&_svg]:!text-black">
-                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black !text-black">Black Marks</h4><Badge className="bg-slate-950 text-white">● {visibleBlackMarkCount}</Badge></div>
-                  {blackMarks.length === 0 ? <p className="text-sm !text-black">No black marks added yet.</p> : <div className="space-y-3">{blackMarks.map((m, i) => <div key={i} className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm"><div className="flex items-center justify-between gap-2"><p className="font-black !text-black"><span className="mr-2">●</span>Black mark</p><Badge variant="secondary">{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Mark'}</Badge></div><p className="text-sm !text-black mt-2">{m.reason || 'No reason added.'}</p></div>)}</div>}
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black text-slate-950">Black Marks</h4><Badge className="bg-slate-950 text-white">● {visibleBlackMarkCount}</Badge></div>
+                  {blackMarks.length === 0 ? <p className="text-sm text-slate-600">No black marks added yet.</p> : <div className="space-y-3">{blackMarks.map((m, i) => <div key={i} className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm"><div className="flex items-center justify-between gap-2"><p className="font-black text-slate-950"><span className="mr-2">●</span>Black mark</p><Badge variant="secondary">{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Mark'}</Badge></div><p className="text-sm text-slate-700 mt-2">{m.reason || 'No reason added.'}</p></div>)}</div>}
                 </div>
               </div>
             </div>
@@ -4871,25 +4956,25 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
         )}
 
         {activePopup === 'feedback' && (
-          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/60 px-4 py-[96px]" onClick={closePopup}>
-            <div className="w-full max-w-xl max-h-[calc(100dvh-190px)] rounded-[1.75rem] bg-white !text-black shadow-2xl border border-amber-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-5 bg-gradient-to-r from-amber-500 to-orange-500 text-white"><h3 className="text-xl font-black text-white">Give Feedback</h3><p className="text-sm text-white/90">Select stars and write feedback.</p></div>
-              <div className="p-5 space-y-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
-                <div className="flex justify-center gap-2">{[1,2,3,4,5].map((n) => <button key={n} type="button" onClick={() => setProfileFeedbackRating(n)} className={`text-4xl ${n <= profileFeedbackRating ? "!text-amber-500" : "!text-slate-300"}`} style={{ color: n <= profileFeedbackRating ? "#f59e0b" : "#cbd5e1", WebkitTextFillColor: n <= profileFeedbackRating ? "#f59e0b" : "#cbd5e1" }}>★</button>)}</div>
-                <Textarea value={profileFeedbackText} onChange={(e) => setProfileFeedbackText(e.target.value)} placeholder="Write clear feedback" className="min-h-[120px] rounded-2xl bg-white !text-black placeholder:!text-slate-500 border-slate-300 focus:border-amber-400 focus:ring-amber-200" />
-                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white !text-black border-slate-300 hover:bg-slate-50 [&_*]:!text-black" style={{ color: "#000000", WebkitTextFillColor: "#000000" }} onClick={closePopup}><span style={{ color: "#000000", WebkitTextFillColor: "#000000" }}>Cancel</span></Button><Button type="button" disabled={submittingProfileFeedback} onClick={submitProfileFeedback} className="rounded-xl bg-amber-500 hover:bg-amber-600 !text-white [&_*]:!text-white" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>{submittingProfileFeedback ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}<span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Submit</span></Button></div>
+          <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/55 p-[30px]" onClick={closePopup}>
+            <div className="w-full max-w-lg rounded-[2rem] bg-white text-slate-950 shadow-2xl border border-amber-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 bg-gradient-to-r from-amber-500 to-orange-500 text-white"><h3 className="text-xl font-black">Give Feedback</h3><p className="text-sm text-white/85">Select stars and write feedback.</p></div>
+              <div className="p-5 space-y-4">
+                <div className="flex justify-center gap-2">{[1,2,3,4,5].map((n) => <button key={n} type="button" onClick={() => setProfileFeedbackRating(n)} className={`text-4xl ${n <= profileFeedbackRating ? 'text-amber-500' : 'text-slate-200'}`}>★</button>)}</div>
+                <Textarea value={profileFeedbackText} onChange={(e) => setProfileFeedbackText(e.target.value)} placeholder="Write clear feedback" className="min-h-[120px] rounded-2xl bg-white text-slate-950 placeholder:text-slate-400" />
+                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white text-slate-950 border-slate-300 hover:bg-slate-50" onClick={closePopup}>Cancel</Button><Button type="button" disabled={submittingProfileFeedback} onClick={submitProfileFeedback} className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white">{submittingProfileFeedback ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}Submit</Button></div>
               </div>
             </div>
           </div>
         )}
 
         {activePopup === 'black' && (
-          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/60 px-4 py-[96px]" onClick={closePopup}>
-            <div className="w-full max-w-xl max-h-[calc(100dvh-190px)] rounded-[1.75rem] bg-white !text-black shadow-2xl border border-slate-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-5 bg-gradient-to-r from-slate-950 to-slate-700 text-white"><h3 className="text-xl font-black text-white">Mark Black</h3><p className="text-sm text-white/90">Add a reason before marking this profile.</p></div>
-              <div className="p-5 space-y-4 bg-white !text-black [color:#000] [&_*:not(button):not(button_*)]:!text-black [&_*:not(button):not(button_*)]:[color:#000]">
-                <Textarea value={blackReason} onChange={(e) => setBlackReason(e.target.value)} placeholder="Reason for black mark" className="min-h-[120px] rounded-2xl bg-white !text-black placeholder:!text-slate-500 border-slate-300 focus:border-slate-500 focus:ring-slate-200" />
-                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white !text-black border-slate-300 hover:bg-slate-50 [&_*]:!text-black" style={{ color: "#000000", WebkitTextFillColor: "#000000" }} onClick={closePopup}><span style={{ color: "#000000", WebkitTextFillColor: "#000000" }}>Cancel</span></Button><Button type="button" disabled={markingBlack} onClick={markBlackDot} className="rounded-xl bg-slate-950 hover:bg-black !text-white [&_*]:!text-white" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>{markingBlack ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <span className="mr-2" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>●</span>}<span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Mark</span></Button></div>
+          <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/55 p-[30px]" onClick={closePopup}>
+            <div className="w-full max-w-lg rounded-[2rem] bg-white text-slate-950 shadow-2xl border border-slate-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 bg-gradient-to-r from-slate-950 to-slate-700 text-white"><h3 className="text-xl font-black">Mark Black</h3><p className="text-sm text-white/80">Add a reason before marking this profile.</p></div>
+              <div className="p-5 space-y-4">
+                <Textarea value={blackReason} onChange={(e) => setBlackReason(e.target.value)} placeholder="Reason for black mark" className="min-h-[120px] rounded-2xl bg-white text-slate-950 placeholder:text-slate-400" />
+                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white text-slate-950 border-slate-300 hover:bg-slate-50" onClick={closePopup}>Cancel</Button><Button type="button" disabled={markingBlack} onClick={markBlackDot} className="rounded-xl bg-slate-950 hover:bg-black text-white">{markingBlack ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <span className="mr-2">●</span>}Mark</Button></div>
               </div>
             </div>
           </div>
@@ -5013,7 +5098,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
 
       {hasSaved && !editingLocation ? (
         <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-1">
-          <p className="text-sm font-semibold !text-black truncate">{value}</p>
+          <p className="text-sm font-semibold text-slate-800 truncate">{value}</p>
           <p className="text-xs text-slate-500">{formatCoordinates(latitude, longitude)}</p>
         </div>
       ) : (
@@ -5028,7 +5113,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
             helper={helper}
             onChange={(loc) => { userTouchedLocationRef.current = true; onChange?.(loc); }}
           />
-          <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 !text-black'}`}>
+          <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
             {canSaveLocation ? 'Exact GPS selected. Click Save to store it.' : 'Search/select one exact place or use current GPS before saving.'}
           </div>
         </div>
@@ -5041,12 +5126,6 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
 function VerificationDocumentsCard({ token, me, role, verified, form, setForm, onSaved, color = 'indigo' }) {
   const [busy, setBusy] = useState(false);
   const [localDocumentEdited, setLocalDocumentEdited] = useState(false);
-  const [localDocumentStatus, setLocalDocumentStatus] = useState('');
-  useEffect(() => {
-    try {
-      setLocalDocumentStatus(localStorage.getItem(`w2w-local-section-status-documents-${me?.profile?.id || me?.id || 'me'}`) || '');
-    } catch {}
-  }, [me]);
   const accent = color === 'emerald' ? 'emerald' : 'indigo';
   const isEmployer = role === 'employer';
   const documentReviewStatus = sectionReviewState(me, 'documents', form.verification_status, verified);
@@ -5056,7 +5135,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
     me?.profile || {},
     me?.extra || {}
   );
-  const status = localDocumentStatus || ((localDocumentEdited || documentChangedAfterReview) ? 'modified' : documentReviewStatus);
+  const status = (localDocumentEdited || documentChangedAfterReview) ? 'modified' : documentReviewStatus;
   const lockedVerified = status === 'verified' && !localDocumentEdited && !documentChangedAfterReview;
 
   const cleanAadhaar = (value) => String(value || '').replace(/\D/g, '').slice(0, 20);
@@ -5074,7 +5153,6 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
       verification_section: 'documents',
     }));
     setLocalDocumentEdited(true);
-    setLocalDocumentStatus('modified');
   };
 
   const uploadDoc = async (file, field, kind) => {
@@ -5131,14 +5209,9 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             verification_section: 'documents',
           };
 
+      await api('me/profile', { method: 'PATCH', token, body });
       setForm((s) => ({ ...s, ...body }));
       setLocalDocumentEdited(false);
-      setLocalDocumentStatus('pending');
-      try {
-        localStorage.setItem(`w2w-local-section-status-documents-${me?.profile?.id || me?.id || 'me'}`, 'pending');
-        window.dispatchEvent(new CustomEvent('w2w-profile-section-local-status', { detail: { section: 'documents', status: 'pending', body } }));
-      } catch {}
-      await api('me/profile', { method: 'PATCH', token, body });
       toast.success('Verification submitted for admin review');
       onSaved?.();
     } catch (e) {
@@ -5150,10 +5223,10 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
 
   const inputClass = 'h-11 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0';
   const documentButtonStyle = lockedVerified
-    ? { backgroundColor: '#16a34a', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#16a34a' }
+    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
     : (status === 'pending' || status === 'submitted')
-      ? { backgroundColor: '#f59e0b', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#f59e0b' }
-      : { backgroundColor: '#dc2626', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#dc2626' };
+      ? { backgroundColor: '#f59e0b', color: '#ffffff', borderColor: '#f59e0b' }
+      : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
   const documentButtonStateClass = lockedVerified
     ? 'w2w-verify-button w2w-verify-done'
     : (status === 'pending' || status === 'submitted')
@@ -5176,17 +5249,17 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             </CardDescription>
           </div>
           {lockedVerified ? (
-            <Badge className="border border-emerald-200 bg-emerald-50 !text-emerald-700 shadow-sm [&_*]:!text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
+            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
           ) : status === 'submitted' || status === 'pending' ? (
-            <Badge className="border border-amber-200 bg-amber-50 !text-amber-800 shadow-sm [&_*]:!text-amber-800">Pending Approval</Badge>
+            <Badge className="bg-amber-100 text-amber-700">Pending Approval</Badge>
           ) : status === 'modified' ? (
-            <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
           ) : status === 'saved' ? (
             <Badge className="bg-sky-100 text-sky-700">Saved</Badge>
           ) : status === 'rejected' ? (
             <Badge className="bg-red-100 text-red-700">Rejected</Badge>
           ) : (
-            <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
           )}
         </div>
       </CardHeader>
@@ -5202,7 +5275,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
           </>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <Label>Aadhaar number</Label>
                 <Input
@@ -5245,7 +5318,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
               <p className="text-xs text-muted-foreground mt-1">Type your full address manually. GPS/search location is selected separately in Profile below.</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
               <DocumentUploadBox color="indigo" label="Aadhaar front" url={form.aadhaar_front_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_front_url', 'aadhaar-front')} />
               <DocumentUploadBox color="indigo" label="Aadhaar back" url={form.aadhaar_back_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_back_url', 'aadhaar-back')} />
               <DocumentUploadBox color="indigo" label="PAN front" url={form.pan_image_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_image_url', 'pan-front')} />
@@ -5289,7 +5362,7 @@ lockedVerified
 
 ?
 
-'!bg-emerald-600 !text-white hover:!bg-emerald-700 disabled:!bg-emerald-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
+'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
 
 :
 
@@ -5298,7 +5371,7 @@ status==="submitted"
 
 ?
 
-'!bg-amber-500 !text-white hover:!bg-amber-600 disabled:!bg-amber-500 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
+'bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
 
 :
 
@@ -5324,11 +5397,10 @@ w-4
 h-4
 mr-2
 animate-spin
-!text-white
 "
 />
 
-<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Submitting...</span>
+Submitting...
 
 </>
 
@@ -5345,11 +5417,10 @@ className="
 w-4
 h-4
 mr-2
-!text-white
 "
 />
 
-<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Done</span>
+Done
 
 </>
 
@@ -5367,11 +5438,10 @@ className="
 w-4
 h-4
 mr-2
-!text-white
 "
 />
 
-<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Pending Approval</span>
+Pending Approval
 
 </>
 
@@ -5388,11 +5458,10 @@ className="
 w-4
 h-4
 mr-2
-!text-white
 "
 />
 
-<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Send for Verification</span>
+Send for Verification
 
 </>
 
@@ -5405,11 +5474,10 @@ className="
 w-4
 h-4
 mr-2
-!text-white
 "
 />
 
-<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Send for Verification</span>
+Send for Verification
 
 </>
 
@@ -5431,27 +5499,27 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
     : { card: 'border-indigo-200/80 bg-gradient-to-br from-white via-indigo-50/60 to-white shadow-indigo-100/70', icon: 'border-indigo-100 bg-indigo-50 text-indigo-500', btn: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50', link: 'text-indigo-700' };
 
   return (
-    <div className={`h-full min-h-[190px] rounded-3xl border p-4 flex flex-col justify-between shadow-sm hover:shadow-lg transition ${theme.card}`}>
+    <div className={`h-full min-h-[168px] rounded-3xl border p-4 flex flex-col justify-between shadow-sm hover:shadow-lg transition ${theme.card}`}>
       <div>
         <div className="flex items-center justify-between gap-2">
-          <Label className="font-semibold !text-black text-sm leading-tight min-h-[36px] flex items-start">{label}</Label>
+          <Label className="font-semibold text-slate-900">{label}</Label>
           {verified && hasFile && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 shadow-sm">
               <CheckCircle2 className="w-3.5 h-3.5" /> Verified
             </span>
           )}
         </div>
-        <div className="mt-4 flex items-center gap-3 min-h-[72px]">
+        <div className="mt-4 flex items-center gap-3">
           <div className={`w-16 h-16 rounded-2xl border grid place-items-center overflow-hidden shrink-0 ${theme.icon}`}>
             {hasFile ? <img src={url} alt={label} className="w-full h-full object-cover" /> : <ImgIcon className="w-6 h-6" />}
           </div>
-          <div className="flex flex-col gap-2 min-w-[112px] flex-1">
+          <div className="flex flex-col gap-2 min-w-[112px]">
             {hasFile && (
-              <a className={`h-10 w-full inline-flex items-center justify-center px-3 py-2 rounded-xl border bg-white text-sm font-semibold ${verified ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : theme.btn}`} href={url} target="_blank" rel="noreferrer">
+              <a className={`h-10 min-w-[112px] inline-flex items-center justify-center px-3 py-2 rounded-xl border bg-white text-sm font-semibold ${verified ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : theme.btn}`} href={url} target="_blank" rel="noreferrer">
                 View file
               </a>
             )}
-            <label className={`h-10 w-full inline-flex items-center justify-center px-3 py-2 rounded-xl border text-sm bg-white/90 ${theme.btn} ${canUpload ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+            <label className={`h-10 min-w-[112px] inline-flex items-center justify-center px-3 py-2 rounded-xl border text-sm bg-white/90 ${theme.btn} ${canUpload ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
               <Upload className="w-4 h-4 mr-2" /> {fileLabel}
               <input type="file" accept="image/*,.pdf" className="hidden" disabled={!canUpload} onChange={(e) => { const file = e.target.files?.[0]; if (file) onFile(file); e.target.value = ''; }} />
             </label>
@@ -5460,7 +5528,7 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
       </div>
       <div className="mt-3 min-h-[18px]">
         {hasFile && <p className={`text-xs font-medium ${theme.link}`}>Uploaded document can be changed anytime.</p>}
-        {verified && !hasFile && !optional && <p className="text-xs !text-black">Missing file</p>}
+        {verified && !hasFile && !optional && <p className="text-xs text-amber-700">Missing file</p>}
       </div>
     </div>
   );
@@ -5591,28 +5659,22 @@ function pickEmployerDraftFields(data = {}) {
 
 function SectionVerificationAction({ token, me, section, title, description, color = 'indigo', setForm, onSaved, disabled = false, payloadBuilder = null, validate = null, modified = false }) {
   const [busy, setBusy] = useState(false);
-  const [localStatus, setLocalStatus] = useState('');
-  useEffect(() => {
-    try {
-      setLocalStatus(localStorage.getItem(`w2w-local-section-status-${section}-${me?.profile?.id || me?.id || 'me'}`) || '');
-    } catch {}
-  }, [section, me]);
   const verified = !!me?.extra?.verified;
   const rawStatus = sectionReviewState(me, section, me?.extra?.verification_status, verified);
-  const status = modified ? 'modified' : (localStatus || rawStatus);
+  const status = modified ? 'modified' : rawStatus;
   const label = status === 'verified' ? 'Done' : status === 'pending' ? 'Pending Approval' : 'Send for Verification';
   const Icon = status === 'verified' ? CheckCircle2 : status === 'pending' ? Clock : ShieldCheck;
   const blocked = !!disabled || status === 'pending' || status === 'verified';
   const actionClass = status === 'verified'
-    ? 'w2w-verify-button w2w-verify-done !bg-emerald-600 !text-white hover:!bg-emerald-700 disabled:!bg-emerald-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
+    ? 'w2w-verify-button w2w-verify-done bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
     : status === 'pending'
-      ? 'w2w-verify-button w2w-verify-pending !bg-amber-500 !text-white hover:!bg-amber-600 disabled:!bg-amber-500 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
-      : 'w2w-verify-button w2w-verify-idle !bg-rose-600 !text-white hover:!bg-rose-700 disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-pointer [&_*]:!text-white';
+      ? 'w2w-verify-button w2w-verify-pending bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
+      : 'w2w-verify-button w2w-verify-idle !bg-rose-600 !text-white hover:!bg-rose-700 disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-pointer';
   const actionStyle = status === 'verified'
-    ? { backgroundColor: '#16a34a', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#16a34a' }
+    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
     : status === 'pending'
-      ? { backgroundColor: '#f59e0b', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#f59e0b' }
-      : { backgroundColor: '#dc2626', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#dc2626' };
+      ? { backgroundColor: '#f59e0b', color: '#ffffff', borderColor: '#f59e0b' }
+      : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
   const sendForReview = async () => {
     if (blocked || busy) return;
     setBusy(true);
@@ -5627,15 +5689,10 @@ function SectionVerificationAction({ token, me, section, title, description, col
       }
       const extraPayload = payloadBuilder ? (payloadBuilder() || {}) : {};
       const body = { ...extraPayload, verification_status: 'pending', verification_section: section };
-      setLocalStatus('pending');
-      setForm?.((prev) => ({ ...prev, ...body }));
-      try {
-        localStorage.setItem(`w2w-local-section-status-${section}-${me?.profile?.id || me?.id || 'me'}`, 'pending');
-        window.dispatchEvent(new CustomEvent('w2w-profile-section-local-status', { detail: { section, status: 'pending', body } }));
-      } catch {}
       await api('me/profile', { method: 'PATCH', token, body });
+      setForm?.((prev) => ({ ...prev, ...body }));
+      await onSaved?.();
       toast.success(`${title} sent for admin verification`);
-      onSaved?.();
     } catch (e) {
       toast.error(e.message || 'Unable to send verification');
     } finally {
@@ -5653,10 +5710,10 @@ function SectionVerificationAction({ token, me, section, title, description, col
         disabled={busy || blocked}
         onClick={sendForReview}
         className={`${actionClass} min-w-[220px] h-12 rounded-2xl font-semibold transition-all duration-300 disabled:!opacity-100 disabled:cursor-not-allowed`}
-        style={{ ...actionStyle, color: '#ffffff', WebkitTextFillColor: '#ffffff' }}
+        style={actionStyle}
       >
-        {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin !text-white" /> : <Icon className="w-4 h-4 mr-2 !text-white" />}
-        <span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>{busy ? 'Submitting...' : label}</span>
+        {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Icon className="w-4 h-4 mr-2" />}
+        {label}
       </Button>
     </div>
   );
@@ -5671,7 +5728,7 @@ function pickProfileRating(extra = {}) {
 function TopProfileStarRating({ value = 0, count = 0, color = 'indigo' }) {
   const rating = Math.max(0, Math.min(5, Number(value || 0)));
   const filled = Math.floor(rating);
-  const labelClass = 'border-amber-300 bg-amber-50 !text-black shadow-sm shadow-amber-100';
+  const labelClass = 'border-amber-300 bg-amber-50 text-amber-800 shadow-sm shadow-amber-100';
   return (
     <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 ${labelClass}`}>
       <span className="flex items-center gap-0.5" aria-label={`Rating ${rating.toFixed(1)} out of 5`}>
@@ -5708,24 +5765,6 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     return () => window.removeEventListener('w2w-subscription-updated', refresh);
   }, []);
   const workerDraftKey = `w2w-worker-profile-draft-${me?.profile?.id || me?.id || 'me'}`;
-  const [localSectionStatuses, setLocalSectionStatuses] = useState({ profile: '', documents: '', bank: '' });
-
-  useEffect(() => {
-    const handler = (event) => {
-      const section = event?.detail?.section;
-      const status = event?.detail?.status;
-      const body = event?.detail?.body || {};
-      if (!section || !status) return;
-      setLocalSectionStatuses((prev) => ({ ...prev, [section]: status }));
-      setForm((prev) => ({ ...prev, ...body, verification_status: status, verification_section: section }));
-      if (status !== 'verified') {
-        try { localStorage.removeItem(finalProfileSaveKey(me, 'worker')); } catch {}
-        setFinalSaved(false);
-      }
-    };
-    window.addEventListener('w2w-profile-section-local-status', handler);
-    return () => window.removeEventListener('w2w-profile-section-local-status', handler);
-  }, [me]);
 
   useEffect(() => {
     if (me) {
@@ -5850,11 +5889,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     return '';
   };
 
-  const workerBankReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.bank) || sectionReviewState(me, 'bank', me?.extra?.verification_status, verified);
+  const workerBankReviewStatus = sectionReviewState(me, 'bank', me?.extra?.verification_status, verified);
   const workerBankChangedAfterReview = (workerBankReviewStatus === 'pending' || workerBankReviewStatus === 'verified') && hasBankDetailsChanged(buildWorkerBankPayload(), bankPayloadFromExtra(me?.extra || {}));
-  const workerProfileReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.profile) || sectionReviewState(me, 'profile', me?.extra?.verification_status, verified);
+  const workerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, verified);
   const workerProfileChangedAfterReview = (workerProfileReviewStatus === 'pending' || workerProfileReviewStatus === 'verified') && hasVerifySectionChanged(PROFILE_VERIFY_FIELDS, buildWorkerProfilePayload(), me?.profile || {}, me?.extra || {});
-  const workerDocumentReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.documents) || sectionReviewState(me, 'documents', me?.extra?.verification_status, verified);
+  const workerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, verified);
   const workerDocumentChangedAfterReview = (workerDocumentReviewStatus === 'pending' || workerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(WORKER_DOCUMENT_VERIFY_FIELDS, buildWorkerDocumentPayload(), me?.profile || {}, me?.extra || {});
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
@@ -5893,11 +5932,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
         selfie_verified: !!(form.selfie_verified || me?.extra?.selfie_verified),
         verification_status: 'verified',
       };
+      await api('me/profile', { method: 'PATCH', token, body });
       setForm((prev) => ({ ...prev, ...body }));
       localStorage.setItem(finalProfileSaveKey(me, 'worker'), 'saved');
-      setFinalSaved(true);
-      await api('me/profile', { method: 'PATCH', token, body });
       try { localStorage.removeItem(workerDraftKey); } catch {}
+      setFinalSaved(true);
       toast.success('Profile saved');
       await onSaved?.();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
@@ -5943,7 +5982,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   if (!me) return <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-4">
       <Card className="profile-section-card overflow-hidden">
         <CardContent className="p-5 flex items-center gap-4">
           <AvatarUploader
@@ -5959,11 +5998,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="indigo" />; })()}
               {workerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 !text-emerald-700 shadow-sm [&_*]:!text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
+                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : workerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 !text-amber-800 shadow-sm [&_*]:!text-amber-800"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
-                <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
             </div>
             {me.profile?.login_id && (
@@ -6070,7 +6109,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
       <Card className="profile-section-card overflow-hidden">
         <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Edit profile</CardTitle><CardDescription>Personal, skill and availability information.</CardDescription></div></div></CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <CardContent className="grid sm:grid-cols-2 gap-3">
           <Field label="Full name"  v={form.full_name}           on={(v) => setForm(f => ({ ...f, full_name: v }))} />
           <Field label="Phone"      v={cleanIndianPhone10(form.phone)}               on={(v) => setForm(f => ({ ...f, phone: cleanIndianPhone10(v) }))} inputMode="numeric" maxLength={10} prefix="+91" helper="Enter 10-digit Indian mobile number" />
           <Field label="Age"        v={form.age}                 on={(v) => setForm(f => ({ ...f, age: v }))} type="number" />
@@ -6129,11 +6168,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                 </div>
               </CardHeader>
               <CardContent className="p-4 space-y-4">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+                <div className="grid lg:grid-cols-2 gap-4 items-stretch">
                   <MobileOtpVerificationBox token={token} phone={form.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setForm(f => ({ ...f, phone: phone || f.phone, mobile_verified: true })); onSaved?.(); }} />
                   <SelfieVerificationBox token={token} url={form.selfie_url} frontUrl={form.selfie_front_url} leftUrl={form.selfie_left_url} rightUrl={form.selfie_right_url} verified={!!(me.extra?.selfie_verified || form.selfie_verified)} disabled={busy} onUploaded={(payload) => { setForm(f => ({ ...f, ...(typeof payload === 'string' ? { selfie_url: payload, selfie_verified: true } : payload), selfie_verified: true, verification_status: 'verified' })); onSaved?.(); }} />
                 </div>
-                <div className="grid grid-cols-1 gap-4 items-stretch">
+                <div className="grid lg:grid-cols-1 gap-4 items-stretch">
                   <div className="rounded-2xl border bg-white p-4 min-h-[132px]">
                     <Label>Admin approved badges</Label>
                     <div className="flex flex-wrap gap-2 mt-3">
@@ -6199,8 +6238,8 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           disabled={busy || !workerAllProfileCardsVerified || finalSaved}
           className={`h-12 ${finalSaved ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white' : 'bg-emerald-600 hover:bg-emerald-700'} shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed`}
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
-          <span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>{finalSaved ? 'Saved' : 'Save profile'}</span>
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          {finalSaved ? 'Saved' : 'Save profile'}
         </Button>
 
         <Button
@@ -6222,7 +6261,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border bg-slate-50 p-4">
-                <p className="text-sm font-semibold !text-black">Signed in as</p>
+                <p className="text-sm font-semibold text-slate-900">Signed in as</p>
                 <p className="text-sm text-muted-foreground truncate mt-1">{me.profile?.email}</p>
                 {me.profile?.login_id && (
                   <p className="text-xs text-indigo-700 mt-2">Login ID: <b>{me.profile.login_id}</b></p>
@@ -6230,7 +6269,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               </div>
 
               <div className="rounded-2xl border p-4 space-y-3">
-                <p className="text-sm font-semibold !text-black">Quick actions</p>
+                <p className="text-sm font-semibold text-slate-900">Quick actions</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -6617,7 +6656,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             <p className="font-semibold flex items-center gap-2"><Camera className="w-4 h-4" /> Selfie verification</p>
             <p className="text-xs text-muted-foreground mt-1">Front face only. Camera auto captures when your face is clear inside the frame.</p>
           </div>
-          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
+          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
         </div>
 
         {verified ? (
@@ -6625,7 +6664,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             <ShieldCheck className="w-4 h-4" /> Done
           </div>
         ) : (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm !text-black">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
             Open the camera and keep your full face inside the green frame. It will auto capture.
           </div>
         )}
@@ -6671,7 +6710,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
                   <div className="pointer-events-none absolute inset-3 rounded-[1.5rem] border border-emerald-200/80" />
                   <div className="pointer-events-none absolute left-4 right-4 top-6 h-[2px] rounded-full bg-emerald-300/90 shadow-[0_0_16px_rgba(52,211,153,.95)] animate-[selfieScan_2.3s_ease-in-out_infinite]" />
                   <div className="absolute top-3 left-3 rounded-full bg-emerald-600/95 px-3 py-1 text-xs font-semibold text-white shadow">Front face only</div>
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold !text-black max-w-[90%] text-center">{faceMessage}</div>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-slate-800 max-w-[90%] text-center">{faceMessage}</div>
                 </>
               ) : capturedPreview ? (
                 <img src={capturedPreview} alt="Captured front selfie" className="absolute inset-0 w-full h-full object-contain bg-slate-950" />
@@ -6686,7 +6725,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             {capturedPreview && !cameraOn && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Front face captured successfully.</div>
             )}
-            {cameraError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs !text-black">{cameraError}</div>}
+            {cameraError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{cameraError}</div>}
           </div>
 
           <canvas ref={canvasRef} className="hidden" />
@@ -6696,7 +6735,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
           <DialogFooter className="gap-2 sm:gap-2 shrink-0 flex-wrap">
             <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop camera' : 'Start camera'}</Button>
             <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate || cameraOn} onClick={startCamera}>Retake</Button>
-            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || !allowSelfieUpdate || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : 'Submit for review'}</Button>
+            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || !allowSelfieUpdate || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for review'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -6803,7 +6842,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
           <p className="font-semibold flex items-center gap-2"><Phone className="w-4 h-4" /> Mobile OTP</p>
           <p className="text-xs text-muted-foreground mt-0.5">Verify your active phone number.</p>
         </div>
-        {isVerified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
+        {isVerified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
       </div>
 
       {isVerified && !editing && (
@@ -6828,7 +6867,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
             disabled={busy || !canEdit || countdown > 0}
             className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700"
           >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : countdown > 0 ? `Resend in ${countdown}s` : (sent ? 'Resend OTP' : 'Send OTP')}
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Resend in ${countdown}s` : (sent ? 'Resend OTP' : 'Send OTP')}
           </Button>
           {isVerified && editing ? (
             <Button type="button" variant="ghost" onClick={() => { setEditing(false); setMobile(phone || ''); setOtp(''); setSent(false); setCountdown(0); }}>Cancel</Button>
@@ -6837,7 +6876,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
       )}
 
       {sent && (
-        <div className="mt-3 text-sm !text-black">
+        <div className="mt-3 text-sm text-slate-600">
           OTP sent to <span className="font-semibold">{normalized}</span>. {countdown > 0 ? `You can resend in ${countdown}s.` : 'You can resend now.'}
         </div>
       )}
@@ -6908,7 +6947,7 @@ function Field({ label, v, on, type = 'text', required = true, maxLength, inputM
       <Label>{label}{required ? <span className="text-red-500 ml-0.5">*</span> : null}</Label>
       {prefix ? (
         <div className="flex h-11 w-full items-center overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
-          <span className="inline-flex h-full shrink-0 items-center whitespace-nowrap border-r bg-slate-50 px-3 text-sm font-semibold leading-none !text-black">{prefix}</span>
+          <span className="inline-flex h-full shrink-0 items-center whitespace-nowrap border-r bg-slate-50 px-3 text-sm font-semibold leading-none text-slate-700">{prefix}</span>
           <Input
             type={type}
             value={value}
@@ -7253,7 +7292,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
   };
 
   return (
-    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard label="Active jobs"  value={jobs.filter(j => j.status === 'open').length} icon={Briefcase} color="emerald" />
         <StatCard label="Total applicants" value={totalApplicants} icon={Users} color="indigo" />
@@ -7269,7 +7308,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
       </div>
 
       {jobs.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No jobs yet. Tap “Post job” to start hiring.</p>}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid sm:grid-cols-2 gap-3">
         {jobs.map(j => (
           <Card key={j.id} className={`rounded-3xl hover:border-emerald-300 hover:shadow-xl transition cursor-pointer premium-job-card company-job-card ${Number(j.pending_count || 0) > 0 ? 'border-amber-300 ring-2 ring-amber-100 shadow-lg shadow-amber-100/60' : 'border-emerald-100'}`} onClick={() => openApplicants(j)}>
             <CardContent className="p-4">
@@ -7279,7 +7318,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                   <p className="text-xs text-muted-foreground truncate">{j.location_text} · {jobDurationLabel(j)}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
-                  {Number(j.pending_count || 0) > 0 && <Badge className="bg-amber-100 !text-black border border-amber-200 animate-pulse">New {Number(j.pending_count || 0)}</Badge>}
+                  {Number(j.pending_count || 0) > 0 && <Badge className="bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">New {Number(j.pending_count || 0)}</Badge>}
                   <Badge className={j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : ''} variant={j.status === 'open' ? 'default' : 'secondary'}>{j.status}</Badge>
                 </div>
               </div>
@@ -7324,8 +7363,8 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
 
             <div className="max-h-[76vh] overflow-y-auto p-3 sm:p-5 space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[11px] text-slate-500 font-semibold">Total applicants</p><p className="text-2xl font-extrabold !text-black">{applicants.length}</p></div>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm"><p className="text-[11px] !text-black font-semibold">Pending</p><p className="text-2xl font-extrabold !text-black">{applicants.filter(a => a.status === 'pending').length}</p></div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[11px] text-slate-500 font-semibold">Total applicants</p><p className="text-2xl font-extrabold text-slate-900">{applicants.length}</p></div>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm"><p className="text-[11px] text-amber-700 font-semibold">Pending</p><p className="text-2xl font-extrabold text-amber-800">{applicants.filter(a => a.status === 'pending').length}</p></div>
                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 shadow-sm"><p className="text-[11px] text-indigo-700 font-semibold">Invited</p><p className="text-2xl font-extrabold text-indigo-800">{applicants.filter(a => a.status === 'accepted').length}</p></div>
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm"><p className="text-[11px] text-emerald-700 font-semibold">Ongoing</p><p className="text-2xl font-extrabold text-emerald-800">{applicants.filter(a => a.status === 'ongoing').length}</p></div>
               </div>
@@ -7333,7 +7372,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
               {!loadingApp && applicants.length === 0 && (
                 <div className="rounded-3xl border border-dashed border-emerald-200 bg-white p-10 text-center shadow-sm">
                   <Users className="w-10 h-10 mx-auto text-emerald-600" />
-                  <p className="mt-3 font-extrabold !text-black">No applicants yet</p>
+                  <p className="mt-3 font-extrabold text-slate-900">No applicants yet</p>
                   <p className="text-sm text-slate-500">Waiting for workers to apply for this job.</p>
                 </div>
               )}
@@ -7346,10 +7385,10 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
                       <Avatar className="cursor-pointer h-14 w-14 ring-4 ring-emerald-50" onClick={() => openProfileDetails(a.worker_id)}><AvatarImage src={up.photo_url} /><AvatarFallback>{initials(up.full_name || up.email)}</AvatarFallback></Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-extrabold !text-black truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
-                          <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : a.status === 'pending' ? 'bg-amber-100 !text-black border border-amber-200' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
+                          <button type="button" onClick={() => openProfileDetails(a.worker_id)} className="font-extrabold text-slate-900 truncate text-left hover:text-emerald-700 hover:underline">{up.full_name || up.email}</button>
+                          <Badge variant="secondary" className={a.status === 'ongoing' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : a.status === 'accepted' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : a.status === 'pending' ? 'bg-amber-100 text-amber-800 border border-amber-200' : ''}>{a.status === 'accepted' ? 'Waiting worker accept' : a.status}</Badge>
                         </div>
-                        <p className="text-xs !text-black truncate mt-1">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
+                        <p className="text-xs text-slate-600 truncate mt-1">{(a.workers?.skills || []).join(', ') || 'No skills set'}</p>
                         <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                           <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">₹{a.workers?.expected_daily_wage || 0}/day</span>
                           <span className="rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">{a.workers?.experience_years || 0}y exp</span>
@@ -7410,7 +7449,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
 }
 
 function StatCard({ label, value, icon: Icon, color }) {
-  const map = { emerald: 'bg-emerald-50 text-emerald-700 shadow-emerald-100', indigo: 'bg-indigo-50 text-indigo-700 shadow-indigo-100', amber: 'bg-amber-50 !text-black shadow-amber-100' };
+  const map = { emerald: 'bg-emerald-50 text-emerald-700 shadow-emerald-100', indigo: 'bg-indigo-50 text-indigo-700 shadow-indigo-100', amber: 'bg-amber-50 text-amber-700 shadow-amber-100' };
   const border = { emerald: 'hover:border-emerald-200', indigo: 'hover:border-indigo-200', amber: 'hover:border-amber-200' };
   return (
     <motion.div whileHover={{ y: -3, scale: 1.01 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
@@ -7939,7 +7978,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                         type="button"
                         key={key}
                         onClick={() => setF(s => ({ ...s, [key]: typeof s[key] === 'boolean' ? !s[key] : (s[key] === 'yes' ? 'no' : 'yes') }))}
-                        className={`h-8 rounded-lg border text-[10px] font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 !text-black'}`}
+                        className={`h-8 rounded-lg border text-[10px] font-semibold transition ${((typeof f[key] === 'boolean' && f[key]) || f[key] === 'yes') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}
                       >
                         {label}
                       </button>
@@ -8176,7 +8215,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
   };
 
   return (
-    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-4">
       {selectedJob ? (
         <>
           {/* Back Button & Header */}
@@ -8288,7 +8327,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           </p>
                         </div>
                         <div className="rounded-xl bg-amber-50 dark:bg-amber-950 p-3 text-center">
-                          <p className="text-xl font-bold !text-black dark:text-amber-300">
+                          <p className="text-xl font-bold text-amber-700 dark:text-amber-300">
                             {unMarkedDays}
                           </p>
                           <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
@@ -8296,10 +8335,10 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           </p>
                         </div>
                         <div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-3 text-center">
-                          <p className="text-xl font-bold !text-black dark:text-slate-300">
+                          <p className="text-xl font-bold text-slate-700 dark:text-slate-300">
                             {jobDates.length}
                           </p>
-                          <p className="text-[10px] !text-black dark:text-slate-400 mt-0.5">
+                          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">
                             Total Days
                           </p>
                         </div>
@@ -8308,7 +8347,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       {/* Status Note */}
                       {!canMarkAttendance && app.status !== 'completed' && (
                         <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
-                          <p className="text-sm font-semibold !text-black dark:text-amber-300">
+                          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                             ⏳ Waiting for employee acceptance
                           </p>
                           <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
@@ -8330,7 +8369,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
 
                       {/* Detailed Attendance Calendar */}
                       <div className="mb-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <p className="text-sm font-bold !text-black dark:text-slate-300 mb-3">Job Schedule & Attendance</p>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Job Schedule & Attendance</p>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                           {jobDates.map((date) => {
                             const attRec = getAttendanceForDate(attRecs, date);
@@ -8355,7 +8394,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                                 <p className="text-[11px] font-bold tracking-[0.18em] text-slate-500 dark:text-slate-300 uppercase">
                                   {dayName}
                                 </p>
-                                <p className="text-2xl font-black my-2 !text-black dark:text-white">
+                                <p className="text-2xl font-black my-2 text-slate-950 dark:text-white">
                                   {dayNum}
                                 </p>
                                 {(attRec?.status === 'present' || attRec?.status === 'completed') && (
@@ -8383,10 +8422,10 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       {/* Plan Based Attendance Action */}
                       {selectedDate && canMarkAttendance && (
                         <div className="mb-4 p-3 rounded-xl border bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-700">
-                          <p className="text-sm font-semibold mb-1 !text-black dark:text-amber-300">
+                          <p className="text-sm font-semibold mb-1 text-amber-700 dark:text-amber-300">
                             Manual attendance for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>
-                          <p className="text-xs !text-black dark:text-amber-300">
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
                             Manual attendance is enabled. GPS attendance can still be marked by the worker from their ongoing job page.
                           </p>
                           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -8487,7 +8526,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 gap-3">
               {hiredJobs.map(job => {
                 const hiredCnt = getHiredCount(job);
                 return (
@@ -8538,7 +8577,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {/* Worker Info */}
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <p className="text-sm font-bold !text-black dark:text-slate-300 mb-3">Worker Information</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Worker Information</p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Name:</span>
@@ -8624,7 +8663,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
 
               {/* Confirmation Message */}
               <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700">
-                <p className="text-sm !text-black dark:text-amber-300">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
                   Choose Manual Payment to mark offline payment, or use UPI/GPay using the worker UPI ID / QR code shown above. After payment, mark it paid to complete the job.
                 </p>
               </div>
@@ -8679,24 +8718,6 @@ const [savedData,setSavedData]=useState({});
 const [hasChanges,setHasChanges]=useState(false);
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
-  const [localSectionStatuses, setLocalSectionStatuses] = useState({ profile: '', documents: '' });
-
-  useEffect(() => {
-    const handler = (event) => {
-      const section = event?.detail?.section;
-      const status = event?.detail?.status;
-      const body = event?.detail?.body || {};
-      if (!section || !status) return;
-      setLocalSectionStatuses((prev) => ({ ...prev, [section]: status }));
-      setF((prev) => ({ ...prev, ...body, verification_status: status, verification_section: section }));
-      if (status !== 'verified') {
-        try { localStorage.removeItem(finalProfileSaveKey(me, 'employer')); } catch {}
-        setFinalSaved(false);
-      }
-    };
-    window.addEventListener('w2w-profile-section-local-status', handler);
-    return () => window.removeEventListener('w2w-profile-section-local-status', handler);
-  }, [me]);
   useEffect(()=>{
 
 if(me){
@@ -8901,9 +8922,9 @@ useEffect(() => {
     return '';
   };
 
-  const employerProfileReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.profile) || sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
   const employerProfileChangedAfterReview = (employerProfileReviewStatus === 'pending' || employerProfileReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_PROFILE_VERIFY_FIELDS, buildEmployerProfilePayload(), me?.profile || {}, me?.extra || {});
-  const employerDocumentReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.documents) || sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
   const employerDocumentChangedAfterReview = (employerDocumentReviewStatus === 'pending' || employerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_DOCUMENT_VERIFY_FIELDS, buildEmployerDocumentPayload(), me?.profile || {}, me?.extra || {});
 
   // Employer final save follows the working employee profile pattern, without removed employer bank/mobile checks.
@@ -8916,8 +8937,8 @@ useEffect(() => {
     me?.extra?.selfie_status === 'verified' ||
     me?.extra?.selfie_verification_status === 'verified'
   );
-  const employerProfileRawStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.profile) || sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
-  const employerDocumentRawStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.documents) || sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerProfileRawStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerDocumentRawStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
   const employerGloballyVerified = !!me?.extra?.verified && me?.extra?.verification_status === 'verified';
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
@@ -8961,16 +8982,14 @@ useEffect(() => {
         verification_status: 'verified',
       };
 
-      localStorage.setItem(finalProfileSaveKey(me, 'employer'), 'saved');
-      setF((prev) => ({ ...prev, ...body }));
-      setSavedData((prev) => ({ ...prev, ...body }));
-      setHasChanges(false);
-      setFinalSaved(true);
       const saved = await api('me/profile', { method: 'PATCH', token, body });
+      localStorage.setItem(finalProfileSaveKey(me, 'employer'), 'saved');
       try { localStorage.removeItem(employerProfileDraftKey(me)); } catch {}
       const savedExtra = saved?.extra || {};
-      setF((prev) => ({ ...prev, ...savedExtra }));
-      setSavedData((prev) => ({ ...prev, ...savedExtra }));
+      setF((prev) => ({ ...prev, ...body, ...savedExtra }));
+      setSavedData((prev) => ({ ...prev, ...body, ...savedExtra }));
+      setHasChanges(false);
+      setFinalSaved(true);
       toast.success('Profile saved');
       await onSaved?.();
     } catch (e) {
@@ -9053,7 +9072,7 @@ useEffect(() => {
   if (!me) return <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-4">
       <Card className="profile-section-card">
         <CardContent className="p-5 flex items-center gap-4">
           <AvatarUploader
@@ -9069,11 +9088,11 @@ useEffect(() => {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="emerald" />; })()}
               {employerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 !text-emerald-700 shadow-sm [&_*]:!text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
+                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : employerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 !text-amber-800 shadow-sm [&_*]:!text-amber-800"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
-                <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
             </div>
             {me.profile?.login_id && (
@@ -9101,7 +9120,7 @@ useEffect(() => {
 
       <Card className="profile-section-card overflow-hidden">
         <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Company profile</CardTitle><CardDescription>Company details, address and hiring information.</CardDescription></div></div></CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <CardContent className="grid sm:grid-cols-2 gap-3">
           <Field label="Your name"   v={f.full_name}    on={(v) => setF(s => ({ ...s, full_name: v }))} required />
           <Field label="Phone"       v={cleanIndianPhone10(f.phone)}        on={(v) => setF(s => ({ ...s, phone: cleanIndianPhone10(v) }))} inputMode="numeric" maxLength={10} prefix="+91" helper="Enter 10-digit Indian mobile number" required />
           <Field label="Company"     v={f.company_name} on={(v) => setF(s => ({ ...s, company_name: v }))} required />
@@ -9183,8 +9202,8 @@ useEffect(() => {
           disabled={busy || !employerAllProfileCardsVerified || finalSaved}
           className="h-12 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed disabled:bg-emerald-600 disabled:text-white"
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
-          <span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>{finalSaved ? 'Saved' : 'Save profile'}</span>
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          {finalSaved ? 'Saved' : 'Save profile'}
         </Button>
 
         <Button
@@ -9206,7 +9225,7 @@ useEffect(() => {
 
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border bg-slate-50 p-4">
-                <p className="text-sm font-semibold !text-black">Signed in as</p>
+                <p className="text-sm font-semibold text-slate-900">Signed in as</p>
                 <p className="text-sm text-muted-foreground truncate mt-1">{me.profile?.email}</p>
                 {me.profile?.login_id && (
                   <p className="text-xs text-emerald-700 mt-2">Login ID: <b>{me.profile.login_id}</b></p>
@@ -9214,7 +9233,7 @@ useEffect(() => {
               </div>
 
               <div className="rounded-2xl border p-4 space-y-3">
-                <p className="text-sm font-semibold !text-black">Quick actions</p>
+                <p className="text-sm font-semibold text-slate-900">Quick actions</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -9310,7 +9329,7 @@ function getSubscriptionExpiryDate(plan, role) {
 function getPlanAmountPaise(plan, role) {
   const workerAmounts = {
     Free: 0,
-    Basic: 19900,
+    Basic: 9900,
     Growth: 29900,
     Premium: 59900,
   };
@@ -9327,7 +9346,7 @@ function getPlanAmountPaise(plan, role) {
 function getPlanDisplayPrice(plan, role) {
   const workerPrices = {
     Free: '₹0',
-    Basic: '₹199 / 1 Month',
+    Basic: '₹99 / 1 Month',
     Growth: '₹299 / 6 Months',
     Premium: '₹599 / 12 Months',
   };
@@ -9349,6 +9368,9 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const [paymentPlan, setPaymentPlan] = useState(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  const trialInfo = useMemo(() => getActiveFreeProTrial(isEmployer ? 'employer' : 'worker', me?.profile || me), [isEmployer, me]);
+  const trialDaysRemaining = trialInfo?.expires_at ? getDaysRemainingUntil(trialInfo.expires_at) : 0;
+  const trialProgress = trialInfo?.started_at && trialInfo?.expires_at ? getTrialProgressPercent(trialInfo.started_at, trialInfo.expires_at) : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -9373,7 +9395,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   }, [open, planStorageKey]);
 
   const employeePlans = [
-    { name: 'Basic', price: '₹199 / 1 Month', highlight: false, validityMonths: 1, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
+    { name: 'Basic', price: '₹99 / 1 Month', highlight: false, validityMonths: 1, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
     { name: 'Growth', price: '₹299 / 6 Months', highlight: true, validityMonths: 6, features: ['Unlimited job applications', 'Priority-based visibility', 'Skill badge', 'Interview notifications', 'Better search ranking'] },
     { name: 'Premium', price: '₹599 / 12 Months', highlight: false, validityMonths: 12, features: ['Verified badge', 'Direct chat with employers', 'Faster matching', 'Top visibility', 'High-paying jobs access'] },
   ];
@@ -9539,11 +9561,11 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl !text-black">
+          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl text-slate-950">
             <Sparkles className="w-6 h-6 text-sky-700" />
             {planTitle}
           </DialogTitle>
-          <DialogDescription className="!text-black">
+          <DialogDescription className="text-slate-700">
             {planDescription} Select a plan to continue with Razorpay payment.
           </DialogDescription>
         </DialogHeader>
@@ -9551,8 +9573,8 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
         <div className="mt-4 rounded-2xl bg-white/90 border border-sky-100 p-3 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <p className="text-sm font-bold !text-black">Current plan for this account</p>
-              <p className="text-xs !text-black truncate">{me?.profile?.email || 'Current signed-in account'}</p>
+              <p className="text-sm font-bold text-slate-900">Current plan for this account</p>
+              <p className="text-xs text-slate-600 break-words">{me?.profile?.email || 'Current signed-in account'}</p>
             </div>
             <Badge className="bg-emerald-600 text-white px-3 py-1 text-sm">{getSubscriptionLabel(currentPlan)}</Badge>
           </div>
@@ -9570,7 +9592,20 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
 
         {currentPlan === 'Trial' && (
           <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
-            Congratulations! Free pro access is active for this account. All paid plan features are unlocked for 3 months. You can still subscribe to any paid plan anytime.
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-black">Congratulations! Free pro access is active for this account.</p>
+                <p className="text-xs text-emerald-700">All paid plan features are unlocked for 3 months from signup date.</p>
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 text-center shadow-sm">
+                <p className="text-lg font-black text-emerald-900">{trialDaysRemaining}</p>
+                <p className="text-[11px] uppercase tracking-wide text-emerald-700">days left</p>
+              </div>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
+              <div className="h-full rounded-full bg-emerald-600" style={{ width: `${trialProgress}%` }} />
+            </div>
+            {trialInfo?.expires_at && <p className="mt-2 text-xs text-emerald-700">Trial ends on {new Date(trialInfo.expires_at).toLocaleDateString()}.</p>}
           </div>
         )}
 
@@ -9589,7 +9624,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
                 )}
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-extrabold !text-black">{plan.name}</h3>
+                    <h3 className="text-lg font-extrabold text-slate-950">{plan.name}</h3>
                     <p className="mt-1 text-2xl font-black text-sky-800">{plan.price}</p>
                     <p className="mt-1 text-xs font-bold text-emerald-700">Validity: {getPlanValidityLabel(plan, isEmployer ? 'employer' : 'worker')}</p>
                   </div>
@@ -9598,7 +9633,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
 
                 <div className="mt-4 flex-1 space-y-2">
                   {plan.features.map((feature) => (
-                    <div key={feature} className="flex items-start gap-2 text-sm !text-black">
+                    <div key={feature} className="flex items-start gap-2 text-sm text-slate-700">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
                       <span>{feature}</span>
                     </div>
@@ -9624,23 +9659,23 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     <Dialog open={!!paymentPlan} onOpenChange={(next) => { if (!paymentBusy && !next) setPaymentPlan(null); }}>
       <DialogContent className="max-w-lg rounded-3xl border-emerald-100 bg-white p-5 sm:p-6 shadow-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl !text-black">
+          <DialogTitle className="flex items-center gap-2 text-xl text-slate-950">
             <IndianRupee className="h-5 w-5 text-emerald-700" />
             Confirm Subscription Payment
           </DialogTitle>
-          <DialogDescription className="!text-black">
+          <DialogDescription className="text-slate-600">
             Review your plan and continue to Razorpay checkout.
           </DialogDescription>
         </DialogHeader>
 
         {paymentPlan && (
-          <div className="space-y-4 w-full max-w-full overflow-x-hidden">
+          <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-emerald-700">Selected plan</p>
-                  <h3 className="text-2xl font-black !text-black">{paymentPlan.name}</h3>
-                  <p className="mt-1 text-sm !text-black">{isEmployer ? 'Employer subscription' : 'Worker subscription'}</p>
+                  <h3 className="text-2xl font-black text-slate-950">{paymentPlan.name}</h3>
+                  <p className="mt-1 text-sm text-slate-600">{isEmployer ? 'Employer subscription' : 'Worker subscription'}</p>
                   <p className="mt-1 text-xs font-bold text-emerald-700">Validity: {getPlanValidityLabel(paymentPlan, isEmployer ? 'employer' : 'worker')}</p>
                 </div>
                 <Badge className="bg-emerald-600 text-white">{getPlanDisplayPrice(paymentPlan, isEmployer ? 'employer' : 'worker')}</Badge>
@@ -9648,10 +9683,10 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-bold !text-black">Features included</p>
+              <p className="text-sm font-bold text-slate-900">Features included</p>
               <div className="mt-3 space-y-2">
                 {paymentPlan.features.slice(0, 5).map((feature) => (
-                  <div key={feature} className="flex items-start gap-2 text-sm !text-black">
+                  <div key={feature} className="flex items-start gap-2 text-sm text-slate-700">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
                     <span>{feature}</span>
                   </div>
@@ -9746,11 +9781,11 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl !text-black">
+          <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl text-slate-950">
             <MessageSquare className="w-6 h-6 text-sky-700" />
             Help & Support
           </DialogTitle>
-          <DialogDescription className="!text-black">
+          <DialogDescription className="text-slate-700">
             Chat with Work2Wish admin support for this {isEmployer ? 'employer' : 'employee'} account.
           </DialogDescription>
         </DialogHeader>
@@ -9763,8 +9798,8 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
               onClick={() => setCategory(item.title)}
               className={`text-left rounded-2xl border p-4 shadow-sm transition ${category === item.title ? 'border-sky-500 bg-sky-100 ring-2 ring-sky-200' : 'border-sky-100 bg-white hover:bg-sky-50'}`}
             >
-              <p className="text-sm font-extrabold !text-black">{item.title}</p>
-              <p className="mt-1 text-xs !text-black leading-relaxed">{item.text}</p>
+              <p className="text-sm font-extrabold text-slate-950">{item.title}</p>
+              <p className="mt-1 text-xs text-slate-600 leading-relaxed">{item.text}</p>
             </button>
           ))}
         </div>
@@ -9772,20 +9807,20 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
         <div className="mt-5 rounded-3xl border border-sky-100 bg-white/95 p-4 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <p className="text-base font-extrabold !text-black">Admin Support Chat</p>
-              <p className="text-xs !text-black truncate">{me?.profile?.email || 'Current signed-in account'} • {category}</p>
+              <p className="text-base font-extrabold text-slate-950">Admin Support Chat</p>
+              <p className="text-xs text-slate-600 break-words">{me?.profile?.email || 'Current signed-in account'} • {category}</p>
             </div>
             <Badge className="bg-emerald-600 text-white">UI only</Badge>
           </div>
 
           <div className="mt-4 max-h-72 overflow-y-auto space-y-3 rounded-2xl bg-sky-50/70 p-3 border border-sky-100">
             {messages.length === 0 ? (
-              <div className="rounded-2xl bg-white p-4 text-sm !text-black border border-sky-100">
+              <div className="rounded-2xl bg-white p-4 text-sm text-slate-700 border border-sky-100">
                 No support messages yet. Select a category, type your issue, and send it to admin support.
               </div>
             ) : messages.map((msg, index) => (
               <div key={`${msg.time}-${index}`} className={`flex ${msg.from === 'You' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${msg.from === 'You' ? 'bg-sky-700 text-white' : 'bg-white !text-black border border-sky-100'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${msg.from === 'You' ? 'bg-sky-700 text-white' : 'bg-white text-slate-800 border border-sky-100'}`}>
                   <p className={`text-xs font-bold ${msg.from === 'You' ? 'text-sky-100' : 'text-sky-700'}`}>{msg.from}</p>
                   <p className="mt-1 leading-relaxed">{msg.text}</p>
                   <p className={`mt-2 text-[10px] ${msg.from === 'You' ? 'text-sky-100' : 'text-slate-500'}`}>{msg.time}</p>
@@ -9799,7 +9834,7 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type your issue here..."
-              className="min-h-[88px] bg-white !text-black placeholder:text-slate-400 border-sky-200"
+              className="min-h-[88px] bg-white text-slate-950 placeholder:text-slate-400 border-sky-200"
             />
             <Button type="button" onClick={sendSupportMessage} className="h-full min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl">
               <Send className="w-4 h-4 mr-2" />
@@ -9842,7 +9877,7 @@ function AvatarUploader({ token, currentUrl, kind = 'avatar', onUploaded, color 
       </Avatar>
       <button onClick={() => ref.current?.click()} disabled={busy}
               className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white border shadow grid place-items-center hover:bg-slate-50">
-        {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <Camera className="w-4 h-4" />}
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
       </button>
       <input ref={ref} type="file" accept="image/*" onChange={onPick} className="hidden" />
     </div>
@@ -9933,11 +9968,11 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
               <div className="shrink-0 p-4 border-b bg-white">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h2 className="text-2xl font-bold !text-black">Chats</h2>
+                    <h2 className="text-2xl font-bold text-slate-900">Chats</h2>
                     <p className="text-[11px] text-slate-500">Select a conversation to continue.</p>
                   </div>
                   <Button variant="ghost" size="icon" onClick={loadThreads} className="rounded-full">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <MessageSquare className="w-4 h-4" />}
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
                   </Button>
                 </div>
                 <div className="relative">
@@ -9948,7 +9983,7 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
 
               <div className="flex-1 min-h-0 overflow-y-auto bg-white">
                 {authError && (
-                  <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm !text-black">
+                  <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                     {authError}
                   </div>
                 )}
@@ -9987,7 +10022,7 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p onClick={(e) => { e.stopPropagation(); openProfileDetails(t.peer_id); }} className="font-semibold truncate !text-black hover:underline">{t.peer_name || 'Unknown user'}</p>
+                          <p onClick={(e) => { e.stopPropagation(); openProfileDetails(t.peer_id); }} className="font-semibold truncate text-slate-900 hover:underline">{t.peer_name || 'Unknown user'}</p>
                           {t.last_message && <span className="text-[11px] text-slate-500 shrink-0">{new Date(t.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                         </div>
                         <p className="text-sm text-slate-500 truncate mt-0.5">{t.last_message?.content || 'Start a conversation'}</p>
@@ -10135,21 +10170,21 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
             <AvatarFallback className="bg-emerald-100 text-emerald-700">{initials(peer.peer_name)}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <button type="button" onClick={onProfile} className="font-semibold truncate !text-black hover:underline text-left">{peer.peer_name || 'Chat'}</button>
+            <button type="button" onClick={onProfile} className="font-semibold truncate text-slate-900 hover:underline text-left">{peer.peer_name || 'Chat'}</button>
             <p className="text-[11px] text-slate-500">Active conversation</p>
           </div>
         </div>
         <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Online</Badge>
       </div>
 
-      {error && <div className="shrink-0 mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs !text-black">{error}</div>}
+      {error && <div className="shrink-0 mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{error}</div>}
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto bg-white px-4 py-4 md:px-8 space-y-3">
         {messages.length === 0 && !error && (
           <div className="h-full grid place-items-center text-center">
             <div className="rounded-2xl bg-slate-50 px-6 py-5 shadow-sm">
               <MessageSquare className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-              <p className="font-semibold !text-black">Start a conversation</p>
+              <p className="font-semibold text-slate-700">Start a conversation</p>
               <p className="text-sm text-slate-500">Say hi to begin chatting 👋</p>
             </div>
           </div>
@@ -10165,7 +10200,7 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
                   <AvatarFallback className="bg-emerald-100 text-emerald-700 text-[10px]">{initials(peer.peer_name)}</AvatarFallback>
                 </Avatar>
               )}
-              <div className={`group relative max-w-[78%] md:max-w-[62%] rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${mine ? 'bg-emerald-50 border-emerald-100 !text-black rounded-br-md' : 'bg-white border-slate-200 !text-black rounded-bl-md'}`}>
+              <div className={`group relative max-w-[78%] md:max-w-[62%] rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${mine ? 'bg-emerald-50 border-emerald-100 text-slate-900 rounded-br-md' : 'bg-white border-slate-200 text-slate-900 rounded-bl-md'}`}>
                 <p className={`whitespace-pre-wrap break-words leading-relaxed ${deleted ? 'italic text-slate-500' : ''}`}>{m.content}</p>
                 <div className="flex items-center justify-end gap-2 mt-1.5">
                   {m.edited_at && !deleted && <span className="text-[10px] text-slate-400">edited</span>}

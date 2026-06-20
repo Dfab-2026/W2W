@@ -8,8 +8,7 @@ export const viewport = {
 };
 
 export const metadata = {
-  icons: { icon: '/work2wish-logo.png', apple: '/work2wish-logo.png' },
-  title: "Work2Wish",
+  title: 'Work2Wish – Find day-work or hire skilled workers',
   description: 'Work2Wish connects skilled workers with employers for daily and short-term jobs.',
 };
 
