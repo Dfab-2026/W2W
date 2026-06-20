@@ -1073,7 +1073,7 @@ function AdminAccessButton({ onAuthed }) {
             <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
           </div>
           <Button type="submit" disabled={busy} className="w-full bg-sky-600 hover:bg-sky-700 text-white">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Verify Admin <ArrowRight className="w-4 h-4 ml-2" /></>}
+            {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Verify Admin <ArrowRight className="w-4 h-4 ml-2" /></>}
           </Button>
         </form>
       </DialogContent>
@@ -1326,7 +1326,7 @@ function AdminApp({ auth, onLogout }) {
           </div>
           <div className="flex gap-2 items-center">
             <NotificationCenter token={token} userId={auth?.profile?.id} channelKey="admin" accent="amber" />
-            <Button variant="outline" onClick={loadUsers} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}</Button>
+            <Button variant="outline" onClick={loadUsers} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : 'Refresh'}</Button>
             <Button onClick={onLogout} className="bg-emerald-600 hover:bg-emerald-700"><LogOut className="w-4 h-4 mr-2" /> Logout</Button>
           </div>
         </div>
@@ -1563,7 +1563,7 @@ function AdminApp({ auth, onLogout }) {
                       <InfoTile label={selected.role === 'worker' ? 'Aadhaar' : 'Company PAN'} value={selected.role === 'worker' ? selected.aadhaar_number : selected.pan_number} />
                       {selected.role === 'worker' && <InfoTile label="PAN" value={selected.pan_number} />}
                       {selected.role === 'employer' && <InfoTile label="GST" value={selected.gst_number} />}
-                      <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {selected.role === 'worker' && <AdminDocPreview title="Aadhaar front" url={selected.aadhaar_front_url} />}
                         {selected.role === 'worker' && <AdminDocPreview title="Aadhaar back" url={selected.aadhaar_back_url} />}
                         <AdminDocPreview title={selected.role === 'employer' ? 'Company PAN front' : 'PAN front'} url={selected.pan_image_url} />
@@ -1681,8 +1681,8 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
     ? 'w2w-verify-button w2w-verify-done border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 disabled:!opacity-100 disabled:bg-emerald-600 disabled:text-white disabled:cursor-default'
     : 'w2w-verify-button w2w-verify-idle border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700';
   const buttonStyle = verified
-    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
-    : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
+    ? { backgroundColor: '#16a34a', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#16a34a' }
+    : { backgroundColor: '#dc2626', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#dc2626' };
   return (
     <div className={`rounded-3xl border ${styles[tone] || styles.indigo} p-4 shadow-sm`}>
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -1917,7 +1917,7 @@ function LoginPage({ onAuthed, onGotoSignup, onGotoForgot }) {
             </div>
             <motion.div whileTap={{ scale: 0.98 }}>
               <Button type="submit" disabled={busy} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-shadow">
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Log in <ArrowRight className="w-4 h-4 ml-2" /></>}
+                {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Log in <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
             </motion.div>
           </form>
@@ -1975,7 +1975,7 @@ function ForgotEmail({ onSent, onBack }) {
                 </div>
                 <motion.div whileTap={{ scale: 0.98 }}>
                   <Button type="submit" disabled={busy} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700">
-                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Send reset code <Send className="w-4 h-4 ml-2" /></>}
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Send reset code <Send className="w-4 h-4 ml-2" /></>}
                   </Button>
                 </motion.div>
               </form>
@@ -2046,7 +2046,7 @@ function ForgotReset({ email, onAuthed, onBack }) {
               <motion.div whileTap={{ scale: 0.98 }}>
                 <Button onClick={submit} disabled={busy || code.length !== 6}
                         className="w-full h-11 bg-indigo-600 hover:bg-indigo-700">
-                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Reset password <CheckCircle2 className="w-4 h-4 ml-2" /></>}
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Reset password <CheckCircle2 className="w-4 h-4 ml-2" /></>}
                 </Button>
               </motion.div>
             </CardContent>
@@ -2217,7 +2217,7 @@ function SignupForm({ data, onChange, onSent, onBack }) {
               </div>
               <Button type="submit" disabled={busy}
                       className={`w-full h-11 ${accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Send OTP <Send className="w-4 h-4 ml-2" /></>}
+                {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Send OTP <Send className="w-4 h-4 ml-2" /></>}
               </Button>
               <p className="text-xs text-muted-foreground text-center">A 6-digit code will be sent to your email.</p>
             </form>
@@ -2296,7 +2296,7 @@ function SignupOTP({ data, onAuthed, onBack }) {
             </div>
             <Button onClick={verify} disabled={busy || code.length !== 6}
                     className={`w-full h-11 ${accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Verify & continue <CheckCircle2 className="w-4 h-4 ml-2" /></>}
+              {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <>Verify & continue <CheckCircle2 className="w-4 h-4 ml-2" /></>}
             </Button>
             <div className="text-center text-sm text-muted-foreground">
               {secondsLeft > 0 ? (
@@ -3809,11 +3809,11 @@ function LocationSearchBox({
           />
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
             <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={handleManualSearch} disabled={loading} className="h-7 px-2" title="Search and select typed location">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <Search className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">Search</span>
             </Button>
             <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={useCurrent} disabled={gpsLoading} className={`h-7 px-2 text-white ${buttonClass}`} title="Use current GPS">
-              {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+              {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <MapPin className="w-4 h-4" />}
               <span className="hidden sm:inline ml-1">GPS</span>
             </Button>
           </div>
@@ -3824,7 +3824,7 @@ function LocationSearchBox({
             className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border bg-white shadow-xl ring-1 ring-slate-200"
           >
             {loading && predictions.length === 0 && (
-              <div className="px-4 py-3 text-sm !text-black flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
+              <div className="px-4 py-3 text-sm !text-black flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin !text-white" /> Searching places...</div>
             )}
             {!loading && predictions.length === 0 && locationError && (
               <div className="px-4 py-3 text-sm !text-black bg-amber-50">{locationError}</div>
@@ -4093,7 +4093,7 @@ function WorkerHome({ token, me, onChat }) {
             <Button onClick={load} className="rounded-2xl h-11 px-5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-lg shadow-indigo-600/20"><Filter className="w-4 h-4 mr-1" />Search</Button>
             <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-1 shadow-sm" title="Nearby search">
               <Button type="button" size="icon" variant="ghost" onClick={loadNearbyJobs} disabled={locationLoading} className="h-9 w-9 rounded-xl text-indigo-700 hover:bg-indigo-50" title="Search using current GPS location">
-                {locationLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                {locationLoading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <MapPin className="w-4 h-4" />}
               </Button>
               <Button type="button" size="icon" variant="ghost" onClick={loadNearbyFromSavedLocation} disabled={locationLoading} className="h-9 w-9 rounded-xl text-emerald-700 hover:bg-emerald-50" title="Search using saved profile location">
                 <Map className="w-4 h-4" />
@@ -4844,7 +4844,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
               <Button className={`flex-1 rounded-2xl ${isWorker ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`} onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
                 <MessageSquare className="w-4 h-4 mr-2" /> Message {isWorker ? 'worker' : 'company'}
               </Button>
-              <Button variant="outline" onClick={onClose} className="flex-1 rounded-2xl">Close</Button>
+              <Button variant="outline" onClick={onClose} className="flex-1 rounded-2xl"><span style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Close</span></Button>
             </div>
           </div>
         </div>
@@ -5041,6 +5041,12 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
 function VerificationDocumentsCard({ token, me, role, verified, form, setForm, onSaved, color = 'indigo' }) {
   const [busy, setBusy] = useState(false);
   const [localDocumentEdited, setLocalDocumentEdited] = useState(false);
+  const [localDocumentStatus, setLocalDocumentStatus] = useState('');
+  useEffect(() => {
+    try {
+      setLocalDocumentStatus(localStorage.getItem(`w2w-local-section-status-documents-${me?.profile?.id || me?.id || 'me'}`) || '');
+    } catch {}
+  }, [me]);
   const accent = color === 'emerald' ? 'emerald' : 'indigo';
   const isEmployer = role === 'employer';
   const documentReviewStatus = sectionReviewState(me, 'documents', form.verification_status, verified);
@@ -5050,7 +5056,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
     me?.profile || {},
     me?.extra || {}
   );
-  const status = (localDocumentEdited || documentChangedAfterReview) ? 'modified' : documentReviewStatus;
+  const status = localDocumentStatus || ((localDocumentEdited || documentChangedAfterReview) ? 'modified' : documentReviewStatus);
   const lockedVerified = status === 'verified' && !localDocumentEdited && !documentChangedAfterReview;
 
   const cleanAadhaar = (value) => String(value || '').replace(/\D/g, '').slice(0, 20);
@@ -5068,6 +5074,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
       verification_section: 'documents',
     }));
     setLocalDocumentEdited(true);
+    setLocalDocumentStatus('modified');
   };
 
   const uploadDoc = async (file, field, kind) => {
@@ -5124,9 +5131,14 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             verification_section: 'documents',
           };
 
-      await api('me/profile', { method: 'PATCH', token, body });
       setForm((s) => ({ ...s, ...body }));
       setLocalDocumentEdited(false);
+      setLocalDocumentStatus('pending');
+      try {
+        localStorage.setItem(`w2w-local-section-status-documents-${me?.profile?.id || me?.id || 'me'}`, 'pending');
+        window.dispatchEvent(new CustomEvent('w2w-profile-section-local-status', { detail: { section: 'documents', status: 'pending', body } }));
+      } catch {}
+      await api('me/profile', { method: 'PATCH', token, body });
       toast.success('Verification submitted for admin review');
       onSaved?.();
     } catch (e) {
@@ -5138,10 +5150,10 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
 
   const inputClass = 'h-11 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-offset-0';
   const documentButtonStyle = lockedVerified
-    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
+    ? { backgroundColor: '#16a34a', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#16a34a' }
     : (status === 'pending' || status === 'submitted')
-      ? { backgroundColor: '#f59e0b', color: '#ffffff', borderColor: '#f59e0b' }
-      : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
+      ? { backgroundColor: '#f59e0b', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#f59e0b' }
+      : { backgroundColor: '#dc2626', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#dc2626' };
   const documentButtonStateClass = lockedVerified
     ? 'w2w-verify-button w2w-verify-done'
     : (status === 'pending' || status === 'submitted')
@@ -5164,17 +5176,17 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
             </CardDescription>
           </div>
           {lockedVerified ? (
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
+            <Badge className="border border-emerald-200 bg-emerald-50 !text-emerald-700 shadow-sm [&_*]:!text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
           ) : status === 'submitted' || status === 'pending' ? (
-            <Badge className="bg-amber-100 !text-black">Pending Approval</Badge>
+            <Badge className="border border-amber-200 bg-amber-50 !text-amber-800 shadow-sm [&_*]:!text-amber-800">Pending Approval</Badge>
           ) : status === 'modified' ? (
-            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+            <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
           ) : status === 'saved' ? (
             <Badge className="bg-sky-100 text-sky-700">Saved</Badge>
           ) : status === 'rejected' ? (
             <Badge className="bg-red-100 text-red-700">Rejected</Badge>
           ) : (
-            <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+            <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
           )}
         </div>
       </CardHeader>
@@ -5190,7 +5202,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
           </>
         ) : (
           <>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Aadhaar number</Label>
                 <Input
@@ -5233,7 +5245,7 @@ function VerificationDocumentsCard({ token, me, role, verified, form, setForm, o
               <p className="text-xs text-muted-foreground mt-1">Type your full address manually. GPS/search location is selected separately in Profile below.</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
               <DocumentUploadBox color="indigo" label="Aadhaar front" url={form.aadhaar_front_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_front_url', 'aadhaar-front')} />
               <DocumentUploadBox color="indigo" label="Aadhaar back" url={form.aadhaar_back_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'aadhaar_back_url', 'aadhaar-back')} />
               <DocumentUploadBox color="indigo" label="PAN front" url={form.pan_image_url} verified={lockedVerified} disabled={busy} onFile={(file) => uploadDoc(file, 'pan_image_url', 'pan-front')} />
@@ -5277,7 +5289,7 @@ lockedVerified
 
 ?
 
-'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
+'!bg-emerald-600 !text-white hover:!bg-emerald-700 disabled:!bg-emerald-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
 
 :
 
@@ -5286,7 +5298,7 @@ status==="submitted"
 
 ?
 
-'bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
+'!bg-amber-500 !text-white hover:!bg-amber-600 disabled:!bg-amber-500 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
 
 :
 
@@ -5312,10 +5324,11 @@ w-4
 h-4
 mr-2
 animate-spin
+!text-white
 "
 />
 
-Submitting...
+<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Submitting...</span>
 
 </>
 
@@ -5332,10 +5345,11 @@ className="
 w-4
 h-4
 mr-2
+!text-white
 "
 />
 
-Done
+<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Done</span>
 
 </>
 
@@ -5353,10 +5367,11 @@ className="
 w-4
 h-4
 mr-2
+!text-white
 "
 />
 
-Pending Approval
+<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Pending Approval</span>
 
 </>
 
@@ -5373,10 +5388,11 @@ className="
 w-4
 h-4
 mr-2
+!text-white
 "
 />
 
-Send for Verification
+<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Send for Verification</span>
 
 </>
 
@@ -5389,10 +5405,11 @@ className="
 w-4
 h-4
 mr-2
+!text-white
 "
 />
 
-Send for Verification
+<span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>Send for Verification</span>
 
 </>
 
@@ -5414,27 +5431,27 @@ function DocumentUploadBox({ label, url, onFile, disabled, verified = false, col
     : { card: 'border-indigo-200/80 bg-gradient-to-br from-white via-indigo-50/60 to-white shadow-indigo-100/70', icon: 'border-indigo-100 bg-indigo-50 text-indigo-500', btn: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50', link: 'text-indigo-700' };
 
   return (
-    <div className={`h-full min-h-[168px] rounded-3xl border p-4 flex flex-col justify-between shadow-sm hover:shadow-lg transition ${theme.card}`}>
+    <div className={`h-full min-h-[190px] rounded-3xl border p-4 flex flex-col justify-between shadow-sm hover:shadow-lg transition ${theme.card}`}>
       <div>
         <div className="flex items-center justify-between gap-2">
-          <Label className="font-semibold !text-black">{label}</Label>
+          <Label className="font-semibold !text-black text-sm leading-tight min-h-[36px] flex items-start">{label}</Label>
           {verified && hasFile && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 shadow-sm">
               <CheckCircle2 className="w-3.5 h-3.5" /> Verified
             </span>
           )}
         </div>
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex items-center gap-3 min-h-[72px]">
           <div className={`w-16 h-16 rounded-2xl border grid place-items-center overflow-hidden shrink-0 ${theme.icon}`}>
             {hasFile ? <img src={url} alt={label} className="w-full h-full object-cover" /> : <ImgIcon className="w-6 h-6" />}
           </div>
-          <div className="flex flex-col gap-2 min-w-[112px]">
+          <div className="flex flex-col gap-2 min-w-[112px] flex-1">
             {hasFile && (
-              <a className={`h-10 min-w-[112px] inline-flex items-center justify-center px-3 py-2 rounded-xl border bg-white text-sm font-semibold ${verified ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : theme.btn}`} href={url} target="_blank" rel="noreferrer">
+              <a className={`h-10 w-full inline-flex items-center justify-center px-3 py-2 rounded-xl border bg-white text-sm font-semibold ${verified ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : theme.btn}`} href={url} target="_blank" rel="noreferrer">
                 View file
               </a>
             )}
-            <label className={`h-10 min-w-[112px] inline-flex items-center justify-center px-3 py-2 rounded-xl border text-sm bg-white/90 ${theme.btn} ${canUpload ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+            <label className={`h-10 w-full inline-flex items-center justify-center px-3 py-2 rounded-xl border text-sm bg-white/90 ${theme.btn} ${canUpload ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
               <Upload className="w-4 h-4 mr-2" /> {fileLabel}
               <input type="file" accept="image/*,.pdf" className="hidden" disabled={!canUpload} onChange={(e) => { const file = e.target.files?.[0]; if (file) onFile(file); e.target.value = ''; }} />
             </label>
@@ -5574,22 +5591,28 @@ function pickEmployerDraftFields(data = {}) {
 
 function SectionVerificationAction({ token, me, section, title, description, color = 'indigo', setForm, onSaved, disabled = false, payloadBuilder = null, validate = null, modified = false }) {
   const [busy, setBusy] = useState(false);
+  const [localStatus, setLocalStatus] = useState('');
+  useEffect(() => {
+    try {
+      setLocalStatus(localStorage.getItem(`w2w-local-section-status-${section}-${me?.profile?.id || me?.id || 'me'}`) || '');
+    } catch {}
+  }, [section, me]);
   const verified = !!me?.extra?.verified;
   const rawStatus = sectionReviewState(me, section, me?.extra?.verification_status, verified);
-  const status = modified ? 'modified' : rawStatus;
+  const status = modified ? 'modified' : (localStatus || rawStatus);
   const label = status === 'verified' ? 'Done' : status === 'pending' ? 'Pending Approval' : 'Send for Verification';
   const Icon = status === 'verified' ? CheckCircle2 : status === 'pending' ? Clock : ShieldCheck;
   const blocked = !!disabled || status === 'pending' || status === 'verified';
   const actionClass = status === 'verified'
-    ? 'w2w-verify-button w2w-verify-done bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
+    ? 'w2w-verify-button w2w-verify-done !bg-emerald-600 !text-white hover:!bg-emerald-700 disabled:!bg-emerald-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
     : status === 'pending'
-      ? 'w2w-verify-button w2w-verify-pending bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-500 disabled:text-white disabled:!opacity-100 disabled:cursor-default'
-      : 'w2w-verify-button w2w-verify-idle !bg-rose-600 !text-white hover:!bg-rose-700 disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-pointer';
+      ? 'w2w-verify-button w2w-verify-pending !bg-amber-500 !text-white hover:!bg-amber-600 disabled:!bg-amber-500 disabled:!text-white disabled:!opacity-100 disabled:cursor-default [&_*]:!text-white'
+      : 'w2w-verify-button w2w-verify-idle !bg-rose-600 !text-white hover:!bg-rose-700 disabled:!bg-rose-600 disabled:!text-white disabled:!opacity-100 disabled:cursor-pointer [&_*]:!text-white';
   const actionStyle = status === 'verified'
-    ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
+    ? { backgroundColor: '#16a34a', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#16a34a' }
     : status === 'pending'
-      ? { backgroundColor: '#f59e0b', color: '#ffffff', borderColor: '#f59e0b' }
-      : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
+      ? { backgroundColor: '#f59e0b', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#f59e0b' }
+      : { backgroundColor: '#dc2626', color: '#ffffff', WebkitTextFillColor: '#ffffff', borderColor: '#dc2626' };
   const sendForReview = async () => {
     if (blocked || busy) return;
     setBusy(true);
@@ -5604,10 +5627,15 @@ function SectionVerificationAction({ token, me, section, title, description, col
       }
       const extraPayload = payloadBuilder ? (payloadBuilder() || {}) : {};
       const body = { ...extraPayload, verification_status: 'pending', verification_section: section };
-      await api('me/profile', { method: 'PATCH', token, body });
+      setLocalStatus('pending');
       setForm?.((prev) => ({ ...prev, ...body }));
-      await onSaved?.();
+      try {
+        localStorage.setItem(`w2w-local-section-status-${section}-${me?.profile?.id || me?.id || 'me'}`, 'pending');
+        window.dispatchEvent(new CustomEvent('w2w-profile-section-local-status', { detail: { section, status: 'pending', body } }));
+      } catch {}
+      await api('me/profile', { method: 'PATCH', token, body });
       toast.success(`${title} sent for admin verification`);
+      onSaved?.();
     } catch (e) {
       toast.error(e.message || 'Unable to send verification');
     } finally {
@@ -5625,10 +5653,10 @@ function SectionVerificationAction({ token, me, section, title, description, col
         disabled={busy || blocked}
         onClick={sendForReview}
         className={`${actionClass} min-w-[220px] h-12 rounded-2xl font-semibold transition-all duration-300 disabled:!opacity-100 disabled:cursor-not-allowed`}
-        style={actionStyle}
+        style={{ ...actionStyle, color: '#ffffff', WebkitTextFillColor: '#ffffff' }}
       >
-        {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Icon className="w-4 h-4 mr-2" />}
-        {label}
+        {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin !text-white" /> : <Icon className="w-4 h-4 mr-2 !text-white" />}
+        <span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>{busy ? 'Submitting...' : label}</span>
       </Button>
     </div>
   );
@@ -5680,6 +5708,24 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     return () => window.removeEventListener('w2w-subscription-updated', refresh);
   }, []);
   const workerDraftKey = `w2w-worker-profile-draft-${me?.profile?.id || me?.id || 'me'}`;
+  const [localSectionStatuses, setLocalSectionStatuses] = useState({ profile: '', documents: '', bank: '' });
+
+  useEffect(() => {
+    const handler = (event) => {
+      const section = event?.detail?.section;
+      const status = event?.detail?.status;
+      const body = event?.detail?.body || {};
+      if (!section || !status) return;
+      setLocalSectionStatuses((prev) => ({ ...prev, [section]: status }));
+      setForm((prev) => ({ ...prev, ...body, verification_status: status, verification_section: section }));
+      if (status !== 'verified') {
+        try { localStorage.removeItem(finalProfileSaveKey(me, 'worker')); } catch {}
+        setFinalSaved(false);
+      }
+    };
+    window.addEventListener('w2w-profile-section-local-status', handler);
+    return () => window.removeEventListener('w2w-profile-section-local-status', handler);
+  }, [me]);
 
   useEffect(() => {
     if (me) {
@@ -5804,11 +5850,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
     return '';
   };
 
-  const workerBankReviewStatus = sectionReviewState(me, 'bank', me?.extra?.verification_status, verified);
+  const workerBankReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.bank) || sectionReviewState(me, 'bank', me?.extra?.verification_status, verified);
   const workerBankChangedAfterReview = (workerBankReviewStatus === 'pending' || workerBankReviewStatus === 'verified') && hasBankDetailsChanged(buildWorkerBankPayload(), bankPayloadFromExtra(me?.extra || {}));
-  const workerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, verified);
+  const workerProfileReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.profile) || sectionReviewState(me, 'profile', me?.extra?.verification_status, verified);
   const workerProfileChangedAfterReview = (workerProfileReviewStatus === 'pending' || workerProfileReviewStatus === 'verified') && hasVerifySectionChanged(PROFILE_VERIFY_FIELDS, buildWorkerProfilePayload(), me?.profile || {}, me?.extra || {});
-  const workerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, verified);
+  const workerDocumentReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.documents) || sectionReviewState(me, 'documents', me?.extra?.verification_status, verified);
   const workerDocumentChangedAfterReview = (workerDocumentReviewStatus === 'pending' || workerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(WORKER_DOCUMENT_VERIFY_FIELDS, buildWorkerDocumentPayload(), me?.profile || {}, me?.extra || {});
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
@@ -5847,11 +5893,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
         selfie_verified: !!(form.selfie_verified || me?.extra?.selfie_verified),
         verification_status: 'verified',
       };
-      await api('me/profile', { method: 'PATCH', token, body });
       setForm((prev) => ({ ...prev, ...body }));
       localStorage.setItem(finalProfileSaveKey(me, 'worker'), 'saved');
-      try { localStorage.removeItem(workerDraftKey); } catch {}
       setFinalSaved(true);
+      await api('me/profile', { method: 'PATCH', token, body });
+      try { localStorage.removeItem(workerDraftKey); } catch {}
       toast.success('Profile saved');
       await onSaved?.();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
@@ -5897,7 +5943,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   if (!me) return <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
       <Card className="profile-section-card overflow-hidden">
         <CardContent className="p-5 flex items-center gap-4">
           <AvatarUploader
@@ -5913,11 +5959,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="indigo" />; })()}
               {workerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
+                <Badge className="border border-emerald-200 bg-emerald-50 !text-emerald-700 shadow-sm [&_*]:!text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : workerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 !text-black shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 !text-amber-800 shadow-sm [&_*]:!text-amber-800"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+                <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
             </div>
             {me.profile?.login_id && (
@@ -6024,7 +6070,7 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
 
       <Card className="profile-section-card overflow-hidden">
         <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Edit profile</CardTitle><CardDescription>Personal, skill and availability information.</CardDescription></div></div></CardHeader>
-        <CardContent className="grid sm:grid-cols-2 gap-3">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Full name"  v={form.full_name}           on={(v) => setForm(f => ({ ...f, full_name: v }))} />
           <Field label="Phone"      v={cleanIndianPhone10(form.phone)}               on={(v) => setForm(f => ({ ...f, phone: cleanIndianPhone10(v) }))} inputMode="numeric" maxLength={10} prefix="+91" helper="Enter 10-digit Indian mobile number" />
           <Field label="Age"        v={form.age}                 on={(v) => setForm(f => ({ ...f, age: v }))} type="number" />
@@ -6083,11 +6129,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                 </div>
               </CardHeader>
               <CardContent className="p-4 space-y-4">
-                <div className="grid lg:grid-cols-2 gap-4 items-stretch">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
                   <MobileOtpVerificationBox token={token} phone={form.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setForm(f => ({ ...f, phone: phone || f.phone, mobile_verified: true })); onSaved?.(); }} />
                   <SelfieVerificationBox token={token} url={form.selfie_url} frontUrl={form.selfie_front_url} leftUrl={form.selfie_left_url} rightUrl={form.selfie_right_url} verified={!!(me.extra?.selfie_verified || form.selfie_verified)} disabled={busy} onUploaded={(payload) => { setForm(f => ({ ...f, ...(typeof payload === 'string' ? { selfie_url: payload, selfie_verified: true } : payload), selfie_verified: true, verification_status: 'verified' })); onSaved?.(); }} />
                 </div>
-                <div className="grid lg:grid-cols-1 gap-4 items-stretch">
+                <div className="grid grid-cols-1 gap-4 items-stretch">
                   <div className="rounded-2xl border bg-white p-4 min-h-[132px]">
                     <Label>Admin approved badges</Label>
                     <div className="flex flex-wrap gap-2 mt-3">
@@ -6153,8 +6199,8 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
           disabled={busy || !workerAllProfileCardsVerified || finalSaved}
           className={`h-12 ${finalSaved ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600 disabled:text-white' : 'bg-emerald-600 hover:bg-emerald-700'} shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed`}
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
-          {finalSaved ? 'Saved' : 'Save profile'}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          <span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>{finalSaved ? 'Saved' : 'Save profile'}</span>
         </Button>
 
         <Button
@@ -6571,7 +6617,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
             <p className="font-semibold flex items-center gap-2"><Camera className="w-4 h-4" /> Selfie verification</p>
             <p className="text-xs text-muted-foreground mt-1">Front face only. Camera auto captures when your face is clear inside the frame.</p>
           </div>
-          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
+          {verified ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
         </div>
 
         {verified ? (
@@ -6650,7 +6696,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
           <DialogFooter className="gap-2 sm:gap-2 shrink-0 flex-wrap">
             <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate} onClick={cameraOn ? stopCamera : startCamera}>{cameraOn ? 'Stop camera' : 'Start camera'}</Button>
             <Button type="button" variant="outline" disabled={busy || disabled || !allowSelfieUpdate || cameraOn} onClick={startCamera}>Retake</Button>
-            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || !allowSelfieUpdate || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for review'}</Button>
+            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-emerald-600 disabled:text-white disabled:opacity-100" disabled={busy || disabled || !allowSelfieUpdate || !capturedBlob} onClick={submitFaceCheck}>{busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : 'Submit for review'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -6757,7 +6803,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
           <p className="font-semibold flex items-center gap-2"><Phone className="w-4 h-4" /> Mobile OTP</p>
           <p className="text-xs text-muted-foreground mt-0.5">Verify your active phone number.</p>
         </div>
-        {isVerified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
+        {isVerified && !editing ? <Badge className="bg-emerald-600 text-white opacity-100"><Check className="w-3 h-3 mr-1" /> Done</Badge> : <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>}
       </div>
 
       {isVerified && !editing && (
@@ -6782,7 +6828,7 @@ function MobileOtpVerificationBox({ token, phone, verified, onVerified }) {
             disabled={busy || !canEdit || countdown > 0}
             className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700"
           >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : countdown > 0 ? `Resend in ${countdown}s` : (sent ? 'Resend OTP' : 'Send OTP')}
+            {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : countdown > 0 ? `Resend in ${countdown}s` : (sent ? 'Resend OTP' : 'Send OTP')}
           </Button>
           {isVerified && editing ? (
             <Button type="button" variant="ghost" onClick={() => { setEditing(false); setMobile(phone || ''); setOtp(''); setSent(false); setCountdown(0); }}>Cancel</Button>
@@ -7207,7 +7253,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard label="Active jobs"  value={jobs.filter(j => j.status === 'open').length} icon={Briefcase} color="emerald" />
         <StatCard label="Total applicants" value={totalApplicants} icon={Users} color="indigo" />
@@ -7223,7 +7269,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
       </div>
 
       {jobs.length === 0 && <p className="text-sm text-muted-foreground p-6 bg-white rounded-xl border text-center">No jobs yet. Tap “Post job” to start hiring.</p>}
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {jobs.map(j => (
           <Card key={j.id} className={`rounded-3xl hover:border-emerald-300 hover:shadow-xl transition cursor-pointer premium-job-card company-job-card ${Number(j.pending_count || 0) > 0 ? 'border-amber-300 ring-2 ring-amber-100 shadow-lg shadow-amber-100/60' : 'border-emerald-100'}`} onClick={() => openApplicants(j)}>
             <CardContent className="p-4">
@@ -7689,7 +7735,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
                       <SelectContent>
                         <SelectItem value="daily">Daily pay</SelectItem>
                         <SelectItem value="hourly">Hour pay</SelectItem>
-                        <SelectItem value="both">Daily + Hour pay</SelectItem>
+                        
                       </SelectContent>
                     </Select>
                   </div>
@@ -8130,7 +8176,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
       {selectedJob ? (
         <>
           {/* Back Button & Header */}
@@ -8441,7 +8487,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {hiredJobs.map(job => {
                 const hiredCnt = getHiredCount(job);
                 return (
@@ -8633,6 +8679,24 @@ const [savedData,setSavedData]=useState({});
 const [hasChanges,setHasChanges]=useState(false);
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [localSectionStatuses, setLocalSectionStatuses] = useState({ profile: '', documents: '' });
+
+  useEffect(() => {
+    const handler = (event) => {
+      const section = event?.detail?.section;
+      const status = event?.detail?.status;
+      const body = event?.detail?.body || {};
+      if (!section || !status) return;
+      setLocalSectionStatuses((prev) => ({ ...prev, [section]: status }));
+      setF((prev) => ({ ...prev, ...body, verification_status: status, verification_section: section }));
+      if (status !== 'verified') {
+        try { localStorage.removeItem(finalProfileSaveKey(me, 'employer')); } catch {}
+        setFinalSaved(false);
+      }
+    };
+    window.addEventListener('w2w-profile-section-local-status', handler);
+    return () => window.removeEventListener('w2w-profile-section-local-status', handler);
+  }, [me]);
   useEffect(()=>{
 
 if(me){
@@ -8837,9 +8901,9 @@ useEffect(() => {
     return '';
   };
 
-  const employerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerProfileReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.profile) || sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
   const employerProfileChangedAfterReview = (employerProfileReviewStatus === 'pending' || employerProfileReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_PROFILE_VERIFY_FIELDS, buildEmployerProfilePayload(), me?.profile || {}, me?.extra || {});
-  const employerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerDocumentReviewStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.documents) || sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
   const employerDocumentChangedAfterReview = (employerDocumentReviewStatus === 'pending' || employerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_DOCUMENT_VERIFY_FIELDS, buildEmployerDocumentPayload(), me?.profile || {}, me?.extra || {});
 
   // Employer final save follows the working employee profile pattern, without removed employer bank/mobile checks.
@@ -8852,8 +8916,8 @@ useEffect(() => {
     me?.extra?.selfie_status === 'verified' ||
     me?.extra?.selfie_verification_status === 'verified'
   );
-  const employerProfileRawStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
-  const employerDocumentRawStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerProfileRawStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.profile) || sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerDocumentRawStatus = (typeof localSectionStatuses !== 'undefined' && localSectionStatuses.documents) || sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
   const employerGloballyVerified = !!me?.extra?.verified && me?.extra?.verification_status === 'verified';
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
@@ -8897,14 +8961,16 @@ useEffect(() => {
         verification_status: 'verified',
       };
 
-      const saved = await api('me/profile', { method: 'PATCH', token, body });
       localStorage.setItem(finalProfileSaveKey(me, 'employer'), 'saved');
-      try { localStorage.removeItem(employerProfileDraftKey(me)); } catch {}
-      const savedExtra = saved?.extra || {};
-      setF((prev) => ({ ...prev, ...body, ...savedExtra }));
-      setSavedData((prev) => ({ ...prev, ...body, ...savedExtra }));
+      setF((prev) => ({ ...prev, ...body }));
+      setSavedData((prev) => ({ ...prev, ...body }));
       setHasChanges(false);
       setFinalSaved(true);
+      const saved = await api('me/profile', { method: 'PATCH', token, body });
+      try { localStorage.removeItem(employerProfileDraftKey(me)); } catch {}
+      const savedExtra = saved?.extra || {};
+      setF((prev) => ({ ...prev, ...savedExtra }));
+      setSavedData((prev) => ({ ...prev, ...savedExtra }));
       toast.success('Profile saved');
       await onSaved?.();
     } catch (e) {
@@ -8987,7 +9053,7 @@ useEffect(() => {
   if (!me) return <div className="py-12 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
       <Card className="profile-section-card">
         <CardContent className="p-5 flex items-center gap-4">
           <AvatarUploader
@@ -9003,11 +9069,11 @@ useEffect(() => {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="emerald" />; })()}
               {employerTopStatus === 'verified' ? (
-                <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
+                <Badge className="border border-emerald-200 bg-emerald-50 !text-emerald-700 shadow-sm [&_*]:!text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : employerTopStatus === 'pending' ? (
-                <Badge className="border border-amber-200 bg-amber-50 !text-black shadow-sm"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
+                <Badge className="border border-amber-200 bg-amber-50 !text-amber-800 shadow-sm [&_*]:!text-amber-800"><Clock className="w-3.5 h-3.5 mr-1" /> Pending Approval</Badge>
               ) : (
-                <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
+                <Badge className="border border-rose-200 bg-rose-50 !text-rose-700 shadow-sm [&_*]:!text-rose-700"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
             </div>
             {me.profile?.login_id && (
@@ -9035,7 +9101,7 @@ useEffect(() => {
 
       <Card className="profile-section-card overflow-hidden">
         <CardHeader className="profile-section-header"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><CardTitle className="text-base">Company profile</CardTitle><CardDescription>Company details, address and hiring information.</CardDescription></div></div></CardHeader>
-        <CardContent className="grid sm:grid-cols-2 gap-3">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Your name"   v={f.full_name}    on={(v) => setF(s => ({ ...s, full_name: v }))} required />
           <Field label="Phone"       v={cleanIndianPhone10(f.phone)}        on={(v) => setF(s => ({ ...s, phone: cleanIndianPhone10(v) }))} inputMode="numeric" maxLength={10} prefix="+91" helper="Enter 10-digit Indian mobile number" required />
           <Field label="Company"     v={f.company_name} on={(v) => setF(s => ({ ...s, company_name: v }))} required />
@@ -9117,8 +9183,8 @@ useEffect(() => {
           disabled={busy || !employerAllProfileCardsVerified || finalSaved}
           className="h-12 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 disabled:!opacity-100 disabled:cursor-not-allowed disabled:bg-emerald-600 disabled:text-white"
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
-          {finalSaved ? 'Saved' : 'Save profile'}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : finalSaved ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Edit3 className="w-4 h-4 mr-2" />}
+          <span className="!text-white" style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff' }}>{finalSaved ? 'Saved' : 'Save profile'}</span>
         </Button>
 
         <Button
@@ -9568,7 +9634,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
         </DialogHeader>
 
         {paymentPlan && (
-          <div className="space-y-4">
+          <div className="space-y-4 w-full max-w-full overflow-x-hidden">
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -9776,7 +9842,7 @@ function AvatarUploader({ token, currentUrl, kind = 'avatar', onUploaded, color 
       </Avatar>
       <button onClick={() => ref.current?.click()} disabled={busy}
               className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white border shadow grid place-items-center hover:bg-slate-50">
-        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+        {busy ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <Camera className="w-4 h-4" />}
       </button>
       <input ref={ref} type="file" accept="image/*" onChange={onPick} className="hidden" />
     </div>
@@ -9871,7 +9937,7 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
                     <p className="text-[11px] text-slate-500">Select a conversation to continue.</p>
                   </div>
                   <Button variant="ghost" size="icon" onClick={loadThreads} className="rounded-full">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin !text-white" /> : <MessageSquare className="w-4 h-4" />}
                   </Button>
                 </div>
                 <div className="relative">

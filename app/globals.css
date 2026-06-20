@@ -1129,3 +1129,67 @@ span[class*="bg-emerald-600"] *, div[class*="bg-emerald-600"] *, button[class*="
   color: #ffffff !important;
   stroke: #ffffff !important;
 }
+
+
+/* Work2Wish final mobile/text safety */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.profile-section-card,
+.premium-panel {
+  max-width: 100%;
+}
+
+.w2w-verify-button,
+.w2w-verify-button * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.w2w-verify-idle {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+.w2w-verify-pending {
+  background-color: #f59e0b !important;
+  border-color: #f59e0b !important;
+}
+
+.w2w-verify-done {
+  background-color: #16a34a !important;
+  border-color: #16a34a !important;
+}
+
+@media (max-width: 640px) {
+  .profile-section-card {
+    border-radius: 1.25rem !important;
+  }
+
+  .profile-section-header {
+    padding: 0.9rem !important;
+  }
+
+  .w2w-verify-button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-size: 16px;
+  }
+
+  .container {
+    max-width: 100%;
+  }
+}
