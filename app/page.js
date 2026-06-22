@@ -1508,7 +1508,7 @@ function AdminApp({ auth, onLogout }) {
               <CardDescription>Turn this ON before deployment or database changes. Workers and employers will see an update screen. Admin remains allowed.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <Label>Title</Label>
                   <Input value={settings.maintenance_title || ''} onChange={(e) => setSettings(s => ({ ...s, maintenance_title: e.target.value }))} />
@@ -1640,7 +1640,7 @@ function AdminApp({ auth, onLogout }) {
           </DialogHeader>
           {loadingDetails ? <div className="py-10 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : selected && (
             <div className="space-y-5">
-              <div className="grid md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <InfoTile label="Email" value={selected.email} />
                 <InfoTile label="Role" value={selected.role} />
                 <InfoTile label="Login ID" value={selected.login_id} />
@@ -1840,7 +1840,12 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
 }
 
 function InfoTile({ label, value }) {
-  return <div className="rounded-xl border bg-white p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold break-words">{value || '—'}</p></div>;
+  return (
+    <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3.5 sm:p-4 shadow-sm min-w-0 max-w-full overflow-hidden">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-500 break-words">{label}</p>
+      <p className="mt-1 font-black text-slate-950 break-words whitespace-normal leading-snug">{value || '—'}</p>
+    </div>
+  );
 }
 
 function AdminCompactList({ title, icon, rows = [], empty = 'No records.' }) {
@@ -3990,7 +3995,7 @@ function LocationSearchBox({
 
         {showPredictions && (predictions.length > 0 || loading || locationError) && (
           <div
-            className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border bg-white shadow-xl ring-1 ring-slate-200"
+            className="absolute left-0 right-0 top-[calc(100%+8px)] z-[99999] max-h-72 overflow-y-auto rounded-2xl border bg-white shadow-2xl ring-1 ring-slate-200"
           >
             {loading && predictions.length === 0 && (
               <div className="px-4 py-3 text-sm text-slate-600 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
@@ -4748,7 +4753,7 @@ function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 
                 ))}
               </div>
             </div>
-            <Textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder={placeholder} className="min-h-[120px] rounded-2xl" />
+            <Textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder={placeholder} className="min-h-[120px] rounded-2xl bg-white !text-slate-950 placeholder:!text-slate-400" />
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
               <Button className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={submit}>
@@ -4838,22 +4843,29 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
     return <span className={`${size} font-black text-amber-500`}>{'★'.repeat(rounded)}<span className="text-amber-200">{'★'.repeat(Math.max(0, 5 - rounded))}</span></span>;
   };
 
-  const ProfileActionButton = ({ children, onClick }) => (
-    <Button
-      type="button"
-      variant="outline"
-      onClick={onClick}
-      className="h-16 rounded-3xl border border-slate-200 bg-white text-slate-950 font-black shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all flex items-center justify-center text-base tracking-tight"
-    >
-      {children}
-    </Button>
-  );
+  const ProfileActionButton = ({ children, onClick, tone = 'blue' }) => {
+    const toneClasses = {
+      blue: 'border-blue-200 from-blue-50 via-white to-indigo-50 text-blue-950 shadow-blue-100/80 hover:border-blue-300 hover:shadow-blue-200/80',
+      red: 'border-red-200 from-red-50 via-white to-rose-50 text-red-950 shadow-red-100/80 hover:border-red-300 hover:shadow-red-200/80',
+      emerald: 'border-emerald-200 from-emerald-50 via-white to-teal-50 text-emerald-950 shadow-emerald-100/80 hover:border-emerald-300 hover:shadow-emerald-200/80'
+    };
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onClick}
+        className={`min-h-[68px] rounded-[1.5rem] border-2 bg-gradient-to-br ${toneClasses[tone] || toneClasses.blue} px-4 py-3 text-sm sm:text-base font-black shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl flex items-center justify-center text-center whitespace-normal break-words leading-tight`}
+      >
+        <span className="inline-flex items-center justify-center text-slate-950">{children}</span>
+      </Button>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
-      <DialogContent hideCloseButton={false} className="z-[9990] w-[calc(100vw-40px)] max-w-[calc(100vw-60px)] max-h-[calc(100vh-32px)] overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-0 shadow-2xl">
-        <div className="max-h-[calc(100vh-32px)] overflow-y-auto p-[30px]">
-          <div className="mx-auto w-full max-w-[1600px] space-y-5">
+      <DialogContent hideCloseButton={false} className="z-[9990] w-[calc(100vw-18px)] sm:w-[calc(100vw-48px)] max-w-[1600px] max-h-[calc(100dvh-170px)] overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] border border-slate-200 bg-white p-0 shadow-2xl">
+        <div className="max-h-[calc(100dvh-170px)] overflow-y-auto px-4 pt-4 pb-8 sm:p-[30px] sm:pb-[30px]">
+          <div className="mx-auto w-full max-w-[1600px] space-y-4 sm:space-y-5 min-w-0">
             <div className={`rounded-[2rem] p-6 text-white shadow-xl ${isWorker ? 'bg-gradient-to-r from-indigo-700 via-blue-600 to-sky-500' : 'bg-gradient-to-r from-emerald-700 via-green-600 to-teal-500'}`}>
               <div className="flex flex-col sm:flex-row sm:items-center gap-5">
                 <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-white/70" title="View profile image">
@@ -4879,8 +4891,8 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
             </div>
 
             {isWorker ? (
-              <div className="grid lg:grid-cols-3 gap-5">
-                <div className="rounded-[2rem] border border-blue-100 bg-white p-6 shadow-xl shadow-blue-100/40 min-h-[520px]">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+                <div className="rounded-[2rem] border border-blue-100 bg-white p-4 sm:p-6 shadow-xl shadow-blue-100/40 min-h-0 xl:min-h-[520px] min-w-0 overflow-hidden">
                   <div className="flex items-center gap-4 mb-5">
                     <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-blue-500/70" title="View worker image">
                       <Avatar className="w-24 h-24 rounded-[1.5rem] border-4 border-white shadow-xl bg-blue-50">
@@ -4905,7 +4917,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
                   </div>
                 </div>
 
-                <div className="rounded-[2rem] border border-blue-100 bg-white p-6 shadow-xl shadow-blue-100/40 min-h-[520px]">
+                <div className="rounded-[2rem] border border-blue-100 bg-white p-4 sm:p-6 shadow-xl shadow-blue-100/40 min-h-0 xl:min-h-[520px] min-w-0 overflow-hidden">
                   <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Award className="w-5 h-5 text-blue-600" /> Skills & About</h3>
                   <div className="space-y-3">
                     <InfoTile label="Skills" value={Array.isArray(p.skills) ? p.skills.join(', ') : (p.skills || '—')} />
@@ -4920,7 +4932,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
                   </div>
                 </div>
 
-                <div className="rounded-[2rem] border border-blue-100 bg-white p-6 shadow-xl shadow-blue-100/40 min-h-[520px]">
+                <div className="rounded-[2rem] border border-blue-100 bg-white p-4 sm:p-6 shadow-xl shadow-blue-100/40 min-h-0 xl:min-h-[520px] min-w-0 overflow-hidden">
                   <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Rating, Resume & Marks</h3>
                   <div className="space-y-3">
                     <InfoTile label="Average rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
@@ -4941,8 +4953,8 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
                 </div>
               </div>
             ) : (
-              <div className="grid lg:grid-cols-3 gap-5">
-                <div className="rounded-[2rem] border border-emerald-100 bg-white p-6 shadow-xl shadow-emerald-100/40 min-h-[520px]">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+                <div className="rounded-[2rem] border border-emerald-100 bg-white p-4 sm:p-6 shadow-xl shadow-emerald-100/40 min-h-0 xl:min-h-[520px] min-w-0 overflow-hidden">
                   <div className="flex items-center gap-4 mb-5">
                     <button type="button" onClick={() => photo && setPhotoPreview({ photo, title })} className="shrink-0 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-emerald-500/70" title="View company image">
                       <Avatar className="w-24 h-24 rounded-[1.5rem] border-4 border-white shadow-xl bg-emerald-50">
@@ -4966,7 +4978,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
                   </div>
                 </div>
 
-                <div className="rounded-[2rem] border border-emerald-100 bg-white p-6 shadow-xl shadow-emerald-100/40 min-h-[520px]">
+                <div className="rounded-[2rem] border border-emerald-100 bg-white p-4 sm:p-6 shadow-xl shadow-emerald-100/40 min-h-0 xl:min-h-[520px] min-w-0 overflow-hidden">
                   <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Briefcase className="w-5 h-5 text-emerald-600" /> Company Details</h3>
                   <div className="space-y-3">
                     <InfoTile label="Posted jobs" value={stats.postedJobs || postedJobs.length || 0} />
@@ -4981,7 +4993,7 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
                   </div>
                 </div>
 
-                <div className="rounded-[2rem] border border-emerald-100 bg-white p-6 shadow-xl shadow-emerald-100/40 min-h-[520px]">
+                <div className="rounded-[2rem] border border-emerald-100 bg-white p-4 sm:p-6 shadow-xl shadow-emerald-100/40 min-h-0 xl:min-h-[520px] min-w-0 overflow-hidden">
                   <h3 className="font-black text-slate-950 mb-5 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500" /> Ratings, Feedbacks & Marks</h3>
                   <div className="space-y-3">
                     <InfoTile label="Average rating" value={publicRatingCount ? `★ ${publicRatingAverage.toFixed(1)}/5` : 'No ratings'} />
@@ -5000,36 +5012,82 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
               </div>
             )}
 
-            <div className="grid md:grid-cols-3 gap-3">
-              <ProfileActionButton onClick={() => setActivePopup('feedback')}><Star className="w-4 h-4 mr-2" /> Give Feedback</ProfileActionButton>
-              <ProfileActionButton onClick={() => setActivePopup('black')}><span className="mr-2 text-lg leading-none">●</span> Mark Black</ProfileActionButton>
-              <ProfileActionButton onClick={() => setActivePopup('history')}><FileText className="w-4 h-4 mr-2" /> View Feedbacks / Marks</ProfileActionButton>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <ProfileActionButton tone="blue" onClick={() => setActivePopup('feedback')}><Star className="w-5 h-5 mr-2 text-blue-700" /> Give Feedback</ProfileActionButton>
+              <ProfileActionButton tone="red" onClick={() => setActivePopup('black')}><span className="mr-2 text-xl leading-none text-red-700">●</span> Mark Black</ProfileActionButton>
+              <ProfileActionButton tone="emerald" onClick={() => setActivePopup('history')}><FileText className="w-5 h-5 mr-2 text-emerald-700" /> View Feedbacks / Marks</ProfileActionButton>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <Button className={`flex-1 rounded-2xl ${isWorker ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`} onClick={() => onChat?.({ peer_id: p.id || p.user_id, peer_name: title, peer_photo: photo, peer_role: p.role })}>
                 <MessageSquare className="w-4 h-4 mr-2" /> Message {isWorker ? 'worker' : 'company'}
               </Button>
-              <Button variant="outline" onClick={onClose} className="flex-1 rounded-2xl">Close</Button>
+              <Button variant="outline" onClick={onClose} className="flex-1 rounded-2xl bg-white !text-slate-950 border-slate-300 hover:bg-slate-50">Close</Button>
             </div>
           </div>
         </div>
 
         {activePopup === 'history' && (
-          <div className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/55 p-[30px]" onClick={closePopup}>
-            <div className="w-full max-w-4xl max-h-[calc(100vh-60px)] overflow-hidden rounded-[2rem] bg-white text-slate-950 shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
-              <div className="p-5 bg-gradient-to-r from-slate-950 to-slate-700 text-white flex items-start justify-between gap-3">
-                <div><h3 className="text-xl font-black">Feedbacks & Black Marks</h3><p className="text-sm text-white/80">Clear history for this profile.</p></div>
-                <Button type="button" variant="secondary" className="rounded-xl bg-white/20 text-white hover:bg-white/30" onClick={closePopup}>Close</Button>
-              </div>
-              <div className="max-h-[70vh] overflow-y-auto p-5 grid md:grid-cols-2 gap-4">
-                <div className="rounded-3xl border border-amber-100 bg-amber-50/60 p-4">
-                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black text-amber-900">Feedbacks</h4><Badge className="bg-amber-100 text-amber-800 border border-amber-200">{publicRatingCount || 0} total</Badge></div>
-                  {feedbacks.length === 0 ? <p className="text-sm text-slate-600">No feedback added yet.</p> : <div className="space-y-3">{feedbacks.map((f, i) => <div key={i} className="rounded-2xl bg-white border border-amber-100 p-4 shadow-sm"><div className="flex items-center justify-between gap-2"><Stars value={f.rating} /><Badge variant="secondary">{f.created_at ? new Date(f.created_at).toLocaleDateString() : 'Feedback'}</Badge></div><p className="text-sm text-slate-700 mt-2">{f.feedback_text || 'No written feedback.'}</p></div>)}</div>}
+          <div className="fixed left-0 right-0 top-[82px] bottom-[84px] z-[10020] flex items-center justify-center bg-slate-950/60 p-3 sm:p-8 overflow-y-auto" onClick={closePopup}>
+            <div className="w-full max-w-5xl max-h-[calc(100dvh-190px)] overflow-hidden rounded-[2rem] bg-white text-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.35)] border border-emerald-100" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 sm:p-6 bg-gradient-to-r from-emerald-50 via-white to-teal-50 border-b border-emerald-100 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">Profile History</p>
+                  <h3 className="mt-1 text-2xl font-black text-slate-950 break-words">Feedbacks & Black Marks</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">View all ratings, written feedback and black mark records clearly.</p>
                 </div>
-                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-black text-slate-950">Black Marks</h4><Badge className="bg-slate-950 text-white">● {visibleBlackMarkCount}</Badge></div>
-                  {blackMarks.length === 0 ? <p className="text-sm text-slate-600">No black marks added yet.</p> : <div className="space-y-3">{blackMarks.map((m, i) => <div key={i} className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm"><div className="flex items-center justify-between gap-2"><p className="font-black text-slate-950"><span className="mr-2">●</span>Black mark</p><Badge variant="secondary">{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Mark'}</Badge></div><p className="text-sm text-slate-700 mt-2">{m.reason || 'No reason added.'}</p></div>)}</div>}
+                <Button type="button" variant="secondary" className="shrink-0 rounded-xl bg-white text-black hover:bg-slate-100 border border-slate-300 shadow-sm font-black" style={{ color: '#000000' }} onClick={closePopup}>Close</Button>
+              </div>
+              <div className="max-h-[calc(100dvh-315px)] overflow-y-auto p-4 sm:p-6 bg-slate-50/80">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                  <div className="rounded-[1.75rem] border border-amber-200 bg-white p-4 sm:p-5 shadow-lg shadow-amber-100/50">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide text-amber-700">Ratings</p>
+                        <h4 className="text-xl font-black text-slate-950">Feedbacks</h4>
+                      </div>
+                      <Badge className="bg-amber-100 text-amber-900 border border-amber-200">{publicRatingCount || 0} total</Badge>
+                    </div>
+                    {feedbacks.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 p-5 text-center text-sm font-semibold text-slate-700">No feedback added yet.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {feedbacks.map((f, i) => (
+                          <div key={i} className="rounded-2xl bg-white border border-amber-100 p-4 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <Stars value={f.rating} />
+                              <Badge variant="secondary" className="bg-slate-100 text-slate-700">{f.created_at ? new Date(f.created_at).toLocaleDateString() : 'Feedback'}</Badge>
+                            </div>
+                            <p className="text-sm font-medium text-slate-800 mt-3 whitespace-pre-wrap break-words">{f.feedback_text || 'No written feedback.'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-[1.75rem] border border-red-200 bg-white p-4 sm:p-5 shadow-lg shadow-red-100/50">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide text-red-700">Safety</p>
+                        <h4 className="text-xl font-black text-slate-950">Black Marks</h4>
+                      </div>
+                      <Badge className="bg-slate-950 text-white">● {visibleBlackMarkCount}</Badge>
+                    </div>
+                    {blackMarks.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/70 p-5 text-center text-sm font-semibold text-slate-700">No black marks added yet.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {blackMarks.map((m, i) => (
+                          <div key={i} className="rounded-2xl bg-white border border-red-100 p-4 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="font-black text-slate-950"><span className="mr-2 text-red-700">●</span>Black mark</p>
+                              <Badge variant="secondary" className="bg-slate-100 text-slate-700">{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Mark'}</Badge>
+                            </div>
+                            <p className="text-sm font-medium text-slate-800 mt-3 whitespace-pre-wrap break-words">{m.reason || 'No reason added.'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -5037,25 +5095,61 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
         )}
 
         {activePopup === 'feedback' && (
-          <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/55 p-[30px]" onClick={closePopup}>
-            <div className="w-full max-w-lg rounded-[2rem] bg-white text-slate-950 shadow-2xl border border-amber-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-5 bg-gradient-to-r from-amber-500 to-orange-500 text-white"><h3 className="text-xl font-black">Give Feedback</h3><p className="text-sm text-white/85">Select stars and write feedback.</p></div>
-              <div className="p-5 space-y-4">
-                <div className="flex justify-center gap-2">{[1,2,3,4,5].map((n) => <button key={n} type="button" onClick={() => setProfileFeedbackRating(n)} className={`text-4xl ${n <= profileFeedbackRating ? 'text-amber-500' : 'text-slate-200'}`}>★</button>)}</div>
-                <Textarea value={profileFeedbackText} onChange={(e) => setProfileFeedbackText(e.target.value)} placeholder="Write clear feedback" className="min-h-[120px] rounded-2xl bg-white text-slate-950 placeholder:text-slate-400" />
-                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white text-slate-950 border-slate-300 hover:bg-slate-50" onClick={closePopup}>Cancel</Button><Button type="button" disabled={submittingProfileFeedback} onClick={submitProfileFeedback} className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white">{submittingProfileFeedback ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}Submit</Button></div>
+          <div className="fixed left-0 right-0 top-[82px] bottom-[84px] z-[10030] flex items-center justify-center bg-slate-950/60 p-3 sm:p-8 overflow-y-auto" onClick={closePopup}>
+            <div className="w-full max-w-xl max-h-[calc(100dvh-190px)] rounded-[2rem] bg-white text-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.35)] border border-blue-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 sm:p-6 bg-gradient-to-r from-blue-50 via-white to-indigo-50 border-b border-blue-100 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-700">Rating</p>
+                  <h3 className="mt-1 text-2xl font-black text-slate-950">Give Feedback</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">Choose a star rating and write your feedback.</p>
+                </div>
+                <Button type="button" variant="secondary" className="shrink-0 rounded-xl bg-white text-black hover:bg-slate-100 border border-slate-300 shadow-sm font-black" style={{ color: '#000000' }} onClick={closePopup}>Close</Button>
+              </div>
+              <div className="p-5 sm:p-6 space-y-5 overflow-y-auto max-h-[calc(100dvh-315px)] bg-slate-50/80">
+                <div className="rounded-[1.75rem] border border-blue-100 bg-white p-5 text-center shadow-lg shadow-blue-100/50">
+                  <p className="mb-3 text-xs font-black uppercase tracking-wide text-blue-800">Select Rating</p>
+                  <div role="radiogroup" aria-label="Select rating" className="flex justify-center gap-2 sm:gap-3">
+                    {[1,2,3,4,5].map((n) => (
+                      <label key={n} className="cursor-pointer">
+                        <input type="radio" name="profile-feedback-rating" value={n} checked={Number(profileFeedbackRating) === n} onChange={() => setProfileFeedbackRating(n)} className="sr-only" />
+                        <span className={`inline-flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl text-3xl sm:text-4xl leading-none transition-all ${n <= profileFeedbackRating ? 'bg-amber-100 text-amber-500 scale-105 shadow-md ring-2 ring-amber-300' : 'bg-slate-100 text-slate-400 hover:text-amber-400 hover:ring-2 hover:ring-amber-200'}`}>★</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-lg shadow-slate-200/50">
+                  <label className="mb-2 block text-sm font-black text-slate-900">Feedback</label>
+                  <Textarea value={profileFeedbackText} onChange={(e) => setProfileFeedbackText(e.target.value)} placeholder="Write clear feedback" className="min-h-[130px] rounded-2xl border border-slate-300 bg-white text-black placeholder:text-slate-500 shadow-sm p-3 font-medium" style={{ color: '#000000', backgroundColor: '#FFFFFF' }} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button type="button" variant="outline" className="rounded-xl bg-white text-black border-slate-300 hover:bg-slate-50 font-black" style={{ color: '#000000' }} onClick={closePopup}>Cancel</Button>
+                  <Button type="button" disabled={submittingProfileFeedback} onClick={submitProfileFeedback} className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg shadow-blue-200">{submittingProfileFeedback ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}Submit</Button>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {activePopup === 'black' && (
-          <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/55 p-[30px]" onClick={closePopup}>
-            <div className="w-full max-w-lg rounded-[2rem] bg-white text-slate-950 shadow-2xl border border-slate-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-5 bg-gradient-to-r from-slate-950 to-slate-700 text-white"><h3 className="text-xl font-black">Mark Black</h3><p className="text-sm text-white/80">Add a reason before marking this profile.</p></div>
-              <div className="p-5 space-y-4">
-                <Textarea value={blackReason} onChange={(e) => setBlackReason(e.target.value)} placeholder="Reason for black mark" className="min-h-[120px] rounded-2xl bg-white text-slate-950 placeholder:text-slate-400" />
-                <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="rounded-xl bg-white text-slate-950 border-slate-300 hover:bg-slate-50" onClick={closePopup}>Cancel</Button><Button type="button" disabled={markingBlack} onClick={markBlackDot} className="rounded-xl bg-slate-950 hover:bg-black text-white">{markingBlack ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <span className="mr-2">●</span>}Mark</Button></div>
+          <div className="fixed left-0 right-0 top-[82px] bottom-[84px] z-[10030] flex items-center justify-center bg-slate-950/60 p-3 sm:p-8 overflow-y-auto" onClick={closePopup}>
+            <div className="w-full max-w-xl max-h-[calc(100dvh-190px)] rounded-[2rem] bg-white text-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.35)] border border-red-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 sm:p-6 bg-gradient-to-r from-red-50 via-white to-rose-50 border-b border-red-100 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-red-700">Profile Mark</p>
+                  <h3 className="mt-1 text-2xl font-black text-slate-950">Mark Black</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">Add a clear reason before marking this profile.</p>
+                </div>
+                <Button type="button" variant="secondary" className="shrink-0 rounded-xl bg-white text-black hover:bg-slate-100 border border-slate-300 shadow-sm font-black" style={{ color: '#000000' }} onClick={closePopup}>Close</Button>
+              </div>
+              <div className="p-5 sm:p-6 space-y-5 overflow-y-auto max-h-[calc(100dvh-315px)] bg-slate-50/80">
+                <div className="rounded-[1.75rem] border border-red-100 bg-white p-4 shadow-lg shadow-red-100/50">
+                  <label className="mb-2 block text-sm font-black text-slate-900">Reason</label>
+                  <Textarea value={blackReason} onChange={(e) => setBlackReason(e.target.value)} placeholder="Reason for black mark" className="min-h-[130px] rounded-2xl border border-slate-300 bg-white text-black placeholder:text-slate-500 shadow-sm p-3 font-medium" style={{ color: '#000000', backgroundColor: '#FFFFFF' }} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button type="button" variant="outline" className="rounded-xl bg-white text-black border-slate-300 hover:bg-slate-50 font-black" style={{ color: '#000000' }} onClick={closePopup}>Cancel</Button>
+                  <Button type="button" disabled={markingBlack} onClick={markBlackDot} className="rounded-xl bg-red-600 hover:bg-red-700 text-white font-black shadow-lg shadow-red-200">{markingBlack ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <span className="mr-2">●</span>}Mark</Button>
+                </div>
               </div>
             </div>
           </div>
@@ -5148,18 +5242,18 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
   };
 
   return (
-    <div className={`rounded-2xl border p-4 space-y-3 shadow-sm overflow-visible ${wrapClass}`}>
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="min-w-0 flex gap-3">
+    <div className={`saved-location-card rounded-2xl border p-4 space-y-3 shadow-sm overflow-hidden w-full max-w-full min-w-0 box-border ${wrapClass}`}>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 min-w-0 w-full max-w-full">
+        <div className="w-full md:flex-1 md:min-w-[320px] max-w-full flex gap-3 min-w-0 overflow-hidden">
           <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${iconBox}`}><MapPin className="w-5 h-5" /></div>
-          <div className="min-w-0">
-            <Label>{label}</Label>
-            <p className="text-sm text-muted-foreground mt-1">
+          <div className="min-w-0 flex-1 max-w-full whitespace-normal break-normal [overflow-wrap:normal] leading-normal overflow-hidden">
+            <Label className="block whitespace-normal break-normal [overflow-wrap:normal] leading-snug w-full max-w-full">{label}</Label>
+            <p className="text-sm text-muted-foreground mt-1 whitespace-normal break-normal [overflow-wrap:normal] leading-relaxed w-full max-w-full">
               {hasSaved && !editingLocation ? 'Saved location is active. Click Change to update it.' : 'Search and select an exact area, pin, or current GPS, then click Save.'}
             </p>
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+        <div className="flex flex-row flex-wrap gap-2 shrink-0 w-full md:w-auto max-w-full justify-start md:justify-end md:ml-auto">
           {hasSaved && !editingLocation ? (
             <>
               <Button type="button" variant="outline" disabled className={savedButtonClass}>
@@ -5178,12 +5272,12 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
       </div>
 
       {hasSaved && !editingLocation ? (
-        <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-1">
-          <p className="text-sm font-semibold text-slate-800 truncate">{value}</p>
-          <p className="text-xs text-slate-500">{formatCoordinates(latitude, longitude)}</p>
+        <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-1 w-full max-w-full min-w-0 box-border overflow-hidden">
+          <p className="text-sm font-semibold text-slate-800 whitespace-normal break-normal [overflow-wrap:normal] leading-relaxed max-w-full block">{value}</p>
+          <p className="text-xs text-slate-500 whitespace-normal break-normal [overflow-wrap:normal] max-w-full block">{formatCoordinates(latitude, longitude)}</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-2">
+        <div className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-inner space-y-2 max-w-full min-w-0 box-border overflow-hidden">
           <LocationSearchBox
             label=""
             value={value || ''}
@@ -5194,7 +5288,7 @@ function SavedLocationEditor({ label, value, latitude, longitude, color = 'indig
             helper={helper}
             onChange={(loc) => { userTouchedLocationRef.current = true; onChange?.(loc); }}
           />
-          <div className={`rounded-xl border px-3 py-2 text-xs ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+          <div className={`rounded-xl border px-3 py-2 text-xs whitespace-normal break-words ${changedAfterSave ? (isEmerald ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-indigo-200 bg-indigo-50 text-indigo-800') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
             {canSaveLocation ? 'Exact GPS selected. Click Save to store it.' : 'Search/select one exact place or use current GPS before saving.'}
           </div>
         </div>
@@ -10073,8 +10167,8 @@ function ChatScreen({ token, me, peerHint, color = 'indigo' }) {
   }, [query, token, threads.length]);
 
   return (
-    <div className="h-full min-h-0 overflow-hidden bg-white p-0">
-      <Card className="h-full max-w-7xl mx-auto overflow-hidden rounded-none md:rounded-2xl border-slate-200 shadow-none md:shadow-sm bg-white">
+    <div className="h-full min-h-0 max-h-[calc(100dvh-100px)] md:max-h-[calc(100dvh-150px)] overflow-hidden bg-white p-0">
+      <Card className="h-full max-h-[calc(100dvh-100px)] md:max-h-[calc(100dvh-150px)] max-w-7xl mx-auto overflow-hidden rounded-none md:rounded-2xl border-slate-200 shadow-none md:shadow-sm bg-white">
         <CardContent className="h-full p-0">
           <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[340px_1fr] bg-white">
             <aside className={`${active ? 'hidden md:flex' : 'flex'} h-full min-h-0 border-r bg-white flex-col`}>
@@ -10272,7 +10366,7 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-white">
+    <div className="flex h-full min-h-0 max-h-[calc(100dvh-80px)] md:max-h-[calc(100dvh-150px)] w-full min-w-0 flex-col bg-white">
       <div className="shrink-0 h-14 px-4 border-b bg-white flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <Button type="button" variant="ghost" size="icon" onClick={onBack} className="md:hidden rounded-full shrink-0">
@@ -10338,7 +10432,7 @@ function ChatThread({ token, me, peer, onBack, color, onProfile }) {
         })}
       </div>
 
-      <div className="shrink-0 p-3 border-t bg-white">
+      <div className="shrink-0 p-3 pb-5 md:pb-3 border-t bg-white">
         <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-md transition-shadow focus-within:shadow-lg focus-within:border-emerald-300">
           {editingId && <button type="button" onClick={() => { setEditingId(null); setText(''); }} className="text-xs text-slate-500 px-2 hover:text-red-500 transition-colors">✕ Cancel</button>}
           <Input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && send()} placeholder={editingId ? 'Edit message…' : 'Type a message…'} className="h-10 flex-1 rounded-full bg-transparent border-0 px-4 shadow-none focus-visible:ring-0 text-sm" />

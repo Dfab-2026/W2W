@@ -1241,3 +1241,100 @@ span[class*="bg-emerald-600"] *, div[class*="bg-emerald-600"] *, button[class*="
     line-height: 1.25;
   }
 }
+
+
+/* W2W targeted final fixes: keep saved GPS text horizontal on desktop and popup form text visible */
+@media (min-width: 768px) {
+  .profile-section-card [class*="overflow-wrap"],
+  .profile-section-card p,
+  .profile-section-card label {
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+  }
+}
+[data-radix-dialog-content] textarea,
+[data-radix-dialog-content] input {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+[data-radix-dialog-content] button {
+  white-space: normal;
+}
+
+/* Final targeted fixes: desktop GPS text, visible modal input text, and non-hidden close text */
+@media (min-width: 768px) {
+  .saved-location-card,
+  .saved-location-card * {
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+}
+textarea, input, select {
+  color: #0f172a;
+}
+textarea::placeholder, input::placeholder {
+  color: #64748b;
+}
+
+/* W2W final location desktop/save dropdown fix: only location editor layout */
+.saved-location-card {
+  overflow: visible !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.saved-location-card * {
+  box-sizing: border-box !important;
+}
+.saved-location-card [data-location-search-box],
+.saved-location-card [data-location-search-box] * {
+  overflow: visible !important;
+}
+@media (min-width: 768px) {
+  .saved-location-card > div:first-child {
+    display: grid !important;
+    grid-template-columns: minmax(420px, 1fr) auto !important;
+    align-items: center !important;
+    gap: 16px !important;
+    width: 100% !important;
+  }
+  .saved-location-card > div:first-child > div:first-child {
+    min-width: 420px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .saved-location-card > div:first-child > div:first-child > div:last-child,
+  .saved-location-card label,
+  .saved-location-card p {
+    min-width: 0 !important;
+    width: auto !important;
+    max-width: 100% !important;
+    display: block !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+    letter-spacing: normal !important;
+    line-height: 1.45 !important;
+  }
+  .saved-location-card > div:first-child > div:last-child {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-width: 220px !important;
+    width: auto !important;
+    max-width: 320px !important;
+  }
+  .saved-location-card > div:nth-child(2) {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+.saved-location-card [class*="absolute"][class*="top-"] {
+  z-index: 99999 !important;
+}
