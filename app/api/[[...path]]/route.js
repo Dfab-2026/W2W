@@ -805,8 +805,19 @@ async function route(request, { params }) {
 
 
     // ---------- Subscription current/select (UI + feature gating ready) ----------
+    async function getSignedInProfileRole() {
+      if (me?.role === 'employer' || me?.role === 'worker' || me?.role === 'admin') return me.role;
+      try {
+        const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
+        return profile?.role || 'worker';
+      } catch {
+        return 'worker';
+      }
+    }
+
     if (path === 'subscription/current' && method === 'GET') {
-      const role = me.role === 'employer' ? 'employer' : 'worker';
+      const profileRole = await getSignedInProfileRole();
+      const role = profileRole === 'employer' ? 'employer' : 'worker';
       let sub = await getActiveSubscription(admin, me.id, role);
       if (sub && subscriptionExpired(sub)) {
         const expiredAt = new Date(sub.expires_at).toISOString();
@@ -826,7 +837,9 @@ async function route(request, { params }) {
     if (path === 'subscription/select' && method === 'POST') {
       const body = await request.json().catch(() => ({}));
       const role = body.role === 'employer' ? 'employer' : 'worker';
-      if ((me.role === 'employer' ? 'employer' : 'worker') !== role && me.role !== 'admin') return err('Subscription role mismatch', 403);
+      const profileRole = await getSignedInProfileRole();
+      const signedInRole = profileRole === 'admin' ? 'admin' : (profileRole === 'employer' ? 'employer' : 'worker');
+      if (signedInRole !== role && signedInRole !== 'admin') return err('Subscription role mismatch', 403);
       const allowed = role === 'employer' ? ['Starter','Business','Enterprise'] : ['Basic','Growth','Premium'];
       if (!allowed.includes(body.plan_name)) return err('Invalid subscription plan selected', 400);
       const planName = body.plan_name;

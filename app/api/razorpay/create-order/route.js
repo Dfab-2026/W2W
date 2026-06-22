@@ -4,7 +4,7 @@ import { getAdmin, getUserFromRequest } from '@/lib/supabase/admin';
 const json = (data, status = 200) => NextResponse.json(data, { status });
 
 const allowedPlans = {
-  worker: { Basic: 19900, Growth: 29900, Premium: 59900 },
+  worker: { Basic: 9900, Growth: 29900, Premium: 59900 },
   employer: { Starter: 99900, Business: 499900, Enterprise: 899900 },
 };
 

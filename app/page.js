@@ -8788,6 +8788,8 @@ function HiredJobs({ token, jobs, reload, onChat }) {
 
 
 function EmployerProfile({ token, me, onSaved, onLogout }) {
+  const employerProfile = me?.profile || {};
+  const employerExtra = me?.extra || {};
   const [f,setF]=useState({});
 const [busy,setBusy]=useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -8805,41 +8807,41 @@ if(me){
 
 const profileData={
 
-full_name:me.profile?.full_name || '',
-phone:me.profile?.phone || '',
-company_name:me.extra?.company_name || '',
-industry:me.extra?.industry || '',
-company_size:me.extra?.company_size || '',
-hr_contact:me.extra?.hr_contact || '',
-official_email:me.extra?.official_email || '',
-location_text:me.extra?.location_text || '',
-latitude:me.extra?.latitude || '',
-longitude:me.extra?.longitude || '',
-place_id:me.extra?.place_id || '',
-place_name:me.extra?.place_name || '',
-description:me.extra?.description || '',
-company_address:me.extra?.company_address || '',
-gst_number:me.extra?.gst_number || '',
-pan_number:me.extra?.pan_number || '',
-account_holder_name:me.extra?.account_holder_name || '',
-bank_name:me.extra?.bank_name || '',
-bank_account:me.extra?.bank_account || '',
-ifsc_code:me.extra?.ifsc_code || '',
-branch_name:me.extra?.branch_name || '',
-upi_id:me.extra?.upi_id || '',
-bank_qr_url:me.extra?.bank_qr_url || '',
-pan_image_url:me.extra?.pan_image_url || '',
-pan_back_url:me.extra?.pan_back_url || '',
-gst_certificate_url:me.extra?.gst_certificate_url || '',
-mobile_verified: !!me.extra?.mobile_verified,
-selfie_url: me.extra?.selfie_url || '',
-selfie_front_url: me.extra?.selfie_front_url || '',
-selfie_left_url: me.extra?.selfie_left_url || '',
-selfie_right_url: me.extra?.selfie_right_url || '',
-selfie_verified: !!me.extra?.selfie_verified,
-selfie_verified_at: me.extra?.selfie_verified_at || '',
-verification_status: me.extra?.verification_status || (me.extra?.verified ? 'verified' : 'not_submitted'),
-language:me.profile?.language || 'en'
+full_name:employerProfile.full_name || '',
+phone:employerProfile.phone || '',
+company_name:employerExtra.company_name || '',
+industry:employerExtra.industry || '',
+company_size:employerExtra.company_size || '',
+hr_contact:employerExtra.hr_contact || '',
+official_email:employerExtra.official_email || '',
+location_text:employerExtra.location_text || '',
+latitude:employerExtra.latitude || '',
+longitude:employerExtra.longitude || '',
+place_id:employerExtra.place_id || '',
+place_name:employerExtra.place_name || '',
+description:employerExtra.description || '',
+company_address:employerExtra.company_address || '',
+gst_number:employerExtra.gst_number || '',
+pan_number:employerExtra.pan_number || '',
+account_holder_name:employerExtra.account_holder_name || '',
+bank_name:employerExtra.bank_name || '',
+bank_account:employerExtra.bank_account || '',
+ifsc_code:employerExtra.ifsc_code || '',
+branch_name:employerExtra.branch_name || '',
+upi_id:employerExtra.upi_id || '',
+bank_qr_url:employerExtra.bank_qr_url || '',
+pan_image_url:employerExtra.pan_image_url || '',
+pan_back_url:employerExtra.pan_back_url || '',
+gst_certificate_url:employerExtra.gst_certificate_url || '',
+mobile_verified: !!employerExtra.mobile_verified,
+selfie_url: employerExtra.selfie_url || '',
+selfie_front_url: employerExtra.selfie_front_url || '',
+selfie_left_url: employerExtra.selfie_left_url || '',
+selfie_right_url: employerExtra.selfie_right_url || '',
+selfie_verified: !!employerExtra.selfie_verified,
+selfie_verified_at: employerExtra.selfie_verified_at || '',
+verification_status: employerExtra.verification_status || (employerExtra.verified ? 'verified' : 'not_submitted'),
+language:employerProfile.language || 'en'
 
 };
 
@@ -9003,9 +9005,9 @@ useEffect(() => {
     return '';
   };
 
-  const employerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerProfileReviewStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!employerExtra.verified);
   const employerProfileChangedAfterReview = (employerProfileReviewStatus === 'pending' || employerProfileReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_PROFILE_VERIFY_FIELDS, buildEmployerProfilePayload(), me?.profile || {}, me?.extra || {});
-  const employerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerDocumentReviewStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!employerExtra.verified);
   const employerDocumentChangedAfterReview = (employerDocumentReviewStatus === 'pending' || employerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(EMPLOYER_DOCUMENT_VERIFY_FIELDS, buildEmployerDocumentPayload(), me?.profile || {}, me?.extra || {});
 
   // Employer final save follows the working employee profile pattern, without removed employer bank/mobile checks.
@@ -9018,8 +9020,8 @@ useEffect(() => {
     me?.extra?.selfie_status === 'verified' ||
     me?.extra?.selfie_verification_status === 'verified'
   );
-  const employerProfileRawStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!me.extra?.verified);
-  const employerDocumentRawStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!me.extra?.verified);
+  const employerProfileRawStatus = sectionReviewState(me, 'profile', me?.extra?.verification_status, !!employerExtra.verified);
+  const employerDocumentRawStatus = sectionReviewState(me, 'documents', me?.extra?.verification_status, !!employerExtra.verified);
   const employerGloballyVerified = !!me?.extra?.verified && me?.extra?.verification_status === 'verified';
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
@@ -9158,16 +9160,16 @@ useEffect(() => {
         <CardContent className="p-5 flex items-center gap-4">
           <AvatarUploader
             token={token}
-            currentUrl={me.extra?.company_logo}
+            currentUrl={employerExtra.company_logo}
             kind="logo"
             color="emerald"
             onUploaded={() => onSaved()}
           />
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-lg">{me.extra?.company_name || 'Set company name'}</p>
-            <p className="text-sm text-muted-foreground truncate">{me.profile?.email}</p>
+            <p className="font-bold text-lg">{employerExtra.company_name || 'Set company name'}</p>
+            <p className="text-sm text-muted-foreground truncate">{employerProfile.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {(() => { const r = pickProfileRating(me.extra || {}); return <TopProfileStarRating value={r.rating} count={r.count} color="emerald" />; })()}
+              {(() => { const r = pickProfileRating(employerExtra); return <TopProfileStarRating value={r.rating} count={r.count} color="emerald" />; })()}
               {employerTopStatus === 'verified' ? (
                 <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Done</Badge>
               ) : employerTopStatus === 'pending' ? (
@@ -9176,11 +9178,11 @@ useEffect(() => {
                 <Badge className="border border-rose-200 bg-rose-50 text-rose-700 shadow-sm"><ShieldCheck className="w-3.5 h-3.5 mr-1" /> Send for Verification</Badge>
               )}
             </div>
-            {me.profile?.login_id && (
+            {employerProfile.login_id && (
               <button
-                onClick={() => { navigator.clipboard?.writeText(me.profile.login_id); toast.success('Login ID copied'); }}
+                onClick={() => { navigator.clipboard?.writeText(employerProfile.login_id); toast.success('Login ID copied'); }}
                 className="mt-2 inline-flex items-center gap-1.5 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full hover:bg-emerald-100">
-                <Hash className="w-3 h-3" /> ID: <span className="font-bold tracking-wider">{me.profile.login_id}</span>
+                <Hash className="w-3 h-3" /> ID: <span className="font-bold tracking-wider">{employerProfile.login_id}</span>
                 <Copy className="w-3 h-3 opacity-60" />
               </button>
             )}
@@ -9192,7 +9194,7 @@ useEffect(() => {
         token={token}
         me={me}
         role="employer"
-        verified={!!me.extra?.verified}
+        verified={!!employerExtra.verified}
         form={f}
         setForm={setF}
         onSaved={onSaved}
@@ -9250,8 +9252,8 @@ useEffect(() => {
                 </div>
               </CardHeader>
               <CardContent className="p-4 grid lg:grid-cols-2 gap-4 items-stretch">
-                <MobileOtpVerificationBox token={token} phone={f.phone} verified={!!me.extra?.mobile_verified} onVerified={(phone) => { setF(s => ({ ...s, phone: phone || s.phone, mobile_verified: true })); onSaved?.(); }} />
-                <SelfieVerificationBox token={token} url={f.selfie_url || me.extra?.selfie_url} frontUrl={f.selfie_front_url || me.extra?.selfie_front_url} leftUrl={f.selfie_left_url || me.extra?.selfie_left_url} rightUrl={f.selfie_right_url || me.extra?.selfie_right_url} verified={!!(f.selfie_verified || me.extra?.selfie_verified)} disabled={busy} onUploaded={(payload) => { const uploadedUrl = typeof payload === 'string' ? payload : (payload?.selfie_url || payload?.selfie_front_url || payload?.url || ''); const nextSelfie = { ...(typeof payload === 'object' && payload ? payload : {}), selfie_url: uploadedUrl, selfie_front_url: uploadedUrl || (typeof payload === 'object' ? payload?.selfie_front_url : ''), selfie_verified: true, selfie_verified_at: (typeof payload === 'object' && payload?.selfie_verified_at) ? payload.selfie_verified_at : new Date().toISOString(), verification_status: 'verified' }; setF(s => ({ ...s, ...nextSelfie })); setSavedData(s => ({ ...s, ...nextSelfie })); setFinalSaved(false); onSaved?.(); }} />
+                <MobileOtpVerificationBox token={token} phone={f.phone} verified={!!employerExtra.mobile_verified} onVerified={(phone) => { setF(s => ({ ...s, phone: phone || s.phone, mobile_verified: true })); onSaved?.(); }} />
+                <SelfieVerificationBox token={token} url={f.selfie_url || employerExtra.selfie_url} frontUrl={f.selfie_front_url || employerExtra.selfie_front_url} leftUrl={f.selfie_left_url || employerExtra.selfie_left_url} rightUrl={f.selfie_right_url || employerExtra.selfie_right_url} verified={!!(f.selfie_verified || employerExtra.selfie_verified)} disabled={busy} onUploaded={(payload) => { const uploadedUrl = typeof payload === 'string' ? payload : (payload?.selfie_url || payload?.selfie_front_url || payload?.url || ''); const nextSelfie = { ...(typeof payload === 'object' && payload ? payload : {}), selfie_url: uploadedUrl, selfie_front_url: uploadedUrl || (typeof payload === 'object' ? payload?.selfie_front_url : ''), selfie_verified: true, selfie_verified_at: (typeof payload === 'object' && payload?.selfie_verified_at) ? payload.selfie_verified_at : new Date().toISOString(), verification_status: 'verified' }; setF(s => ({ ...s, ...nextSelfie })); setSavedData(s => ({ ...s, ...nextSelfie })); setFinalSaved(false); onSaved?.(); }} />
               </CardContent>
             </Card>
           </div>
@@ -9307,9 +9309,9 @@ useEffect(() => {
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border bg-slate-50 p-4">
                 <p className="text-sm font-semibold text-slate-900">Signed in as</p>
-                <p className="text-sm text-muted-foreground truncate mt-1">{me.profile?.email}</p>
-                {me.profile?.login_id && (
-                  <p className="text-xs text-emerald-700 mt-2">Login ID: <b>{me.profile.login_id}</b></p>
+                <p className="text-sm text-muted-foreground truncate mt-1">{employerProfile.email}</p>
+                {employerProfile.login_id && (
+                  <p className="text-xs text-emerald-700 mt-2">Login ID: <b>{employerProfile.login_id}</b></p>
                 )}
               </div>
 
@@ -9410,7 +9412,7 @@ function getSubscriptionExpiryDate(plan, role) {
 function getPlanAmountPaise(plan, role) {
   const workerAmounts = {
     Free: 0,
-    Basic: 19900,
+    Basic: 9900,
     Growth: 29900,
     Premium: 59900,
   };
@@ -9427,7 +9429,7 @@ function getPlanAmountPaise(plan, role) {
 function getPlanDisplayPrice(plan, role) {
   const workerPrices = {
     Free: '₹0',
-    Basic: '₹199 / 1 Month',
+    Basic: '₹99 / 1 Month',
     Growth: '₹299 / 6 Months',
     Premium: '₹599 / 12 Months',
   };
@@ -9446,12 +9448,25 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const planStorageKey = `w2w-subscription-plan-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`;
   const defaultPlan = 'Free';
   const [currentPlan, setCurrentPlan] = useState(defaultPlan);
+  const [currentSubscription, setCurrentSubscription] = useState(null);
+  const [subscriptionExpiry, setSubscriptionExpiry] = useState('');
+  const [subscriptionStarted, setSubscriptionStarted] = useState('');
   const [paymentPlan, setPaymentPlan] = useState(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const trialInfo = useMemo(() => getActiveFreeProTrial(isEmployer ? 'employer' : 'worker', me?.profile || me), [isEmployer, me]);
   const trialDaysRemaining = trialInfo?.expires_at ? getDaysRemainingUntil(trialInfo.expires_at) : 0;
   const trialProgress = trialInfo?.started_at && trialInfo?.expires_at ? getTrialProgressPercent(trialInfo.started_at, trialInfo.expires_at) : 0;
+  const subscriptionRoleKey = isEmployer ? 'employer' : 'worker';
+  const subscriptionIdentity = me?.profile?.email || me?.profile?.id || me?.id || 'current';
+  const activeExpiry = currentPlan === FREE_PRO_TRIAL_PLAN
+    ? trialInfo?.expires_at
+    : (currentSubscription?.expires_at || subscriptionExpiry || (typeof window !== 'undefined' ? localStorage.getItem(`w2w-subscription-expiry-${subscriptionRoleKey}-${subscriptionIdentity}`) : ''));
+  const activeStarted = currentPlan === FREE_PRO_TRIAL_PLAN
+    ? trialInfo?.started_at
+    : (currentSubscription?.started_at || subscriptionStarted || '');
+  const activeDaysRemaining = activeExpiry ? getDaysRemainingUntil(activeExpiry) : 0;
+  const activeProgress = activeStarted && activeExpiry ? getTrialProgressPercent(activeStarted, activeExpiry) : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -9464,19 +9479,31 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
       } catch { return defaultPlan; }
     })();
     setCurrentPlan(localPlan);
+    try {
+      setSubscriptionExpiry(localStorage.getItem(`w2w-subscription-expiry-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`) || '');
+      setSubscriptionStarted(localStorage.getItem(`w2w-subscription-started-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`) || '');
+    } catch {}
     api('subscription/current').then((d) => {
       if (!alive) return;
-      const planName = normalizeSubscriptionPlan(d?.subscription?.plan_name || localPlan);
+      const sub = d?.subscription || null;
+      const planName = normalizeSubscriptionPlan(sub?.plan_name || localPlan);
+      setCurrentSubscription(sub);
+      if (sub?.expires_at) setSubscriptionExpiry(sub.expires_at);
+      if (sub?.started_at) setSubscriptionStarted(sub.started_at);
       if (planName && (planName === 'Trial' || SUBSCRIPTION_FEATURES[isEmployer ? 'employer' : 'worker']?.[planName])) {
         setCurrentPlan(planName);
-        try { localStorage.setItem(planStorageKey, planName); } catch {}
+        try {
+          localStorage.setItem(planStorageKey, planName);
+          if (sub?.expires_at) localStorage.setItem(`w2w-subscription-expiry-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, sub.expires_at);
+          if (sub?.started_at) localStorage.setItem(`w2w-subscription-started-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, sub.started_at);
+        } catch {}
       }
     }).catch(() => {});
     return () => { alive = false; };
   }, [open, planStorageKey]);
 
   const employeePlans = [
-    { name: 'Basic', price: '₹199 / 1 Month', highlight: false, validityMonths: 1, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
+    { name: 'Basic', price: '₹99 / 1 Month', highlight: false, validityMonths: 1, features: ['Apply to 5 jobs per month', 'Nearby search enabled', 'Mail alerts when a job is posted', 'Medium profile visibility', 'Language support enabled'] },
     { name: 'Growth', price: '₹299 / 6 Months', highlight: true, validityMonths: 6, features: ['Unlimited job applications', 'Priority-based visibility', 'Skill badge', 'Interview notifications', 'Better search ranking'] },
     { name: 'Premium', price: '₹599 / 12 Months', highlight: false, validityMonths: 12, features: ['Verified badge', 'Direct chat with employers', 'Faster matching', 'Top visibility', 'High-paying jobs access'] },
   ];
@@ -9505,15 +9532,21 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   const activatePlanAfterPayment = async (planName) => {
     const subRole = isEmployer ? 'employer' : 'worker';
     const expiryDate = getSubscriptionExpiryDate(planName, subRole);
+    const startedIso = new Date().toISOString();
+    const expiryIso = expiryDate.toISOString();
     try {
       localStorage.setItem(planStorageKey, planName);
       localStorage.setItem(`w2w-subscription-plan-${subRole}-current`, planName);
-      localStorage.setItem(`w2w-subscription-expiry-${subRole}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, expiryDate.toISOString());
-      localStorage.setItem(`w2w-subscription-expiry-${subRole}-current`, expiryDate.toISOString());
-      window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: subRole, plan: planName, expires_at: expiryDate.toISOString() } }));
+      localStorage.setItem(`w2w-subscription-expiry-${subRole}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, expiryIso);
+      localStorage.setItem(`w2w-subscription-expiry-${subRole}-current`, expiryIso);
+      localStorage.setItem(`w2w-subscription-started-${subRole}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, startedIso);
+      window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: subRole, plan: planName, expires_at: expiryIso } }));
     } catch {}
     setCurrentPlan(planName);
-    await api('subscription/select', { method: 'POST', body: { plan_name: planName, role: subRole, expires_at: expiryDate.toISOString() } });
+    setSubscriptionExpiry(expiryIso);
+    setSubscriptionStarted(startedIso);
+    setCurrentSubscription({ plan_name: planName, role: subRole, status: 'active', started_at: startedIso, expires_at: expiryIso });
+    await api('subscription/select', { method: 'POST', body: { plan_name: planName, role: subRole, expires_at: expiryIso } });
   };
 
   const startRazorpayPayment = async (plan) => {
@@ -9632,7 +9665,6 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
 
   const choosePlan = (plan) => {
     if (!plan) return;
-    if (currentPlan !== 'Trial' && currentPlan === plan.name) return;
     setPaymentPlan(plan);
     setPaymentError('');
   };
@@ -9671,22 +9703,22 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
           )}
         </div>
 
-        {currentPlan === 'Trial' && (
+        {currentPlan !== 'Free' && (
           <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="font-black">Congratulations! Free pro access is active for this account.</p>
-                <p className="text-xs text-emerald-700">All paid plan features are unlocked for 3 months from signup date.</p>
+                <p className="font-black">{currentPlan === FREE_PRO_TRIAL_PLAN ? 'Congratulations! Free pro access is active for this account.' : `${getSubscriptionLabel(currentPlan)} is active for this account.`}</p>
+                <p className="text-xs text-emerald-700">{currentPlan === FREE_PRO_TRIAL_PLAN ? 'All paid plan features are unlocked for 3 months from signup date.' : `Validity: ${getPlanValidityLabel(currentPlan, isEmployer ? 'employer' : 'worker')}. You can still subscribe to another plan anytime.`}</p>
               </div>
               <div className="rounded-xl bg-white px-3 py-2 text-center shadow-sm">
-                <p className="text-lg font-black text-emerald-900">{trialDaysRemaining}</p>
+                <p className="text-lg font-black text-emerald-900">{activeDaysRemaining}</p>
                 <p className="text-[11px] uppercase tracking-wide text-emerald-700">days left</p>
               </div>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
-              <div className="h-full rounded-full bg-emerald-600" style={{ width: `${trialProgress}%` }} />
+              <div className="h-full rounded-full bg-emerald-600" style={{ width: `${currentPlan === FREE_PRO_TRIAL_PLAN ? trialProgress : activeProgress}%` }} />
             </div>
-            {trialInfo?.expires_at && <p className="mt-2 text-xs text-emerald-700">Trial ends on {new Date(trialInfo.expires_at).toLocaleDateString()}.</p>}
+            {activeExpiry && <p className="mt-2 text-xs text-emerald-700">{currentPlan === FREE_PRO_TRIAL_PLAN ? 'Trial' : 'Plan'} ends on {new Date(activeExpiry).toLocaleDateString()}.</p>}
           </div>
         )}
 
@@ -9723,12 +9755,12 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
 
                 <Button
                   type="button"
-                  disabled={isCurrent}
-                  className={`mt-5 w-full rounded-xl ${isCurrent ? 'bg-emerald-600 disabled:bg-emerald-600 disabled:text-white disabled:!opacity-100' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+                  disabled={false}
+                  className="mt-5 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={() => choosePlan(plan)}
                 >
                   {isCurrent ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                  {isCurrent ? 'Current Plan' : isPlanIncluded(plan.name) ? 'Included' : 'Select Plan'}
+                  {isCurrent ? 'Renew Current Plan' : 'Select Plan'}
                 </Button>
               </div>
             );
