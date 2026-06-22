@@ -1447,11 +1447,11 @@ function AdminApp({ auth, onLogout }) {
   });
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#eef2ff,transparent_34%),linear-gradient(180deg,#f8fafc,#eef2f7)]">
-      <header className="bg-white/95 backdrop-blur-xl border-b sticky top-0 z-20 shadow-sm">
-        <div className="container py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,#fde68a,transparent_28%),radial-gradient(circle_at_top_right,#bfdbfe,transparent_30%),linear-gradient(135deg,#020617,#0f172a_42%,#1e293b)] text-slate-950">
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur-2xl shadow-[0_20px_60px_rgba(2,6,23,0.35)]">
+        <div className="container py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-white">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.15em]">Work2Wish</p>
+            <p className="text-xs font-black text-amber-300 uppercase tracking-[0.25em]">Work2Wish Command Center</p>
             <h1 className="text-2xl font-extrabold flex items-center gap-2 mt-0.5">
               <motion.div
                 className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 grid place-items-center text-white shadow-lg shadow-amber-500/25"
@@ -1462,18 +1462,18 @@ function AdminApp({ auth, onLogout }) {
               </motion.div>
               Admin Dashboard
             </h1>
-            <p className="text-sm text-muted-foreground">Control center for verifications, users, reports, messages and app update mode.</p>
+            <p className="text-sm text-slate-300">Premium control center for verifications, users, reports, messages and app update mode.</p>
           </div>
           <div className="flex gap-2 items-center">
             <NotificationCenter token={token} userId={auth?.profile?.id} channelKey="admin" accent="amber" />
-            <Button variant="outline" onClick={loadUsers} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}</Button>
-            <Button onClick={onLogout} className="bg-emerald-600 hover:bg-emerald-700"><LogOut className="w-4 h-4 mr-2" /> Logout</Button>
+            <Button variant="outline" onClick={loadUsers} disabled={busy} className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}</Button>
+            <Button onClick={onLogout} className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-teal-600"><LogOut className="w-4 h-4 mr-2" /> Logout</Button>
           </div>
         </div>
       </header>
 
-      <main className="container py-6 space-y-5">
-        <div className="grid lg:grid-cols-6 sm:grid-cols-3 gap-3">
+      <main className="container h-[calc(100dvh-112px)] overflow-y-auto overscroll-contain py-6 space-y-6 pb-24">
+        <div className="grid lg:grid-cols-6 sm:grid-cols-3 gap-4">
           {[
             ['Total users', adminStats.total, 'text-slate-900'],
             ['Workers', adminStats.workers, 'text-blue-700'],
@@ -1482,20 +1482,20 @@ function AdminApp({ auth, onLogout }) {
             ['Verified', adminStats.verified, 'text-emerald-600'],
             ['Blocked', adminStats.blocked, 'text-red-600'],
           ].map(([label, value, color]) => (
-            <Card key={label} className="border-0 shadow-sm bg-white/90"><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className={`text-2xl font-black ${color}`}>{value}</p></CardContent></Card>
+            <motion.div key={label} whileHover={{ y: -4, scale: 1.02 }} whileTap={{ scale: 0.98 }} transition={{ type: 'spring', stiffness: 280, damping: 20 }}><Card className="group overflow-hidden border border-white/15 bg-white/95 shadow-xl shadow-slate-950/10 backdrop-blur-xl"><CardContent className="relative p-4"><div className="absolute right-3 top-3 h-10 w-10 rounded-full bg-gradient-to-br from-amber-200/70 to-orange-200/30 blur-sm transition group-hover:scale-125" /><p className="relative text-[11px] font-black uppercase tracking-wide text-slate-500">{label}</p><p className={`relative mt-1 text-3xl font-black ${color}`}>{value}</p></CardContent></Card></motion.div>
           ))}
         </div>
 
-        <Card className="border-0 shadow-sm bg-white/95">
+        <Card className="border border-white/20 bg-white/95 shadow-2xl shadow-slate-950/10 backdrop-blur-xl">
           <CardContent className="p-3">
-            <div className="grid sm:grid-cols-4 gap-2">
+            <div className="grid sm:grid-cols-4 gap-2 rounded-2xl bg-slate-100/80 p-1">
               {[
                 ['users', 'Users & Verification'],
                 ['maintenance', 'Update Mode'],
                 ['messages', 'Admin Messages'],
                 ['safety', 'Safety Actions'],
               ].map(([key, label]) => (
-                <Button key={key} variant={adminTab === key ? 'default' : 'outline'} onClick={() => setAdminTab(key)} className={adminTab === key ? 'bg-slate-900 text-white' : 'bg-white'}>{label}</Button>
+                <Button key={key} variant={adminTab === key ? 'default' : 'outline'} onClick={() => setAdminTab(key)} className={adminTab === key ? 'bg-gradient-to-r from-slate-950 to-slate-800 text-white shadow-lg shadow-slate-900/20 rounded-xl' : 'bg-white text-slate-700 border-white hover:bg-slate-50 rounded-xl'}>{label}</Button>
               ))}
             </div>
           </CardContent>
@@ -1523,7 +1523,7 @@ function AdminApp({ auth, onLogout }) {
               </div>
               <div>
                 <Label>Message shown to users</Label>
-                <Textarea value={settings.maintenance_message || ''} onChange={(e) => setSettings(s => ({ ...s, maintenance_message: e.target.value }))} className="bg-white" />
+                <Textarea value={settings.maintenance_message || ''} onChange={(e) => setSettings(s => ({ ...s, maintenance_message: e.target.value }))} className="bg-white text-black placeholder:text-slate-500" />
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button disabled={settingsBusy} onClick={() => saveSettings({ maintenance_mode: true })} className="bg-red-600 hover:bg-red-700">{settingsBusy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldAlert className="w-4 h-4 mr-2" />} Turn ON Maintenance</Button>
@@ -1543,12 +1543,12 @@ function AdminApp({ auth, onLogout }) {
           <Card className="border-red-200 bg-red-50/70"><CardContent className="p-4 text-sm text-red-800">Block, unblock and delete controls are available in the user table and user details popup. Admin accounts are protected from these actions.</CardContent></Card>
         )}
 
-        {adminTab === 'users' && <Card>
+        {adminTab === 'users' && <Card className="border border-white/20 bg-white/95 shadow-2xl shadow-slate-950/10 backdrop-blur-xl">
           <CardHeader className="space-y-3">
             <div className="flex flex-col gap-3">
               <div>
-                <CardTitle>All user details</CardTitle>
-                <CardDescription>Inspect and manage accounts.</CardDescription>
+                <CardTitle className="text-2xl font-black text-slate-950">All user details</CardTitle>
+                <CardDescription>Inspect, verify, message and manage accounts from one premium queue.</CardDescription>
               </div>
               <div className="grid md:grid-cols-4 gap-2">
                 <div className="relative md:col-span-2">
@@ -1567,9 +1567,9 @@ function AdminApp({ auth, onLogout }) {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-xl border">
+            <div className="overflow-x-auto rounded-3xl border border-slate-200 shadow-inner">
               <table className="w-full text-sm bg-white">
-                <thead className="bg-slate-100 text-slate-600">
+                <thead className="bg-gradient-to-r from-slate-950 to-slate-800 text-white">
                   <tr>
                     <th className="text-left p-3">User</th>
                     <th className="text-left p-3">Role</th>
@@ -1582,7 +1582,7 @@ function AdminApp({ auth, onLogout }) {
                 </thead>
                 <tbody>
                   {localFiltered.map((u) => (
-                    <tr key={u.id} className="border-t align-top hover:bg-slate-50">
+                    <tr key={u.id} className="border-t align-top transition hover:bg-amber-50/60 hover:shadow-sm">
                       <td className="p-3 min-w-64"><p className="font-semibold">{u.full_name || u.company_name || 'No name'}</p><p className="text-xs text-muted-foreground">{u.email}</p>{u.company_name && <p className="text-xs text-muted-foreground">{u.company_name}</p>}</td>
                       <td className="p-3 capitalize"><Badge variant="secondary">{u.role}</Badge></td>
                       <td className="p-3">{u.login_id || '—'}</td>
@@ -1617,7 +1617,7 @@ function AdminApp({ auth, onLogout }) {
                       </td>
                       <td className="p-3 text-right">
                         <div className="flex justify-end gap-2 flex-wrap">
-                          <Button size="sm" variant="outline" onClick={() => openDetails(u)}>View</Button>
+                          <Button size="sm" variant="outline" onClick={() => openDetails(u)} className="rounded-xl border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100">View</Button>
                           <Button size="sm" variant="outline" disabled={busy || u.role === 'admin'} onClick={() => blockUser(u.id, !u.blocked)}>{u.blocked ? 'Unblock' : 'Block'}</Button>
                           <Button size="sm" variant="destructive" disabled={busy || u.role === 'admin'} onClick={() => deleteUser(u.id, u.email)}>Delete</Button>
                         </div>
@@ -1633,10 +1633,10 @@ function AdminApp({ auth, onLogout }) {
       </main>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-5xl max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain">
+        <DialogContent className="max-w-5xl max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl border border-white/20 bg-gradient-to-br from-white via-slate-50 to-indigo-50 shadow-2xl">
           <DialogHeader>
             <DialogTitle>{selected?.full_name || selected?.company_name || selected?.email || 'User details'}</DialogTitle>
-            <DialogDescription>Full account record.</DialogDescription>
+            <DialogDescription>Premium account record with verification cards, documents, messaging and safety actions.</DialogDescription>
           </DialogHeader>
           {loadingDetails ? <div className="py-10 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : selected && (
             <div className="space-y-5">
@@ -1736,16 +1736,16 @@ function AdminApp({ auth, onLogout }) {
                 return null;
               })()}
 
-              <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 space-y-3">
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-5 shadow-lg space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-sky-700" /> Message profile owner</h3>
                   <Badge className="bg-white text-sky-700 border border-sky-200">Direct</Badge>
                 </div>
-                <Textarea value={adminMessage} onChange={(e) => setAdminMessage(e.target.value)} placeholder="Type issue or update needed" className="bg-white" />
+                <Textarea value={adminMessage} onChange={(e) => setAdminMessage(e.target.value)} placeholder="Type issue or update needed" className="bg-white text-black placeholder:text-slate-500" />
                 <Button disabled={busy || selected.role === 'admin'} onClick={sendAdminProfileMessage} className="bg-sky-600 hover:bg-sky-700"><Send className="w-4 h-4 mr-2" /> Send message</Button>
-              </div>
+              </motion.div>
 
-              <div className="flex flex-wrap gap-2 rounded-2xl border bg-white p-4">
+              <div className="flex flex-wrap gap-2 rounded-3xl border border-slate-200 bg-white p-4 shadow-lg">
                 <Button disabled={busy || adminUserRole === 'admin' || !adminRequiredSectionsDone} onClick={() => verifyUser(selected.id, true)} className="bg-emerald-600 hover:bg-emerald-700"><ShieldCheck className="w-4 h-4 mr-2" /> Final verify account</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => verifyUser(selected.id, false)}><XCircle className="w-4 h-4 mr-2" /> Reject verification</Button>
                 <Button disabled={busy || selected.role === 'admin'} variant="outline" onClick={() => blockUser(selected.id, !selected.blocked)}>{selected.blocked ? 'Unblock user' : 'Block user'}</Button>
@@ -1824,7 +1824,7 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
     ? { backgroundColor: '#16a34a', color: '#ffffff', borderColor: '#16a34a' }
     : { backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' };
   return (
-    <div className={`rounded-3xl border ${styles[tone] || styles.indigo} p-4 shadow-sm`}>
+    <motion.div whileHover={{ y: -3 }} transition={{ type: 'spring', stiffness: 260, damping: 22 }} className={`rounded-3xl border ${styles[tone] || styles.indigo} p-5 shadow-xl shadow-slate-950/5 backdrop-blur-sm`}>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h3 className="font-extrabold flex items-center gap-2">{icon}{title}</h3>
@@ -1835,30 +1835,30 @@ function AdminVerificationSection({ title, tone = 'indigo', icon, verified, chil
         </Button>
       </div>
       <div className="space-y-3">{children}</div>
-    </div>
+    </motion.div>
   );
 }
 
 function InfoTile({ label, value }) {
   return (
-    <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3.5 sm:p-4 shadow-sm min-w-0 max-w-full overflow-hidden">
+    <motion.div whileHover={{ scale: 1.015 }} className="rounded-2xl border border-blue-100 bg-white/90 p-3.5 sm:p-4 shadow-sm min-w-0 max-w-full overflow-hidden">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500 break-words">{label}</p>
       <p className="mt-1 font-black text-slate-950 break-words whitespace-normal leading-snug">{value || '—'}</p>
-    </div>
+    </motion.div>
   );
 }
 
 function AdminCompactList({ title, icon, rows = [], empty = 'No records.' }) {
   return (
-    <div className="rounded-2xl border bg-white p-4 shadow-sm">
-      <h3 className="font-bold mb-3 flex items-center gap-2">{icon}{title}</h3>
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-950/5">
+      <h3 className="font-black mb-3 flex items-center gap-2 text-slate-950">{icon}{title}</h3>
       <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
         {rows.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : rows.map((r) => (
-          <div key={r.id || `${r.main}-${r.sub}`} className="rounded-xl border bg-slate-50 p-3">
+          <motion.div key={r.id || `${r.main}-${r.sub}`} whileHover={{ x: 3 }} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 shadow-sm">
             <p className="text-sm font-semibold capitalize">{r.main || '—'}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{r.sub || '—'}</p>
             {r.meta && <p className="text-[11px] text-muted-foreground mt-1 break-words line-clamp-2">{r.meta}</p>}
-          </div>
+          </motion.div>
         ))}
       </div>
     </div>
@@ -1888,8 +1888,8 @@ function StatusPill({ label, ok }) {
 
 function AdminDocPreview({ title, url }) {
   return (
-    <div className="rounded-xl border bg-white p-3">
-      <p className="font-semibold text-sm mb-2">{title}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-md">
+      <p className="font-bold text-sm mb-2 text-slate-900">{title}</p>
       <div className="h-40 rounded-lg bg-slate-50 border grid place-items-center overflow-hidden">
         {url ? <img src={url} alt={title} className="w-full h-full object-contain" /> : <p className="text-xs text-muted-foreground">Not uploaded</p>}
       </div>
@@ -3995,7 +3995,13 @@ function LocationSearchBox({
 
         {showPredictions && (predictions.length > 0 || loading || locationError) && (
           <div
-            className="absolute left-0 right-0 top-[calc(100%+8px)] z-[99999] max-h-72 overflow-y-auto rounded-2xl border bg-white shadow-2xl ring-1 ring-slate-200"
+            className="fixed z-[100000] max-h-[min(18rem,calc(100dvh-140px))] overflow-y-auto rounded-2xl border bg-white shadow-2xl ring-1 ring-slate-200"
+            style={{
+              top: dropdownPos.top,
+              left: dropdownPos.left,
+              width: Math.max(Number(dropdownPos.width) || 0, 280),
+              maxWidth: 'calc(100vw - 24px)',
+            }}
           >
             {loading && predictions.length === 0 && (
               <div className="px-4 py-3 text-sm text-slate-600 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching places...</div>
@@ -5720,6 +5726,19 @@ function sectionReviewState(me, section, fallbackStatus, verified) {
   if (sectionStatus === 'rejected') return 'rejected';
   if (sectionStatus === 'verified') return 'verified';
 
+  const extra = me?.extra || {};
+  const directVerifiedKeys = {
+    profile: ['profile_verified', 'profile_admin_verified', 'admin_profile_verified'],
+    bank: ['bank_verified', 'bank_admin_verified', 'admin_bank_verified'],
+    documents: ['documents_verified', 'document_verified', 'verification_verified', 'documents_admin_verified', 'admin_documents_verified'],
+  };
+  if ((directVerifiedKeys[normalizedSection] || []).some((key) => extra?.[key] === true || extra?.[key] === 'verified')) return 'verified';
+  const verifiedSections = extra?.verified_sections || me?.verified_sections || [];
+  if (Array.isArray(verifiedSections) && verifiedSections.map(normalizeSection).includes(normalizedSection)) return 'verified';
+  const legacySection = normalizeSection(extra?.verification_section || extra?.pending_verification_section);
+  const legacyStatus = extra?.verification_status || me?.verification_status || fallbackStatus;
+  if (legacyStatus === 'verified' && (!legacySection || legacySection === normalizedSection)) return 'verified';
+
   const parseDetails = (row) => {
     if (!row?.details) return {};
     if (typeof row.details === 'string') {
@@ -5950,9 +5969,9 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
       phone: cleanIndianPhone10(me.profile?.phone) || '',
       age: me.extra?.age || '',
       skills: (me.extra?.skills || []).join(', '),
-      experience_years: me.extra?.experience_years || 0,
-      experience_level: me.extra?.experience_level || 'beginner',
-      expected_daily_wage: me.extra?.expected_daily_wage || 0,
+      experience_years: me.extra?.experience_years ?? '',
+      experience_level: me.extra?.experience_level || '',
+      expected_daily_wage: me.extra?.expected_daily_wage ?? '',
       gender: me.extra?.gender || '',
       languages_known: Array.isArray(me.extra?.languages_known) ? me.extra.languages_known.join(', ') : (me.extra?.languages_known || ''),
       bank_account: cleanBankAccount(me.extra?.bank_account) || '',
