@@ -1198,7 +1198,7 @@ function AdminAccessButton({ onAuthed }) {
       <Button type="button" variant="outline" onClick={() => setOpen(true)} className="bg-white/80 backdrop-blur border-slate-200 shadow-sm hover:bg-white">
         
       </Button>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>Admin verification</DialogTitle>
           <DialogDescription>Login with the email you marked as admin in Supabase.</DialogDescription>
@@ -1633,7 +1633,7 @@ function AdminApp({ auth, onLogout }) {
       </main>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>{selected?.full_name || selected?.company_name || selected?.email || 'User details'}</DialogTitle>
             <DialogDescription>Full account record.</DialogDescription>
@@ -1794,7 +1794,7 @@ function AdminApp({ auth, onLogout }) {
 
               <div>
                 <h3 className="font-bold mb-2 flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Recent chats/messages</h3>
-                <div className="rounded-xl border bg-slate-50 max-h-72 overflow-y-auto">
+                <div className="rounded-xl border bg-slate-50 max-h-72 overflow-y-auto overscroll-contain">
                   {messages.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No messages found.</p> : messages.map((m) => (
                     <div key={m.id} className="p-3 border-b bg-white">
                       <p className="text-xs text-muted-foreground">{new Date(m.created_at).toLocaleString()} · From {m.sender_id} → {m.receiver_id}</p>
@@ -2941,7 +2941,7 @@ function AccountActivitySheet({ token, accent = 'indigo' }) {
         <Clock className="w-4 h-4 mr-2" /> Activity history
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="p-0 w-full sm:max-w-lg overflow-hidden premium-panel">
+        <DialogContent className="p-0 w-full sm:max-w-lg max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain premium-panel">
           <DialogHeader className={`px-5 py-4 bg-gradient-to-r ${top} text-white`}>
             <DialogTitle className="text-white flex items-center gap-2"><Clock className="w-5 h-5" /> History</DialogTitle>
             <DialogDescription className="text-xs text-white/80">Recent account activity, similar to Google history.</DialogDescription>
@@ -2994,7 +2994,7 @@ function FreeProTrialDialog({ role = 'worker', trial, onOpenSubscription, onClos
     : `Your ${role === 'employer' ? 'employer' : 'worker'} account has free pro access enabled for 3 months. All paid plan features are unlocked during this period.`;
   return (
     <Dialog open={!!trial.show} onOpenChange={(open) => !open && onClose?.()}>
-      <DialogContent className="max-w-md rounded-3xl border-emerald-100 bg-gradient-to-br from-white via-emerald-50 to-sky-50 p-6 text-center shadow-2xl">
+      <DialogContent className="max-w-md max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl border-emerald-100 bg-gradient-to-br from-white via-emerald-50 to-sky-50 p-6 text-center shadow-2xl">
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-emerald-500 to-sky-600 text-white shadow-lg">
           {isExpired ? <ShieldAlert className="h-8 w-8" /> : <Sparkles className="h-8 w-8" />}
         </div>
@@ -4287,7 +4287,7 @@ function WorkerHome({ token, me, onChat }) {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-2xl rounded-3xl">
+        <DialogContent className="w-[calc(100vw-24px)] max-w-2xl max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl p-4 sm:p-6">
           {selected && (
             <>
               <DialogHeader>
@@ -4687,7 +4687,7 @@ function PhotoPreviewDialog({ photo, title, onClose }) {
   const open = !!photo;
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
-      <DialogContent className="max-w-md rounded-3xl p-0 overflow-hidden bg-white">
+      <DialogContent className="max-w-md max-h-[calc(100dvh-170px)] rounded-3xl p-0 overflow-y-auto bg-white">
         <div className="p-4 border-b flex items-center justify-between">
           <DialogTitle className="text-base font-bold">{title || 'Profile photo'}</DialogTitle>
         </div>
@@ -4737,12 +4737,12 @@ function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 
         <Star className="w-4 h-4 mr-1" /> {label}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-0 shadow-2xl bg-white p-0 overflow-hidden">
+        <DialogContent className="w-[calc(100vw-24px)] max-w-md max-h-[calc(100dvh-170px)] rounded-3xl border-0 shadow-2xl bg-white p-0 overflow-hidden text-slate-950">
           <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-5">
             <DialogTitle className="text-xl font-black">{title}</DialogTitle>
             <DialogDescription className="text-white/85">Select the stars and add a clean feedback message.</DialogDescription>
           </div>
-          <div className="p-5 space-y-4">
+          <div className="p-5 space-y-4 max-h-[calc(100dvh-290px)] overflow-y-auto pb-10 bg-white text-slate-950">
             <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-center">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Your Rating</p>
               <div className="flex justify-center gap-2">
@@ -4753,9 +4753,9 @@ function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 
                 ))}
               </div>
             </div>
-            <Textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder={placeholder} className="min-h-[120px] rounded-2xl bg-white !text-slate-950 placeholder:!text-slate-400" />
+            <Textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder={placeholder} className="min-h-[120px] rounded-2xl border border-slate-300 bg-white !text-black placeholder:!text-slate-500 font-medium" style={{ color: '#000000', backgroundColor: '#ffffff' }} />
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button variant="outline" className="flex-1 rounded-xl bg-white text-black border-slate-300 hover:bg-slate-50 font-semibold" style={{ color: '#000000' }} onClick={() => setOpen(false)}>Cancel</Button>
               <Button className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={submit}>
                 {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />} Submit
               </Button>
@@ -6856,7 +6856,7 @@ function SelfieVerificationBox({ token, url, frontUrl, leftUrl, rightUrl, verifi
       )}
 
       <Dialog open={open} onOpenChange={(v) => v ? setOpen(true) : closeVerification()}>
-        <DialogContent className="w-[96vw] max-w-[760px] max-h-[96dvh] overflow-y-auto rounded-3xl p-3 sm:p-4">
+        <DialogContent className="w-[96vw] max-w-[760px] max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl p-3 sm:p-4">
           <DialogHeader>
             <DialogTitle>Front face auto capture</DialogTitle>
             <DialogDescription>Keep your full front face inside the green frame. It captures automatically when your face is clear.</DialogDescription>
@@ -7516,8 +7516,8 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
       </div>
 
       {openJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 backdrop-blur-sm px-3 py-4" onClick={() => setOpenJob(null)}>
-          <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-[2rem] bg-slate-50 shadow-2xl border border-white/70" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed left-0 right-0 top-[82px] bottom-[84px] z-50 flex items-center justify-center bg-slate-950/55 backdrop-blur-sm px-3 py-4 overflow-y-auto" onClick={() => setOpenJob(null)}>
+          <div className="w-full max-w-5xl max-h-[calc(100dvh-170px)] overflow-hidden rounded-[2rem] bg-slate-50 shadow-2xl border border-white/70" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 z-10 border-b border-emerald-100 bg-gradient-to-r from-emerald-700 via-emerald-600 to-sky-700 px-4 sm:px-5 py-4 text-white">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -7536,7 +7536,7 @@ function EmployerDashboard({ token, jobs, reload, onChat, onEditJob, focusApplic
               </div>
             </div>
 
-            <div className="max-h-[76vh] overflow-y-auto p-3 sm:p-5 space-y-4">
+            <div className="max-h-[calc(100dvh-285px)] overflow-y-auto p-3 sm:p-5 space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[11px] text-slate-500 font-semibold">Total applicants</p><p className="text-2xl font-extrabold text-slate-900">{applicants.length}</p></div>
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm"><p className="text-[11px] text-amber-700 font-semibold">Pending</p><p className="text-2xl font-extrabold text-amber-800">{applicants.filter(a => a.status === 'pending').length}</p></div>
@@ -8174,7 +8174,7 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
             )}
           </AnimatePresence>
           <Dialog open={sameDayTimeOpen} onOpenChange={setSameDayTimeOpen}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain">
               <DialogHeader>
                 <DialogTitle>Set working hours</DialogTitle>
                 <DialogDescription>Choose from what time to what time. Attendance will still be marked as one day only.</DialogDescription>
@@ -8462,15 +8462,15 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                   <Card key={app.id} className="rounded-2xl premium-card border-emerald-100 hover:border-emerald-300 transition overflow-hidden">
                     <CardContent className="p-4">
                       {/* Worker Header */}
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="flex items-center gap-3 flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4 min-w-0">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
                           <Avatar className="w-12 h-12">
                             <AvatarImage src={worker.photo_url} />
                             <AvatarFallback>{initials(worker.full_name || worker.email)}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm">{worker.full_name || worker.email}</p>
-                            <p className="text-xs text-muted-foreground">{(app.workers?.skills || []).join(', ') || 'No skills'}</p>
+                            <p className="font-semibold text-sm break-words whitespace-normal">{worker.full_name || worker.email}</p>
+                            <p className="text-xs text-muted-foreground break-words whitespace-normal">{(app.workers?.skills || []).join(', ') || 'No skills'}</p>
                             <p className="text-[11px] text-muted-foreground">
                               {app.workers?.experience_years || 0}y exp · ₹{app.workers?.expected_daily_wage || 0}/day
                             </p>
@@ -8484,7 +8484,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                       </div>
 
                       {/* Attendance Summary */}
-                      <div className="grid grid-cols-4 gap-2 mb-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
                         <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950 p-3 text-center">
                           <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
                             {presentDays}
@@ -8701,20 +8701,20 @@ function HiredJobs({ token, jobs, reload, onChat }) {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full min-w-0">
               {hiredJobs.map(job => {
                 const hiredCnt = getHiredCount(job);
                 return (
                   <Card
                     key={job.id}
-                    className="rounded-3xl border-emerald-100 hover:border-emerald-300 hover:shadow-xl transition cursor-pointer"
+                    className="w-full min-w-0 overflow-hidden rounded-3xl border-emerald-100 hover:border-emerald-300 hover:shadow-xl transition cursor-pointer"
                     onClick={() => openJobDetails(job)}
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="min-w-0">
-                          <p className="font-semibold truncate">{job.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">
+                    <CardContent className="p-4 w-full min-w-0 overflow-hidden">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3 min-w-0">
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <p className="font-semibold break-words whitespace-normal leading-snug">{job.title}</p>
+                          <p className="text-xs text-muted-foreground break-words whitespace-normal leading-relaxed">
                             {job.location_text} · {jobDurationLabel(job)}
                           </p>
                         </div>
@@ -8722,12 +8722,12 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                           {hiredCnt} hired
                         </Badge>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <span className="rounded-xl bg-emerald-50 text-emerald-700 px-2 py-2 font-bold">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs min-w-0">
+                        <span className="rounded-xl bg-emerald-50 text-emerald-700 px-2 py-2 font-bold break-words whitespace-normal min-w-0">
                           <Banknote className="w-3 h-3 inline mr-1" />
                           {jobPayLabel(job)}
                         </span>
-                        <span className="rounded-xl bg-slate-50 px-2 py-2">
+                        <span className="rounded-xl bg-slate-50 px-2 py-2 break-words whitespace-normal min-w-0">
                           <Users className="w-3 h-3 inline mr-1" />
                           {job.workers_needed || 1} needed
                         </span>
@@ -8744,12 +8744,12 @@ function HiredJobs({ token, jobs, reload, onChat }) {
       {/* Completion Dialog with Bank Details */}
       {completionDialogApp && (
         <Dialog open={!!completionDialogApp} onOpenChange={(o) => !o && setCompletionDialogApp(null)}>
-          <DialogContent className="max-w-2xl rounded-3xl">
+          <DialogContent className="w-[calc(100vw-24px)] max-w-2xl max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold">Complete Job & Pay Worker</DialogTitle>
             </DialogHeader>
             
-            <div className="space-y-4 max-h-96 overflow-y-auto">
+            <div className="space-y-4 max-h-[calc(100dvh-280px)] overflow-y-auto pb-10 text-slate-900">
               {/* Worker Info */}
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Worker Information</p>
@@ -9766,7 +9766,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
+      <DialogContent className="max-w-5xl w-[95vw] max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl text-slate-950">
             <Sparkles className="w-6 h-6 text-sky-700" />
@@ -9864,7 +9864,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     </Dialog>
 
     <Dialog open={!!paymentPlan} onOpenChange={(next) => { if (!paymentBusy && !next) setPaymentPlan(null); }}>
-      <DialogContent className="max-w-lg rounded-3xl border-emerald-100 bg-white p-5 sm:p-6 shadow-2xl">
+      <DialogContent className="max-w-lg max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl border-emerald-100 bg-white p-5 sm:p-6 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl text-slate-950">
             <IndianRupee className="h-5 w-5 text-emerald-700" />
@@ -9986,7 +9986,7 @@ function HelpSupportDialog({ open, onOpenChange, role = 'worker', me }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
+      <DialogContent className="max-w-4xl w-[95vw] max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl border-sky-100 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl sm:text-2xl text-slate-950">
             <MessageSquare className="w-6 h-6 text-sky-700" />
