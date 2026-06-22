@@ -17,6 +17,73 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+function normalizeVerifySectionName(section) {
+  return section === 'verification' ? 'documents' : section;
+}
+
+function buildSectionStatusPatch(existing, sections, state = 'verified') {
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+  for (const raw of sections) {
+    const section = normalizeVerifySectionName(raw);
+    base[section] = state;
+    if (section === 'documents') base.verification = state;
+  }
+  return base;
+}
+
+async function persistVerifiedSections(admin, table, userId, sections = [], extraPayload = {}) {
+  const normalized = sections.map(normalizeVerifySectionName);
+  let current = null;
+  try {
+    const { data, error } = await admin
+      .from(table)
+      .select('section_statuses,verified_sections')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    // Supabase query builders are not real Promises, so do not use .catch() directly
+    // after maybeSingle(). Ignore missing-row responses and continue with a clean patch.
+    if (!error) current = data || null;
+  } catch (_) {
+    current = null;
+  }
+  const nowIso = new Date().toISOString();
+  const sectionStatuses = buildSectionStatusPatch(current?.section_statuses, normalized, 'verified');
+  const verifiedSections = Array.from(new Set([...(Array.isArray(current?.verified_sections) ? current.verified_sections : []), ...normalized]));
+  const directFlags = {};
+  if (normalized.includes('profile')) directFlags.profile_verified = true;
+  if (normalized.includes('bank')) directFlags.bank_verified = true;
+  if (normalized.includes('documents')) {
+    directFlags.documents_verified = true;
+    directFlags.document_verified = true;
+    directFlags.verification_verified = true;
+  }
+  const payload = {
+    ...extraPayload,
+    ...directFlags,
+    section_statuses: sectionStatuses,
+    verified_sections: verifiedSections,
+    verification_status: 'verified',
+    verification_notes: null,
+    verified_at: nowIso,
+    updated_at: nowIso,
+  };
+  let { error } = await admin.from(table).update(payload).eq('user_id', userId);
+  if (error && String(error.message || '').toLowerCase().includes('column')) {
+    const safePayload = { ...payload };
+    delete safePayload.section_statuses;
+    delete safePayload.verified_sections;
+    delete safePayload.profile_verified;
+    delete safePayload.bank_verified;
+    delete safePayload.documents_verified;
+    delete safePayload.document_verified;
+    delete safePayload.verification_verified;
+    delete safePayload.updated_at;
+    ({ error } = await admin.from(table).update(safePayload).eq('user_id', userId));
+  }
+  return { error };
+}
+
 async function sendEmail({ to, subject, html }) {
   try {
     if (!process.env.RESEND_API_KEY) return;
@@ -991,30 +1058,32 @@ async function route(request, { params }) {
         if ('mobile_verified' in body) updatePayload.mobile_verified = !!body.mobile_verified;
         if ('selfie_verified' in body) updatePayload.selfie_verified = !!body.selfie_verified;
       }
-      let { error } = await admin.from(table).update(updatePayload).eq('user_id', userId);
-      if (error && String(error.message || '').toLowerCase().includes('column')) {
-        delete updatePayload.badge_verified_worker;
-        delete updatePayload.badge_skilled_worker;
-        delete updatePayload.badge_experienced;
-        delete updatePayload.badge_immediate_joiner;
-        delete updatePayload.mobile_verified;
-        delete updatePayload.selfie_verified;
-        ({ error } = await admin.from(table).update(updatePayload).eq('user_id', userId));
-      }
-      if (error) return err(error.message, 400);
-
-      // Final verify must also mark every visible profile card as verified.
-      // Without these section logs, dashboards can keep showing Pending/Send for Verification
-      // even after admin final approval because section-wise state wins over global status.
+      let error = null;
       if (verified) {
         const sectionsToVerify = profile.role === 'worker'
           ? ['profile', 'documents', 'bank']
           : ['profile', 'documents'];
-        for (const section of sectionsToVerify) {
-          await logActivity(admin, userId, 'admin_verified_section', { section, label: section === 'bank' ? 'Bank Details' : section === 'documents' ? 'Documents' : 'Profile' }, me.id);
-          await logActivity(admin, me.id, 'verified_profile_section', { user_id: userId, section, role: profile.role }, me.id);
+        const result = await persistVerifiedSections(admin, table, userId, sectionsToVerify, updatePayload);
+        error = result.error;
+        if (!error) {
+          for (const section of sectionsToVerify) {
+            await logActivity(admin, userId, 'admin_verified_section', { section, label: section === 'bank' ? 'Bank Details' : section === 'documents' ? 'Documents' : 'Profile' }, me.id);
+            await logActivity(admin, me.id, 'verified_profile_section', { user_id: userId, section, role: profile.role }, me.id);
+          }
+        }
+      } else {
+        ({ error } = await admin.from(table).update(updatePayload).eq('user_id', userId));
+        if (error && String(error.message || '').toLowerCase().includes('column')) {
+          delete updatePayload.badge_verified_worker;
+          delete updatePayload.badge_skilled_worker;
+          delete updatePayload.badge_experienced;
+          delete updatePayload.badge_immediate_joiner;
+          delete updatePayload.mobile_verified;
+          delete updatePayload.selfie_verified;
+          ({ error } = await admin.from(table).update(updatePayload).eq('user_id', userId));
         }
       }
+      if (error) return err(error.message, 400);
 
       await notify(admin, userId, verified ? 'Account verified' : 'Verification update', verified ? 'Your Work2Wish account is now verified.' : 'Your verification was not approved. Please update your documents.', 'verification', userId);
       await logActivity(admin, userId, verified ? 'admin_verified_account' : 'admin_rejected_verification', { verified, notes }, me.id);
@@ -1039,14 +1108,9 @@ async function route(request, { params }) {
         // This prevents a re-submitted section from staying visually Pending after admin approval
         // when activity log rows share close timestamps or the client reloads before logs settle.
         const table = profile.role === 'worker' ? 'workers' : 'employers';
-        const sectionKey = section === 'verification' ? 'documents' : section;
-        const nowIso = new Date().toISOString();
-        await admin.from(table).update({
-          verification_status: 'verified',
-          verification_section: sectionKey,
-          verification_notes: null,
-          verified_at: nowIso,
-        }).eq('user_id', userId);
+        const sectionKey = normalizeVerifySectionName(section);
+        const result = await persistVerifiedSections(admin, table, userId, [sectionKey], { verification_section: sectionKey });
+        if (result.error) return err(result.error.message, 400);
         await notify(admin, userId, `${label} verified`, `Admin verified your ${label.toLowerCase()} section.`, 'verification_section', userId);
       }
       await logActivity(admin, userId, body.messageOnly ? 'admin_sent_message' : 'admin_verified_section', { section, label, message: body.message || null }, me.id);

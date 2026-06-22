@@ -146,7 +146,6 @@ function getFreeTrialKeys(role, profile) {
   return {
     started: `w2w-free-pro-trial-started-${normalizedRole}-${identity}`,
     expires: `w2w-free-pro-trial-expires-${normalizedRole}-${identity}`,
-    claimed: `w2w-free-pro-trial-claimed-${normalizedRole}-${identity}`,
     popup: `w2w-free-pro-trial-popup-shown-${normalizedRole}-${identity}`,
     expiredPopup: `w2w-free-pro-trial-expired-popup-shown-${normalizedRole}-${identity}`,
   };
@@ -154,39 +153,24 @@ function getFreeTrialKeys(role, profile) {
 
 function getActiveFreeProTrial(role = 'worker', profile = null) {
   if (typeof window === 'undefined') return null;
-  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
-  const keys = getFreeTrialKeys(normalizedRole, profile);
+  const keys = getFreeTrialKeys(role, profile);
   try {
+    const { startedAt, expiresAt } = getThreeMonthTrialWindow(profile);
     const storedStart = localStorage.getItem(keys.started);
     const storedExpiry = localStorage.getItem(keys.expires);
-    const claimed = localStorage.getItem(keys.claimed) === 'yes' || !!storedStart || !!storedExpiry;
-    if (!claimed) return null;
-
-    // Trial must start only from the exact claim date, not from signup/profile creation date.
-    const fallbackStart = new Date();
-    const parsedStart = storedStart ? new Date(storedStart) : fallbackStart;
-    const finalStartedAt = Number.isFinite(parsedStart.getTime()) ? parsedStart : fallbackStart;
-
-    let parsedExpiry = storedExpiry ? new Date(storedExpiry) : null;
-    if (!parsedExpiry || !Number.isFinite(parsedExpiry.getTime())) {
-      parsedExpiry = new Date(finalStartedAt);
-      parsedExpiry.setMonth(parsedExpiry.getMonth() + 3);
-      localStorage.setItem(keys.expires, parsedExpiry.toISOString());
-      localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), parsedExpiry.toISOString());
-      localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, parsedExpiry.toISOString());
-    }
-
-    if (parsedExpiry.getTime() <= Date.now()) return null;
+    const finalStartedAt = (profile?.created_at || profile?.createdAt || profile?.signup_date || profile?.registered_at || profile?.joined_at || profile?.user_created_at) ? startedAt : (storedStart ? new Date(storedStart) : startedAt);
+    const finalExpiresAt = (profile?.created_at || profile?.createdAt || profile?.signup_date || profile?.registered_at || profile?.joined_at || profile?.user_created_at) ? expiresAt : (storedExpiry ? new Date(storedExpiry) : expiresAt);
+    if (!Number.isFinite(finalExpiresAt.getTime()) || finalExpiresAt.getTime() <= Date.now()) return null;
     return {
       started_at: finalStartedAt.toISOString(),
-      expires_at: parsedExpiry.toISOString(),
-      days_remaining: getDaysRemainingUntil(parsedExpiry),
-      progress_percent: getTrialProgressPercent(finalStartedAt, parsedExpiry),
+      expires_at: finalExpiresAt.toISOString(),
+      days_remaining: getDaysRemainingUntil(finalExpiresAt),
+      progress_percent: getTrialProgressPercent(finalStartedAt, finalExpiresAt),
     };
   } catch { return null; }
 }
 
-function claimFreeProTrial(role = 'worker', profile = null) {
+function ensureFreeProTrial(role = 'worker', profile = null) {
   if (typeof window === 'undefined') return { active: false, created: false, expired: false };
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   const identity = getSubscriptionIdentity(normalizedRole, profile);
@@ -198,72 +182,40 @@ function claimFreeProTrial(role = 'worker', profile = null) {
       return { active: false, created: false, paid: true };
     }
 
-    const existingStart = localStorage.getItem(keys.started);
-    const now = new Date();
-    const startedAt = existingStart ? new Date(existingStart) : now;
-    const safeStartedAt = Number.isFinite(startedAt.getTime()) ? startedAt : now;
-    const expiresAt = new Date(safeStartedAt);
-    expiresAt.setMonth(expiresAt.getMonth() + 3);
-
-    const startedIso = safeStartedAt.toISOString();
+    const { startedAt, expiresAt } = getThreeMonthTrialWindow(profile);
+    const startedIso = startedAt.toISOString();
     const expiresIso = expiresAt.toISOString();
+    const existingStart = localStorage.getItem(keys.started);
+    const hasSignupDate = !!(profile?.created_at || profile?.createdAt || profile?.signup_date || profile?.registered_at || profile?.joined_at || profile?.user_created_at);
+    const finalStartedIso = hasSignupDate ? startedIso : (existingStart || startedIso);
+    let finalExpiresAt = hasSignupDate ? expiresAt : new Date(localStorage.getItem(keys.expires) || expiresIso);
+    if (!Number.isFinite(finalExpiresAt.getTime())) finalExpiresAt = expiresAt;
+    const finalExpiresIso = finalExpiresAt.toISOString();
 
-    localStorage.setItem(keys.claimed, 'yes');
-    localStorage.setItem(keys.started, startedIso);
-    localStorage.setItem(keys.expires, expiresIso);
+    localStorage.setItem(keys.started, finalStartedIso);
+    localStorage.setItem(keys.expires, finalExpiresIso);
+
+    if (finalExpiresAt.getTime() <= Date.now()) {
+      localStorage.setItem(planKey, 'Free');
+      localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, 'Free');
+      return { active: false, created: false, expired: true, expires_at: finalExpiresIso };
+    }
+
     localStorage.setItem(planKey, FREE_PRO_TRIAL_PLAN);
     localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, FREE_PRO_TRIAL_PLAN);
-    localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), expiresIso);
-    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, expiresIso);
-    localStorage.setItem(`w2w-subscription-started-${normalizedRole}-${identity}`, startedIso);
-    localStorage.setItem(`w2w-subscription-started-${normalizedRole}-current`, startedIso);
-    window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: normalizedRole, plan: FREE_PRO_TRIAL_PLAN, started_at: startedIso, expires_at: expiresIso } }));
+    localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), finalExpiresIso);
+    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, finalExpiresIso);
+    window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: normalizedRole, plan: FREE_PRO_TRIAL_PLAN, expires_at: finalExpiresIso } }));
 
     return {
       active: true,
       created: !existingStart,
-      started_at: startedIso,
-      expires_at: expiresIso,
-      days_remaining: getDaysRemainingUntil(expiresAt),
-      progress_percent: getTrialProgressPercent(startedIso, expiresIso),
+      started_at: finalStartedIso,
+      expires_at: finalExpiresIso,
+      days_remaining: getDaysRemainingUntil(finalExpiresAt),
+      progress_percent: getTrialProgressPercent(finalStartedIso, finalExpiresIso),
     };
   } catch { return { active: false, created: false }; }
-}
-
-function getFreeProTrialPromptState(role = 'worker', profile = null) {
-  if (typeof window === 'undefined') return { show: false };
-  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
-  const identity = getSubscriptionIdentity(normalizedRole, profile);
-  const planKey = `w2w-subscription-plan-${normalizedRole}-${identity}`;
-  const keys = getFreeTrialKeys(normalizedRole, profile);
-  try {
-    const savedPlan = normalizeSubscriptionPlan(localStorage.getItem(planKey));
-    if (savedPlan && savedPlan !== 'Free' && savedPlan !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[savedPlan]) {
-      return { show: false, paid: true };
-    }
-    const claimed = localStorage.getItem(keys.claimed) === 'yes' || !!localStorage.getItem(keys.started);
-    if (claimed) {
-      const active = getActiveFreeProTrial(normalizedRole, profile);
-      if (active) return { show: false, active: true, ...active };
-      return { show: true, type: 'expired', expires_at: localStorage.getItem(keys.expires) || null };
-    }
-    const start = new Date();
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + 3);
-    return {
-      show: true,
-      type: 'claim',
-      started_at: start.toISOString(),
-      expires_at: end.toISOString(),
-      days_remaining: getDaysRemainingUntil(end),
-    };
-  } catch {
-    return { show: false };
-  }
-}
-
-function ensureFreeProTrial(role = 'worker', profile = null) {
-  return claimFreeProTrial(role, profile);
 }
 
 function getStoredSubscriptionPlan(role = 'worker', profile = null) {
@@ -3039,14 +2991,13 @@ function AccountActivitySheet({ token, accent = 'indigo' }) {
 // WORKER APP
 // ============================================================
 
-function FreeProTrialDialog({ role = 'worker', trial, onOpenSubscription, onClose, onClaim }) {
+function FreeProTrialDialog({ role = 'worker', trial, onOpenSubscription, onClose }) {
   if (!trial?.show) return null;
   const isExpired = trial.type === 'expired';
-  const isClaim = trial.type === 'claim' || trial.type === 'created';
-  const title = isExpired ? 'Your free pro access has ended' : 'Claim 3 Month Free Trial';
+  const title = isExpired ? 'Your free pro access has ended' : 'Congratulations!';
   const message = isExpired
     ? 'Your 3 months free pro access is over. Subscribe to any plan to continue premium features.'
-    : `Claim free pro access for your ${role === 'employer' ? 'employer' : 'worker'} account. All paid plan features will be unlocked for 3 months from the date you claim.`;
+    : `Your ${role === 'employer' ? 'employer' : 'worker'} account has free pro access enabled for 3 months. All paid plan features are unlocked during this period.`;
   return (
     <Dialog open={!!trial.show} onOpenChange={(open) => !open && onClose?.()}>
       <DialogContent className="max-w-md max-h-[calc(100dvh-170px)] overflow-y-auto overscroll-contain rounded-3xl border-emerald-100 bg-gradient-to-br from-white via-emerald-50 to-sky-50 p-6 text-center shadow-2xl">
@@ -3059,19 +3010,13 @@ function FreeProTrialDialog({ role = 'worker', trial, onOpenSubscription, onClos
         </DialogHeader>
         {!isExpired && trial.expires_at && (
           <div className="rounded-2xl border border-emerald-100 bg-white/80 p-3 text-sm font-bold text-emerald-800">
-            <p>Free pro access valid for 3 months after claiming</p>
-            <p className="mt-1 text-xs text-emerald-700">Duration starts only from the date you claim</p>
-          </div>
-        )}
-        {isExpired && trial.expires_at && (
-          <div className="rounded-2xl border border-rose-100 bg-white/80 p-3 text-sm font-bold text-rose-800">
-            <p>Trial ended on {new Date(trial.expires_at).toLocaleDateString()}</p>
+            <p>Pro access valid until {new Date(trial.expires_at).toLocaleDateString()}</p>
+            <p className="mt-1 text-xs text-emerald-700">{getDaysRemainingUntil(trial.expires_at)} days remaining</p>
           </div>
         )}
         <DialogFooter className="sm:justify-center gap-2">
           {isExpired && <Button type="button" onClick={onOpenSubscription} className="rounded-xl bg-emerald-600 hover:bg-emerald-700">Subscribe Now</Button>}
-          {isClaim && <Button type="button" onClick={onClaim} className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"><Sparkles className="mr-2 h-4 w-4" />Claim Free Trial</Button>}
-          <Button type="button" variant="outline" onClick={onClose} className="rounded-xl bg-white text-slate-900 hover:bg-slate-100">Later</Button>
+          <Button type="button" variant={isExpired ? 'outline' : 'default'} onClick={onClose} className="rounded-xl">{isExpired ? 'Later' : 'Continue'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -3141,17 +3086,18 @@ function WorkerApp({ auth, onLogout }) {
 
   useEffect(() => {
     if (!me?.profile?.id) return;
-    const result = getFreeProTrialPromptState('worker', me.profile);
+    const result = ensureFreeProTrial('worker', me.profile);
     const keys = getFreeTrialKeys('worker', me.profile);
     try {
-      if (result.type === 'claim') {
-        setTrialNotice({ show: true, type: 'claim', expires_at: result.expires_at });
-      } else if (result.type === 'expired' && localStorage.getItem(keys.expiredPopup) !== 'yes') {
+      if (result.created && localStorage.getItem(keys.popup) !== 'yes') {
+        localStorage.setItem(keys.popup, 'yes');
+        setTrialNotice({ show: true, type: 'created', expires_at: result.expires_at });
+      } else if (result.expired && localStorage.getItem(keys.expiredPopup) !== 'yes') {
         localStorage.setItem(keys.expiredPopup, 'yes');
         setTrialNotice({ show: true, type: 'expired', expires_at: result.expires_at });
       }
     } catch {}
-  }, [me?.profile?.id, tab]);
+  }, [me?.profile?.id]);
 
   const openChatWith = (peer) => { setChatPeer(peer); setTab('chats'); };
 
@@ -3258,11 +3204,6 @@ function WorkerApp({ auth, onLogout }) {
         role="worker"
         trial={trialNotice}
         onClose={() => setTrialNotice(null)}
-        onClaim={() => {
-          const result = claimFreeProTrial('worker', me?.profile);
-          setTrialNotice(null);
-          if (result?.active) toast.success('3 Month Free Pro Trial activated');
-        }}
         onOpenSubscription={() => { setTrialNotice(null); setTab('profile'); }}
       />
     </div>
@@ -7343,17 +7284,18 @@ function EmployerApp({ auth, onLogout }) {
 
   useEffect(() => {
     if (!me?.profile?.id) return;
-    const result = getFreeProTrialPromptState('employer', me.profile);
+    const result = ensureFreeProTrial('employer', me.profile);
     const keys = getFreeTrialKeys('employer', me.profile);
     try {
-      if (result.type === 'claim') {
-        setTrialNotice({ show: true, type: 'claim', expires_at: result.expires_at });
-      } else if (result.type === 'expired' && localStorage.getItem(keys.expiredPopup) !== 'yes') {
+      if (result.created && localStorage.getItem(keys.popup) !== 'yes') {
+        localStorage.setItem(keys.popup, 'yes');
+        setTrialNotice({ show: true, type: 'created', expires_at: result.expires_at });
+      } else if (result.expired && localStorage.getItem(keys.expiredPopup) !== 'yes') {
         localStorage.setItem(keys.expiredPopup, 'yes');
         setTrialNotice({ show: true, type: 'expired', expires_at: result.expires_at });
       }
     } catch {}
-  }, [me?.profile?.id, tab]);
+  }, [me?.profile?.id]);
 
   // Keep posted job applicant badges/counts live for employer without manual refresh.
   useEffect(() => {
@@ -7484,11 +7426,6 @@ function EmployerApp({ auth, onLogout }) {
         role="employer"
         trial={trialNotice}
         onClose={() => setTrialNotice(null)}
-        onClaim={() => {
-          const result = claimFreeProTrial('employer', me?.profile);
-          setTrialNotice(null);
-          if (result?.active) toast.success('3 Month Free Pro Trial activated');
-        }}
         onOpenSubscription={() => { setTrialNotice(null); setTab('profile'); }}
       />
     </div>
@@ -9685,24 +9622,15 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     let alive = true;
     const localPlan = (() => {
       try {
-        const storedPlan = getStoredSubscriptionPlan(isEmployer ? 'employer' : 'worker', me?.profile || me);
         const savedPlan = normalizeSubscriptionPlan(localStorage.getItem(planStorageKey));
-        const pickedPlan = storedPlan && storedPlan !== 'Free' ? storedPlan : savedPlan;
-        if (pickedPlan && (isEmployer ? ['Starter','Business','Enterprise','Trial'].includes(pickedPlan) : ['Basic','Growth','Premium','Trial'].includes(pickedPlan))) return pickedPlan;
+        if (savedPlan && (isEmployer ? ['Starter','Business','Enterprise','Trial'].includes(savedPlan) : ['Basic','Growth','Premium','Trial'].includes(savedPlan))) return savedPlan;
         return defaultPlan;
       } catch { return defaultPlan; }
     })();
     setCurrentPlan(localPlan);
     try {
-      const activeTrial = getActiveFreeProTrial(isEmployer ? 'employer' : 'worker', me?.profile || me);
-      if (activeTrial) {
-        setCurrentPlan(FREE_PRO_TRIAL_PLAN);
-        setSubscriptionExpiry(activeTrial.expires_at || '');
-        setSubscriptionStarted(activeTrial.started_at || '');
-      } else {
-        setSubscriptionExpiry(localStorage.getItem(`w2w-subscription-expiry-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`) || '');
-        setSubscriptionStarted(localStorage.getItem(`w2w-subscription-started-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`) || '');
-      }
+      setSubscriptionExpiry(localStorage.getItem(`w2w-subscription-expiry-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`) || '');
+      setSubscriptionStarted(localStorage.getItem(`w2w-subscription-started-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`) || '');
     } catch {}
     api('subscription/current').then((d) => {
       if (!alive) return;
@@ -9761,7 +9689,6 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
       localStorage.setItem(`w2w-subscription-expiry-${subRole}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, expiryIso);
       localStorage.setItem(`w2w-subscription-expiry-${subRole}-current`, expiryIso);
       localStorage.setItem(`w2w-subscription-started-${subRole}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, startedIso);
-      localStorage.setItem(`w2w-subscription-started-${subRole}-current`, startedIso);
       window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: subRole, plan: planName, expires_at: expiryIso } }));
     } catch {}
     setCurrentPlan(planName);
@@ -9930,7 +9857,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-black">{currentPlan === FREE_PRO_TRIAL_PLAN ? 'Congratulations! Free pro access is active for this account.' : `${getSubscriptionLabel(currentPlan)} is active for this account.`}</p>
-                <p className="text-xs text-emerald-700">{currentPlan === FREE_PRO_TRIAL_PLAN ? 'All paid plan features are unlocked for 3 months from the date you claimed.' : `Validity: ${getPlanValidityLabel(currentPlan, isEmployer ? 'employer' : 'worker')}. You can still subscribe to another plan anytime.`}</p>
+                <p className="text-xs text-emerald-700">{currentPlan === FREE_PRO_TRIAL_PLAN ? 'All paid plan features are unlocked for 3 months from signup date.' : `Validity: ${getPlanValidityLabel(currentPlan, isEmployer ? 'employer' : 'worker')}. You can still subscribe to another plan anytime.`}</p>
               </div>
               <div className="rounded-xl bg-white px-3 py-2 text-center shadow-sm">
                 <p className="text-lg font-black text-emerald-900">{activeDaysRemaining}</p>
