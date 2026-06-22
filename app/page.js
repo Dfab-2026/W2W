@@ -88,7 +88,19 @@ const SUBSCRIPTION_FEATURES = {
 };
 
 function getSubscriptionIdentity(role, profile) {
-  return profile?.email || profile?.id || profile?.user_id || 'current';
+  return profile?.email || profile?.id || profile?.user_id || profile?.profile?.email || profile?.profile?.id || 'current';
+}
+
+function getSubscriptionIdentities(role, profile) {
+  const ids = [
+    profile?.email,
+    profile?.id,
+    profile?.user_id,
+    profile?.profile?.email,
+    profile?.profile?.id,
+    'current',
+  ].filter(Boolean).map((v) => String(v));
+  return [...new Set(ids)];
 }
 
 
@@ -152,29 +164,108 @@ function getFreeTrialKeys(role, profile) {
   };
 }
 
+function getProfileTrialRecord(profile = null) {
+  const plan = normalizeSubscriptionPlan(profile?.subscription_plan || profile?.plan_name || profile?.extra?.subscription_plan || profile?.extra?.plan_name);
+  const status = String(profile?.subscription_status || profile?.extra?.subscription_status || '').toLowerCase();
+  const expiryRaw = profile?.subscription_expiry || profile?.subscription_expires_at || profile?.expires_at || profile?.extra?.subscription_expiry || profile?.extra?.subscription_expires_at || profile?.extra?.expires_at;
+  const startedRaw = profile?.subscription_started_at || profile?.started_at || profile?.created_at || profile?.extra?.subscription_started_at || profile?.extra?.started_at;
+  const isTrial = plan === FREE_PRO_TRIAL_PLAN;
+  if (!isTrial) return null;
+  const started = startedRaw ? new Date(startedRaw) : new Date();
+  const expires = expiryRaw ? new Date(expiryRaw) : (() => { const d = new Date(started); d.setMonth(d.getMonth() + 3); return d; })();
+  if (!Number.isFinite(expires.getTime())) return null;
+  return {
+    claimed: true,
+    active: status !== 'expired' && expires.getTime() > Date.now(),
+    started_at: Number.isFinite(started.getTime()) ? started.toISOString() : new Date().toISOString(),
+    expires_at: expires.toISOString(),
+  };
+}
+
+function hasClaimedFreeProTrial(role = 'worker', profile = null) {
+  if (getProfileTrialRecord(profile)?.claimed) return true;
+  if (typeof window === 'undefined') return false;
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  try {
+    return getSubscriptionIdentities(normalizedRole, profile).some((accountId) => {
+      const keys = getFreeTrialKeys(normalizedRole, { ...(profile || {}), email: accountId });
+      return localStorage.getItem(keys.claimed) === 'yes' || !!localStorage.getItem(keys.started) || !!localStorage.getItem(keys.expires);
+    });
+  } catch { return false; }
+}
+
+function syncFreeTrialToLocalStorage(role = 'worker', profile = null, trial = null) {
+  if (typeof window === 'undefined' || !trial?.started_at || !trial?.expires_at) return;
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  try {
+    for (const identity of getSubscriptionIdentities(normalizedRole, profile)) {
+      const scopedProfile = { ...(profile || {}), email: identity };
+      const keys = getFreeTrialKeys(normalizedRole, scopedProfile);
+      localStorage.setItem(keys.claimed, 'yes');
+      localStorage.setItem(keys.started, trial.started_at);
+      localStorage.setItem(keys.expires, trial.expires_at);
+      localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-${identity}`, FREE_PRO_TRIAL_PLAN);
+      localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-${identity}`, trial.expires_at);
+      localStorage.setItem(`w2w-subscription-started-${normalizedRole}-${identity}`, trial.started_at);
+    }
+    localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, FREE_PRO_TRIAL_PLAN);
+    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, trial.expires_at);
+    localStorage.setItem(`w2w-subscription-started-${normalizedRole}-current`, trial.started_at);
+  } catch {}
+}
+
 function getActiveFreeProTrial(role = 'worker', profile = null) {
   if (typeof window === 'undefined') return null;
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
-  const keys = getFreeTrialKeys(normalizedRole, profile);
   try {
-    const storedStart = localStorage.getItem(keys.started);
-    const storedExpiry = localStorage.getItem(keys.expires);
-    const claimed = localStorage.getItem(keys.claimed) === 'yes' || !!storedStart || !!storedExpiry;
-    if (!claimed) return null;
+    const profileTrial = getProfileTrialRecord(profile);
+    if (profileTrial?.active) {
+      syncFreeTrialToLocalStorage(normalizedRole, profile, profileTrial);
+      return {
+        started_at: profileTrial.started_at,
+        expires_at: profileTrial.expires_at,
+        days_remaining: getDaysRemainingUntil(profileTrial.expires_at),
+        progress_percent: getTrialProgressPercent(profileTrial.started_at, profileTrial.expires_at),
+      };
+    }
+    let found = null;
+    for (const identity of getSubscriptionIdentities(normalizedRole, profile)) {
+      const scopedProfile = { ...(profile || {}), email: identity };
+      const keys = getFreeTrialKeys(normalizedRole, scopedProfile);
+      const storedStart = localStorage.getItem(keys.started);
+      const storedExpiry = localStorage.getItem(keys.expires);
+      const claimed = localStorage.getItem(keys.claimed) === 'yes' || !!storedStart || !!storedExpiry;
+      if (claimed) {
+        found = { keys, storedStart, storedExpiry };
+        break;
+      }
+    }
+    if (!found) return null;
 
-    // Trial must start only from the exact claim date, not from signup/profile creation date.
     const fallbackStart = new Date();
-    const parsedStart = storedStart ? new Date(storedStart) : fallbackStart;
+    const parsedStart = found.storedStart ? new Date(found.storedStart) : fallbackStart;
     const finalStartedAt = Number.isFinite(parsedStart.getTime()) ? parsedStart : fallbackStart;
 
-    let parsedExpiry = storedExpiry ? new Date(storedExpiry) : null;
+    let parsedExpiry = found.storedExpiry ? new Date(found.storedExpiry) : null;
     if (!parsedExpiry || !Number.isFinite(parsedExpiry.getTime())) {
       parsedExpiry = new Date(finalStartedAt);
       parsedExpiry.setMonth(parsedExpiry.getMonth() + 3);
-      localStorage.setItem(keys.expires, parsedExpiry.toISOString());
-      localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), parsedExpiry.toISOString());
-      localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, parsedExpiry.toISOString());
     }
+
+    // Keep every account key in sync after the trial has been claimed once.
+    for (const identity of getSubscriptionIdentities(normalizedRole, profile)) {
+      const scopedProfile = { ...(profile || {}), email: identity };
+      const keys = getFreeTrialKeys(normalizedRole, scopedProfile);
+      localStorage.setItem(keys.claimed, 'yes');
+      localStorage.setItem(keys.started, finalStartedAt.toISOString());
+      localStorage.setItem(keys.expires, parsedExpiry.toISOString());
+      localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-${identity}`, FREE_PRO_TRIAL_PLAN);
+      localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-${identity}`, parsedExpiry.toISOString());
+      localStorage.setItem(`w2w-subscription-started-${normalizedRole}-${identity}`, finalStartedAt.toISOString());
+    }
+    localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, FREE_PRO_TRIAL_PLAN);
+    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, parsedExpiry.toISOString());
+    localStorage.setItem(`w2w-subscription-started-${normalizedRole}-current`, finalStartedAt.toISOString());
 
     if (parsedExpiry.getTime() <= Date.now()) return null;
     return {
@@ -191,61 +282,63 @@ function claimFreeProTrial(role = 'worker', profile = null) {
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   const identity = getSubscriptionIdentity(normalizedRole, profile);
   const planKey = `w2w-subscription-plan-${normalizedRole}-${identity}`;
-  const keys = getFreeTrialKeys(normalizedRole, profile);
   try {
     const savedPlan = normalizeSubscriptionPlan(localStorage.getItem(planKey));
     if (savedPlan && savedPlan !== 'Free' && savedPlan !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[savedPlan]) {
-      return { active: false, created: false, paid: true };
+      return { active: false, paid: true };
     }
 
-    const existingStart = localStorage.getItem(keys.started);
-    const now = new Date();
-    const startedAt = existingStart ? new Date(existingStart) : now;
-    const safeStartedAt = Number.isFinite(startedAt.getTime()) ? startedAt : now;
-    const expiresAt = new Date(safeStartedAt);
-    expiresAt.setMonth(expiresAt.getMonth() + 3);
+    const existing = getActiveFreeProTrial(normalizedRole, profile);
+    if (existing?.expires_at) return { active: true, created: false, ...existing };
 
-    const startedIso = safeStartedAt.toISOString();
-    const expiresIso = expiresAt.toISOString();
+    const started = new Date();
+    const expires = new Date(started);
+    expires.setMonth(expires.getMonth() + 3);
+    const startedIso = started.toISOString();
+    const expiresIso = expires.toISOString();
 
-    localStorage.setItem(keys.claimed, 'yes');
-    localStorage.setItem(keys.started, startedIso);
-    localStorage.setItem(keys.expires, expiresIso);
-    localStorage.setItem(planKey, FREE_PRO_TRIAL_PLAN);
+    for (const accountId of getSubscriptionIdentities(normalizedRole, profile)) {
+      const scopedProfile = { ...(profile || {}), email: accountId };
+      const keys = getFreeTrialKeys(normalizedRole, scopedProfile);
+      localStorage.setItem(keys.claimed, 'yes');
+      localStorage.setItem(keys.started, startedIso);
+      localStorage.setItem(keys.expires, expiresIso);
+      localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-${accountId}`, FREE_PRO_TRIAL_PLAN);
+      localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-${accountId}`, expiresIso);
+      localStorage.setItem(`w2w-subscription-started-${normalizedRole}-${accountId}`, startedIso);
+    }
     localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, FREE_PRO_TRIAL_PLAN);
-    localStorage.setItem(getSubscriptionExpiryKey(normalizedRole, profile), expiresIso);
     localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, expiresIso);
-    localStorage.setItem(`w2w-subscription-started-${normalizedRole}-${identity}`, startedIso);
     localStorage.setItem(`w2w-subscription-started-${normalizedRole}-current`, startedIso);
     window.dispatchEvent(new CustomEvent('w2w-subscription-updated', { detail: { role: normalizedRole, plan: FREE_PRO_TRIAL_PLAN, started_at: startedIso, expires_at: expiresIso } }));
 
     return {
       active: true,
-      created: !existingStart,
+      created: true,
       started_at: startedIso,
       expires_at: expiresIso,
-      days_remaining: getDaysRemainingUntil(expiresAt),
+      days_remaining: getDaysRemainingUntil(expires),
       progress_percent: getTrialProgressPercent(startedIso, expiresIso),
     };
-  } catch { return { active: false, created: false }; }
+  } catch { return { active: false }; }
 }
 
 function getFreeProTrialPromptState(role = 'worker', profile = null) {
   if (typeof window === 'undefined') return { show: false };
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
-  const identity = getSubscriptionIdentity(normalizedRole, profile);
-  const planKey = `w2w-subscription-plan-${normalizedRole}-${identity}`;
-  const keys = getFreeTrialKeys(normalizedRole, profile);
   try {
-    const savedPlan = normalizeSubscriptionPlan(localStorage.getItem(planKey));
-    if (savedPlan && savedPlan !== 'Free' && savedPlan !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[savedPlan]) {
-      return { show: false, paid: true };
+    for (const accountId of getSubscriptionIdentities(normalizedRole, profile)) {
+      const savedPlan = normalizeSubscriptionPlan(localStorage.getItem(`w2w-subscription-plan-${normalizedRole}-${accountId}`));
+      if (savedPlan && savedPlan !== 'Free' && savedPlan !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[savedPlan]) {
+        return { show: false, paid: true };
+      }
     }
-    const claimed = localStorage.getItem(keys.claimed) === 'yes' || !!localStorage.getItem(keys.started);
+    const activeBeforePrompt = getActiveFreeProTrial(normalizedRole, profile);
+    if (activeBeforePrompt) return { show: false, active: true, ...activeBeforePrompt };
+    const claimed = hasClaimedFreeProTrial(normalizedRole, profile);
     if (claimed) {
-      const active = getActiveFreeProTrial(normalizedRole, profile);
-      if (active) return { show: false, active: true, ...active };
-      return { show: true, type: 'expired', expires_at: localStorage.getItem(keys.expires) || null };
+      const profileTrial = getProfileTrialRecord(profile);
+      return { show: false, active: false, expired: true, ...(profileTrial || {}) };
     }
     const start = new Date();
     const end = new Date(start);
@@ -269,12 +362,14 @@ function ensureFreeProTrial(role = 'worker', profile = null) {
 function getStoredSubscriptionPlan(role = 'worker', profile = null) {
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   const fallback = 'Free';
+  const dbPlan = normalizeSubscriptionPlan(profile?.subscription_plan || profile?.plan_name || profile?.extra?.subscription_plan || profile?.extra?.plan_name);
+  if (dbPlan && dbPlan !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[dbPlan]) return dbPlan;
   if (typeof window === 'undefined') return fallback;
-  const identity = getSubscriptionIdentity(normalizedRole, profile);
-  const keys = identity && identity !== 'current'
-    ? [`w2w-subscription-plan-${normalizedRole}-${identity}`]
-    : [`w2w-subscription-plan-${normalizedRole}-current`];
-  for (const key of keys) {
+  const keys = [
+    ...getSubscriptionIdentities(normalizedRole, profile).map((identity) => `w2w-subscription-plan-${normalizedRole}-${identity}`),
+    `w2w-subscription-plan-${normalizedRole}-current`,
+  ];
+  for (const key of [...new Set(keys)]) {
     try {
       const value = normalizeSubscriptionPlan(localStorage.getItem(key));
       if (value && value !== FREE_PRO_TRIAL_PLAN && SUBSCRIPTION_FEATURES[normalizedRole]?.[value]) return value;
@@ -613,13 +708,28 @@ const jobDurationLabel = (job = {}) => {
   return `${days} day(s)${range ? ` · ${range}` : ''}`;
 };
 const initials = (name) => (name || '').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
-const isYes = (v) => v === true || v === 'yes' || v === 'true';
-const jobBenefits = (job = {}) => ([
-  isYes(job.food_included) ? 'Food' : null,
-  isYes(job.accommodation_available) ? 'Accommodation' : null,
-  isYes(job.transportation_provided) ? 'Travel' : null,
-  isYes(job.overtime_available) ? 'Overtime' : null,
-].filter(Boolean));
+const isYes = (v) => {
+  if (v === true || v === 1) return true;
+  const text = String(v ?? '').trim().toLowerCase();
+  return ['yes', 'true', '1', 'available', 'included', 'provided', 'enable', 'enabled'].includes(text);
+};
+const normalizeJobExtra = (extra = {}) => {
+  if (!extra) return {};
+  if (typeof extra === 'string') {
+    try { return JSON.parse(extra) || {}; } catch { return {}; }
+  }
+  return extra || {};
+};
+const pickFirst = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim?.() !== '');
+const jobBenefits = (job = {}) => {
+  const extra = normalizeJobExtra(job.extra);
+  return ([
+    isYes(pickFirst(job.food_included, job.food, job.food_available, extra.food_included, extra.food, extra.food_available)) ? 'Food' : null,
+    isYes(pickFirst(job.accommodation_available, job.accommodation, job.accomodation_available, job.accomodation, extra.accommodation_available, extra.accommodation, extra.accomodation_available, extra.accomodation)) ? 'Accommodation' : null,
+    isYes(pickFirst(job.transportation_provided, job.transportation, job.transport, job.travel, extra.transportation_provided, extra.transportation, extra.transport, extra.travel)) ? 'Transport' : null,
+    isYes(pickFirst(job.overtime_available, job.overtime, extra.overtime_available, extra.overtime)) ? 'Overtime' : null,
+  ].filter(Boolean));
+};
 const jobExpiresAt = (job = {}) => {
   if (job.expires_at) return new Date(job.expires_at);
   const days = Number(job.post_valid_days || job.valid_days || 0);
@@ -3258,8 +3368,16 @@ function WorkerApp({ auth, onLogout }) {
         role="worker"
         trial={trialNotice}
         onClose={() => setTrialNotice(null)}
-        onClaim={() => {
-          const result = claimFreeProTrial('worker', me?.profile);
+        onClaim={async () => {
+          let result = claimFreeProTrial('worker', me?.profile);
+          try {
+            const saved = await api('subscription/claim-trial', { method: 'POST', token, body: { role: 'worker' } });
+            if (saved?.subscription) {
+              result = { active: saved.subscription.status === 'active', started_at: saved.subscription.started_at, expires_at: saved.subscription.expires_at };
+              syncFreeTrialToLocalStorage('worker', me?.profile, result);
+              await refreshMe?.();
+            }
+          } catch {}
           setTrialNotice(null);
           if (result?.active) toast.success('3 Month Free Pro Trial activated');
         }}
@@ -4121,7 +4239,13 @@ function WorkerHome({ token, me, onChat }) {
   const [nearbyLocation, setNearbyLocation] = useState({ location_text: '', latitude: null, longitude: null });
   const [selected, setSelected] = useState(null);
   const [profileView, setProfileView] = useState(null);
-  const workerSubscription = getSubscriptionFeatures('worker', me?.profile || me);
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0);
+  useEffect(() => {
+    const refresh = () => setSubscriptionRefreshKey((v) => v + 1);
+    window.addEventListener('w2w-subscription-updated', refresh);
+    return () => window.removeEventListener('w2w-subscription-updated', refresh);
+  }, []);
+  const workerSubscription = useMemo(() => getSubscriptionFeatures('worker', me?.profile || me), [me, subscriptionRefreshKey]);
   const workerPlan = workerSubscription.plan;
   const workerApplicationMonthKey = `w2w-worker-applications-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}-${new Date().toISOString().slice(0, 7)}`;
   const workerIsVerified = !!(me?.verified || me?.extra?.verified || me?.verification_status === 'verified' || me?.extra?.verification_status === 'verified');
@@ -4377,6 +4501,13 @@ function WorkerHome({ token, me, onChat }) {
               </div>
               <div className="rounded-2xl border bg-white p-4 space-y-3">
                 <div><p className="text-xs font-semibold text-slate-500">Work details</p><p className="text-sm whitespace-pre-wrap text-slate-700 mt-1">{selected.description || 'No description provided.'}</p></div>
+                {jobBenefits(selected).length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {jobBenefits(selected).map((benefit) => (
+                      <span key={benefit} className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">{benefit}</span>
+                    ))}
+                  </div>
+                )}
                 <div className="grid sm:grid-cols-2 gap-2 text-sm">
                   <InfoTile label="Skill needed" value={selected.skill_needed || 'Any suitable worker'} />
                   <InfoTile label="Experience" value={selected.experience || 'beginner'} />
@@ -4454,7 +4585,13 @@ function JobCard({ job, onClick, onProfile }) {
 }
 
 function WorkerMyJobs({ token, onChat, onLogout }) {
-  const workerSubscription = getSubscriptionFeatures('worker', loadSession()?.profile);
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0);
+  useEffect(() => {
+    const refresh = () => setSubscriptionRefreshKey((v) => v + 1);
+    window.addEventListener('w2w-subscription-updated', refresh);
+    return () => window.removeEventListener('w2w-subscription-updated', refresh);
+  }, []);
+  const workerSubscription = useMemo(() => getSubscriptionFeatures('worker', loadSession()?.profile), [subscriptionRefreshKey]);
   const workerPlan = workerSubscription.plan;
   const [apps, setApps] = useState([]);
   const [profileView, setProfileView] = useState(null);
@@ -4633,7 +4770,7 @@ function WorkerMyJobs({ token, onChat, onLogout }) {
                   </Button>
                 )}
                 {a.status === 'completed' && !a.feedback_given && (
-                  <FeedbackStarsButton token={token} applicationId={a.id} target="company" label="Give Feedback" onDone={load} />
+                  <FeedbackStarsButton token={token} applicationId={a.id} target="company" label="Give Feedback" className="bg-amber-500 hover:bg-amber-600 !text-white border-0" onDone={load} />
                 )}
                 {a.status === 'completed' && a.feedback_given && (
                   <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-sm font-semibold text-emerald-700">
@@ -4804,8 +4941,8 @@ function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 
 
   return (
     <>
-      <Button size={size} variant="outline" className={className || 'flex-1 border-amber-200 text-amber-700 hover:bg-amber-50'} onClick={() => setOpen(true)}>
-        <Star className="w-4 h-4 mr-1" /> {label}
+      <Button size={size} variant="outline" className={`${className || 'flex-1 border-amber-200 text-amber-700 hover:bg-amber-50'} font-bold`} onClick={() => setOpen(true)}>
+        <Star className="w-4 h-4 mr-1 shrink-0" /> <span className="!text-white font-bold drop-shadow-sm">{label}</span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="w-[calc(100vw-24px)] max-w-md max-h-[calc(100dvh-170px)] rounded-3xl border-0 shadow-2xl bg-white p-0 overflow-hidden text-slate-950">
@@ -4848,7 +4985,8 @@ function ProfileDetailsDialog({ data, onClose, onChat }) {
   const isWorker = hasCompanyIdentity ? false : (hasWorkerIdentity || !!p.skills || !!p.resume_url || !!p.selfie_url || !!p.selfie_front_url);
   const title = isWorker ? (p.full_name || p.name || 'Worker profile') : (p.company_name || p.full_name || 'Company profile');
   const photo = isWorker ? (p.selfie_front_url || p.selfie_url || p.photo_url || p.profile_photo_url || p.profile_image_url || p.image_url) : (p.company_logo || p.company_logo_url || p.logo_url || p.logo || p.photo_url || p.profile_photo_url || p.profile_image_url || p.image_url);
-  const resumeUrl = p.resume_url || p.resume || p.resume_file_url || p.cv_url;
+  const profileExtra = p.extra || p.details || {};
+  const resumeUrl = p.resume_url || profileExtra.resume_url || p.resume || profileExtra.resume || p.resume_file_url || profileExtra.resume_file_url || p.cv_url || profileExtra.cv_url;
   const feedbacks = data?.feedbacks || [];
   const blackMarks = data?.blackMarks || [];
   const calculatedRatingCount = feedbacks.filter((f) => Number(f.rating) > 0).length;
@@ -5845,7 +5983,8 @@ function sectionReviewState(me, section, fallbackStatus, verified) {
   if (legacyStatus === 'verified' && (!submittedSection || submittedSection === normalizedSection)) return 'verified';
   if (legacyStatus === 'pending' && (!submittedSection || submittedSection === normalizedSection)) return 'pending';
   if (legacyStatus === 'rejected' && (!submittedSection || submittedSection === normalizedSection)) return 'rejected';
-  if (verified) return 'verified';
+  // Use legacy/global verification only when no section-wise workflow data exists.
+  if (verified && !Object.keys(sectionStatuses || {}).length && !submittedSection) return 'verified';
   return 'not_submitted';
 }
 
@@ -5877,7 +6016,7 @@ function hasBankDetailsChanged(current = {}, saved = {}) {
 }
 
 
-const PROFILE_VERIFY_FIELDS = ['full_name', 'phone', 'age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known', 'available', 'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'previous_employer_reference', 'bio'];
+const PROFILE_VERIFY_FIELDS = ['full_name', 'phone', 'age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known', 'available', 'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'previous_employer_reference', 'bio', 'resume_url'];
 const EMPLOYER_PROFILE_VERIFY_FIELDS = ['full_name', 'phone', 'company_name', 'industry', 'company_size', 'hr_contact', 'official_email', 'company_address', 'gst_number', 'pan_number', 'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'description'];
 const WORKER_DOCUMENT_VERIFY_FIELDS = ['address', 'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'certificate_url', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url'];
 const EMPLOYER_DOCUMENT_VERIFY_FIELDS = ['gst_number', 'pan_number', 'pan_image_url', 'pan_back_url', 'gst_certificate_url'];
@@ -5933,7 +6072,9 @@ function SectionVerificationAction({ token, me, section, title, description, col
   const [busy, setBusy] = useState(false);
   const verified = !!me?.extra?.verified;
   const rawStatus = sectionReviewState(me, section, me?.extra?.verification_status, verified);
-  const status = modified ? 'modified' : rawStatus;
+  const [localStatus, setLocalStatus] = useState(rawStatus);
+  useEffect(() => { setLocalStatus(rawStatus); }, [rawStatus, section]);
+  const status = modified ? 'modified' : localStatus;
   const label = status === 'verified' ? 'Done' : status === 'pending' ? 'Pending Approval' : 'Send for Verification';
   const Icon = status === 'verified' ? CheckCircle2 : status === 'pending' ? Clock : ShieldCheck;
   const blocked = !!disabled || status === 'pending' || status === 'verified';
@@ -5960,9 +6101,20 @@ function SectionVerificationAction({ token, me, section, title, description, col
         }
       }
       const extraPayload = payloadBuilder ? (payloadBuilder() || {}) : {};
-      const body = { ...extraPayload, verification_status: 'pending', verification_section: section };
+      const normalizedSection = normalizeVerifySectionName(section);
+      const body = {
+        ...extraPayload,
+        verification_status: 'pending',
+        verification_section: normalizedSection,
+        section_statuses: {
+          ...(me?.section_statuses || me?.extra?.section_statuses || {}),
+          [normalizedSection]: 'pending',
+          ...(normalizedSection === 'documents' ? { verification: 'pending' } : {}),
+        },
+      };
       await api('me/profile', { method: 'PATCH', token, body });
-      setForm?.((prev) => ({ ...prev, ...body }));
+      setLocalStatus('pending');
+      setForm?.((prev) => ({ ...prev, ...body, verification_status: 'pending', verification_section: normalizedSection }));
       await onSaved?.();
       toast.success(`${title} sent for admin verification`);
     } catch (e) {
@@ -6180,12 +6332,12 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
   const workerDocumentChangedAfterReview = (workerDocumentReviewStatus === 'pending' || workerDocumentReviewStatus === 'verified') && hasVerifySectionChanged(WORKER_DOCUMENT_VERIFY_FIELDS, buildWorkerDocumentPayload(), me?.profile || {}, me?.extra || {});
   // Final Save button must follow the visible card status. If cards show Done/Verified, Save must work.
   // Do not block final Save because of stale local comparison data after admin approval or page refresh.
-  const workerProfileCardVerifiedForSave = (workerProfileReviewStatus === 'verified' || verified) && !workerProfileChangedAfterReview;
-  const workerDocumentCardVerifiedForSave = (workerDocumentReviewStatus === 'verified' || verified) && !workerDocumentChangedAfterReview;
-  const workerBankCardVerifiedForSave = (workerBankReviewStatus === 'verified' || verified) && !workerBankChangedAfterReview;
+  const workerProfileCardVerifiedForSave = workerProfileReviewStatus === 'verified' && !workerProfileChangedAfterReview;
+  const workerDocumentCardVerifiedForSave = workerDocumentReviewStatus === 'verified' && !workerDocumentChangedAfterReview;
+  const workerBankCardVerifiedForSave = workerBankReviewStatus === 'verified' && !workerBankChangedAfterReview;
   const workerAllProfileCardsVerified = workerProfileCardVerifiedForSave && workerDocumentCardVerifiedForSave && workerBankCardVerifiedForSave;
   const workerAnyProfileCardPending = [workerProfileReviewStatus, workerDocumentReviewStatus, workerBankReviewStatus].some((s) => s === 'pending') && !(workerProfileChangedAfterReview || workerDocumentChangedAfterReview || workerBankChangedAfterReview);
-  const workerTopStatus = finalSaved && workerAllProfileCardsVerified ? 'verified' : workerAnyProfileCardPending ? 'pending' : 'unverified';
+  const workerTopStatus = workerAllProfileCardsVerified ? (finalSaved ? 'verified' : 'unverified') : workerAnyProfileCardPending ? 'pending' : 'unverified';
 
   useEffect(() => {
     if (!workerAllProfileCardsVerified && finalSaved) {
@@ -6300,6 +6452,14 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                 className="mt-2 inline-flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full hover:bg-indigo-100">
                 <Hash className="w-3 h-3" /> ID: <span className="font-bold tracking-wider">{me.profile.login_id}</span>
                 <Copy className="w-3 h-3 opacity-60" />
+              </button>
+            )}
+            {(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url) && (
+              <button
+                type="button"
+                onClick={() => window.open(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url, '_blank')}
+                className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs bg-white text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-full hover:bg-indigo-50">
+                <FileText className="w-3 h-3" /> Resume
               </button>
             )}
           </div>
@@ -6489,11 +6649,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               <div>
                 <Label>Resume upload <span className="text-xs font-normal text-muted-foreground">optional</span></Label>
                 <p className="text-xs text-muted-foreground mt-1">Upload resume so employers can view it from your profile.</p>
-                {form.resume_url && <button type="button" onClick={() => window.open(form.resume_url, '_blank')} className="mt-2 text-xs font-bold text-indigo-700 hover:underline">View uploaded resume</button>}
+                {(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url) && <button type="button" onClick={() => window.open(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url, '_blank')} className="mt-2 text-xs font-bold text-indigo-700 hover:underline">View uploaded resume</button>}
               </div>
               <label className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-semibold text-indigo-700 cursor-pointer hover:bg-indigo-50">
                 <Upload className="w-4 h-4" /> {form.resume_url ? 'Change Resume' : 'Upload Resume'}
-                <input type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'resume', token); setForm(f => ({ ...f, resume_url: url })); toast.success('Resume uploaded. Click Send for Verification to update profile.'); } catch (err) { toast.error(err.message || 'Resume upload failed'); } finally { e.target.value = ''; } }} />
+                <input type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'resume', token); setForm(f => ({ ...f, resume_url: url, resume_file_url: url, cv_url: url })); toast.success('Resume uploaded. Click Send for Verification to update profile.'); } catch (err) { toast.error(err.message || 'Resume upload failed'); } finally { e.target.value = ''; } }} />
               </label>
             </div>
           </div>
@@ -7484,8 +7644,16 @@ function EmployerApp({ auth, onLogout }) {
         role="employer"
         trial={trialNotice}
         onClose={() => setTrialNotice(null)}
-        onClaim={() => {
-          const result = claimFreeProTrial('employer', me?.profile);
+        onClaim={async () => {
+          let result = claimFreeProTrial('employer', me?.profile);
+          try {
+            const saved = await api('subscription/claim-trial', { method: 'POST', token, body: { role: 'employer' } });
+            if (saved?.subscription) {
+              result = { active: saved.subscription.status === 'active', started_at: saved.subscription.started_at, expires_at: saved.subscription.expires_at };
+              syncFreeTrialToLocalStorage('employer', me?.profile, result);
+              await refreshMe?.();
+            }
+          } catch {}
           setTrialNotice(null);
           if (result?.active) toast.success('3 Month Free Pro Trial activated');
         }}
@@ -7763,7 +7931,13 @@ function StatCard({ label, value, icon: Icon, color }) {
 }
 
 function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
-  const employerSubscription = getSubscriptionFeatures('employer', loadSession()?.profile);
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0);
+  useEffect(() => {
+    const refresh = () => setSubscriptionRefreshKey((v) => v + 1);
+    window.addEventListener('w2w-subscription-updated', refresh);
+    return () => window.removeEventListener('w2w-subscription-updated', refresh);
+  }, []);
+  const employerSubscription = useMemo(() => getSubscriptionFeatures('employer', loadSession()?.profile), [subscriptionRefreshKey]);
   const employerPlan = employerSubscription.plan;
   const [step, setStep] = useState(1);
   const [employerMe, setEmployerMe] = useState(null);
@@ -8338,7 +8512,13 @@ function PostJob({ token, onPosted, initialJob = null, currentJobs = [] }) {
 }
 
 function HiredJobs({ token, jobs, reload, onChat }) {
-  const employerSubscription = getSubscriptionFeatures('employer', loadSession()?.profile);
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0);
+  useEffect(() => {
+    const refresh = () => setSubscriptionRefreshKey((v) => v + 1);
+    window.addEventListener('w2w-subscription-updated', refresh);
+    return () => window.removeEventListener('w2w-subscription-updated', refresh);
+  }, []);
+  const employerSubscription = useMemo(() => getSubscriptionFeatures('employer', loadSession()?.profile), [subscriptionRefreshKey]);
   const employerPlan = employerSubscription.plan;
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
@@ -8779,7 +8959,7 @@ function HiredJobs({ token, jobs, reload, onChat }) {
                         )}
 
                         {app.status === 'completed' && !app.feedback_given && (
-                          <FeedbackStarsButton token={token} applicationId={app.id} target="worker" label="Give Feedback" className="flex-1 bg-amber-500 hover:bg-amber-600 text-white border-0" onDone={() => { if (selectedJob) openJobDetails(selectedJob); reload?.(); }} />
+                          <FeedbackStarsButton token={token} applicationId={app.id} target="worker" label="Give Feedback" className="flex-1 bg-amber-500 hover:bg-amber-600 !text-white border-0" onDone={() => { if (selectedJob) openJobDetails(selectedJob); reload?.(); }} />
                         )}
 
                         {app.status === 'completed' && app.feedback_given && (
@@ -9707,16 +9887,39 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     api('subscription/current').then((d) => {
       if (!alive) return;
       const sub = d?.subscription || null;
+      const roleKey = isEmployer ? 'employer' : 'worker';
+      const activeTrial = getActiveFreeProTrial(roleKey, me?.profile || me);
+      if (activeTrial) {
+        setCurrentSubscription({ plan_name: FREE_PRO_TRIAL_PLAN, role: roleKey, status: 'active', started_at: activeTrial.started_at, expires_at: activeTrial.expires_at });
+        setCurrentPlan(FREE_PRO_TRIAL_PLAN);
+        setSubscriptionExpiry(activeTrial.expires_at || '');
+        setSubscriptionStarted(activeTrial.started_at || '');
+        try {
+          for (const accountId of getSubscriptionIdentities(roleKey, me?.profile || me)) localStorage.setItem(`w2w-subscription-plan-${roleKey}-${accountId}`, FREE_PRO_TRIAL_PLAN);
+          localStorage.setItem(planStorageKey, FREE_PRO_TRIAL_PLAN);
+          localStorage.setItem(`w2w-subscription-plan-${roleKey}-current`, FREE_PRO_TRIAL_PLAN);
+          if (activeTrial.expires_at) {
+            localStorage.setItem(`w2w-subscription-expiry-${roleKey}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, activeTrial.expires_at);
+            localStorage.setItem(`w2w-subscription-expiry-${roleKey}-current`, activeTrial.expires_at);
+          }
+          if (activeTrial.started_at) {
+            localStorage.setItem(`w2w-subscription-started-${roleKey}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, activeTrial.started_at);
+            localStorage.setItem(`w2w-subscription-started-${roleKey}-current`, activeTrial.started_at);
+          }
+        } catch {}
+        return;
+      }
       const planName = normalizeSubscriptionPlan(sub?.plan_name || localPlan);
       setCurrentSubscription(sub);
       if (sub?.expires_at) setSubscriptionExpiry(sub.expires_at);
       if (sub?.started_at) setSubscriptionStarted(sub.started_at);
-      if (planName && (planName === 'Trial' || SUBSCRIPTION_FEATURES[isEmployer ? 'employer' : 'worker']?.[planName])) {
+      if (planName && planName !== 'Free' && (planName === FREE_PRO_TRIAL_PLAN || SUBSCRIPTION_FEATURES[roleKey]?.[planName])) {
         setCurrentPlan(planName);
         try {
+          for (const accountId of getSubscriptionIdentities(roleKey, me?.profile || me)) localStorage.setItem(`w2w-subscription-plan-${roleKey}-${accountId}`, planName);
           localStorage.setItem(planStorageKey, planName);
-          if (sub?.expires_at) localStorage.setItem(`w2w-subscription-expiry-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, sub.expires_at);
-          if (sub?.started_at) localStorage.setItem(`w2w-subscription-started-${isEmployer ? 'employer' : 'worker'}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, sub.started_at);
+          if (sub?.expires_at) localStorage.setItem(`w2w-subscription-expiry-${roleKey}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, sub.expires_at);
+          if (sub?.started_at) localStorage.setItem(`w2w-subscription-started-${roleKey}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, sub.started_at);
         } catch {}
       }
     }).catch(() => {});
@@ -9756,6 +9959,7 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
     const startedIso = new Date().toISOString();
     const expiryIso = expiryDate.toISOString();
     try {
+      for (const accountId of getSubscriptionIdentities(subRole, me?.profile || me)) localStorage.setItem(`w2w-subscription-plan-${subRole}-${accountId}`, planName);
       localStorage.setItem(planStorageKey, planName);
       localStorage.setItem(`w2w-subscription-plan-${subRole}-current`, planName);
       localStorage.setItem(`w2w-subscription-expiry-${subRole}-${me?.profile?.email || me?.profile?.id || me?.id || 'current'}`, expiryIso);
