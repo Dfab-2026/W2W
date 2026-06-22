@@ -1382,6 +1382,15 @@ function AdminApp({ auth, onLogout }) {
     if (directStatus === 'rejected') return 'rejected';
     if (directStatus === 'verified') return 'verified';
 
+    const persistedSection = normalizeVerificationSection(
+      selected?.verification_section ||
+      selected?.pending_verification_section ||
+      selected?.extra?.verification_section ||
+      selected?.extra?.pending_verification_section
+    );
+    const persistedStatus = selected?.verification_status || selected?.extra?.verification_status;
+    if (persistedStatus === 'verified' && (!persistedSection || persistedSection === wanted)) return 'verified';
+
     const rows = [...(selected?.activity || [])]
       .filter((a) => sectionActivityMatches(a, wanted))
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
@@ -1390,13 +1399,8 @@ function AdminApp({ auth, onLogout }) {
     if (action.includes('admin_verified_section') || action.includes('verified_profile_section')) return 'verified';
     if (action.includes('submit') || action.includes('upload') || action.includes('pending') || action.includes('verification')) return 'pending';
 
-    const pendingSection = normalizeVerificationSection(
-      selected?.verification_section ||
-      selected?.pending_verification_section ||
-      selected?.extra?.verification_section ||
-      selected?.extra?.pending_verification_section
-    );
-    const status = selected?.verification_status || selected?.extra?.verification_status;
+    const pendingSection = persistedSection;
+    const status = persistedStatus;
     if ((status === 'pending' || status === 'submitted' || status === 'modified') && pendingSection === wanted) return 'pending';
     return 'not_submitted';
   };
@@ -1447,7 +1451,7 @@ function AdminApp({ auth, onLogout }) {
   });
 
   return (
-    <div className="h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,#fde68a,transparent_28%),radial-gradient(circle_at_top_right,#bfdbfe,transparent_30%),linear-gradient(135deg,#020617,#0f172a_42%,#1e293b)] text-slate-950">
+    <div className="h-[100dvh] overflow-y-auto overflow-x-hidden bg-[radial-gradient(circle_at_top_left,#fde68a,transparent_28%),radial-gradient(circle_at_top_right,#bfdbfe,transparent_30%),linear-gradient(135deg,#020617,#0f172a_42%,#1e293b)] text-slate-950">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur-2xl shadow-[0_20px_60px_rgba(2,6,23,0.35)]">
         <div className="container py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-white">
           <div>
@@ -1472,7 +1476,7 @@ function AdminApp({ auth, onLogout }) {
         </div>
       </header>
 
-      <main className="container h-[calc(100dvh-112px)] overflow-y-auto overscroll-contain py-6 space-y-6 pb-24">
+      <main className="container min-h-[calc(100dvh-112px)] overflow-visible py-6 space-y-6 pb-32">
         <div className="grid lg:grid-cols-6 sm:grid-cols-3 gap-4">
           {[
             ['Total users', adminStats.total, 'text-slate-900'],

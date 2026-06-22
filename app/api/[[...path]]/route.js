@@ -1040,11 +1040,12 @@ async function route(request, { params }) {
         // when activity log rows share close timestamps or the client reloads before logs settle.
         const table = profile.role === 'worker' ? 'workers' : 'employers';
         const sectionKey = section === 'verification' ? 'documents' : section;
+        const nowIso = new Date().toISOString();
         await admin.from(table).update({
           verification_status: 'verified',
           verification_section: sectionKey,
           verification_notes: null,
-          verified_at: new Date().toISOString(),
+          verified_at: nowIso,
         }).eq('user_id', userId);
         await notify(admin, userId, `${label} verified`, `Admin verified your ${label.toLowerCase()} section.`, 'verification_section', userId);
       }
@@ -1149,7 +1150,9 @@ async function route(request, { params }) {
         }
 
         const persistedSection = extra?.verification_section === 'verification' ? 'documents' : extra?.verification_section;
-        if (extra?.verification_status === 'verified' && persistedSection && !section_statuses[persistedSection]) {
+        if (extra?.verification_status === 'verified' && persistedSection) {
+          // Persisted admin approval must win over older or same-time pending activity.
+          // This keeps the worker document card showing Done after admin approval.
           section_statuses[persistedSection] = 'verified';
         }
       } catch (e) {
