@@ -404,8 +404,20 @@ function dashboardScreenForRole(role) {
 }
 
 function getCanonicalAppUrl() {
-  const envUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://work2wish.com').trim();
-  return envUrl.replace(/\/$/, '');
+  // Production payments must always start from the Razorpay registered domain.
+  // Do not allow a temporary Vercel preview URL from env to become canonical,
+  // because Razorpay blocks mobile checkout for unregistered websites.
+  const envUrl = (process.env.NEXT_PUBLIC_PRODUCTION_DOMAIN || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || '').trim();
+  const fallbackUrl = 'https://work2wish.com';
+  const rawUrl = envUrl || fallbackUrl;
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname || '';
+    if (isLocalHostName(host) || isTemporaryVercelHost(host)) return fallbackUrl;
+    return parsed.origin.replace(/\/$/, '');
+  } catch {
+    return fallbackUrl;
+  }
 }
 
 function isLocalHostName(hostname = '') {
