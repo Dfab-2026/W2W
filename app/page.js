@@ -164,70 +164,10 @@ function getFreeTrialKeys(role, profile) {
   };
 }
 
-function getProfileTrialRecord(profile = null) {
-  const plan = normalizeSubscriptionPlan(profile?.subscription_plan || profile?.plan_name || profile?.extra?.subscription_plan || profile?.extra?.plan_name);
-  const status = String(profile?.subscription_status || profile?.extra?.subscription_status || '').toLowerCase();
-  const expiryRaw = profile?.subscription_expiry || profile?.subscription_expires_at || profile?.expires_at || profile?.extra?.subscription_expiry || profile?.extra?.subscription_expires_at || profile?.extra?.expires_at;
-  const startedRaw = profile?.subscription_started_at || profile?.started_at || profile?.created_at || profile?.extra?.subscription_started_at || profile?.extra?.started_at;
-  const isTrial = plan === FREE_PRO_TRIAL_PLAN;
-  if (!isTrial) return null;
-  const started = startedRaw ? new Date(startedRaw) : new Date();
-  const expires = expiryRaw ? new Date(expiryRaw) : (() => { const d = new Date(started); d.setMonth(d.getMonth() + 3); return d; })();
-  if (!Number.isFinite(expires.getTime())) return null;
-  return {
-    claimed: true,
-    active: status !== 'expired' && expires.getTime() > Date.now(),
-    started_at: Number.isFinite(started.getTime()) ? started.toISOString() : new Date().toISOString(),
-    expires_at: expires.toISOString(),
-  };
-}
-
-function hasClaimedFreeProTrial(role = 'worker', profile = null) {
-  if (getProfileTrialRecord(profile)?.claimed) return true;
-  if (typeof window === 'undefined') return false;
-  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
-  try {
-    return getSubscriptionIdentities(normalizedRole, profile).some((accountId) => {
-      const keys = getFreeTrialKeys(normalizedRole, { ...(profile || {}), email: accountId });
-      return localStorage.getItem(keys.claimed) === 'yes' || !!localStorage.getItem(keys.started) || !!localStorage.getItem(keys.expires);
-    });
-  } catch { return false; }
-}
-
-function syncFreeTrialToLocalStorage(role = 'worker', profile = null, trial = null) {
-  if (typeof window === 'undefined' || !trial?.started_at || !trial?.expires_at) return;
-  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
-  try {
-    for (const identity of getSubscriptionIdentities(normalizedRole, profile)) {
-      const scopedProfile = { ...(profile || {}), email: identity };
-      const keys = getFreeTrialKeys(normalizedRole, scopedProfile);
-      localStorage.setItem(keys.claimed, 'yes');
-      localStorage.setItem(keys.started, trial.started_at);
-      localStorage.setItem(keys.expires, trial.expires_at);
-      localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-${identity}`, FREE_PRO_TRIAL_PLAN);
-      localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-${identity}`, trial.expires_at);
-      localStorage.setItem(`w2w-subscription-started-${normalizedRole}-${identity}`, trial.started_at);
-    }
-    localStorage.setItem(`w2w-subscription-plan-${normalizedRole}-current`, FREE_PRO_TRIAL_PLAN);
-    localStorage.setItem(`w2w-subscription-expiry-${normalizedRole}-current`, trial.expires_at);
-    localStorage.setItem(`w2w-subscription-started-${normalizedRole}-current`, trial.started_at);
-  } catch {}
-}
-
 function getActiveFreeProTrial(role = 'worker', profile = null) {
   if (typeof window === 'undefined') return null;
   const normalizedRole = role === 'employer' ? 'employer' : 'worker';
   try {
-    const profileTrial = getProfileTrialRecord(profile);
-    if (profileTrial?.active) {
-      syncFreeTrialToLocalStorage(normalizedRole, profile, profileTrial);
-      return {
-        started_at: profileTrial.started_at,
-        expires_at: profileTrial.expires_at,
-        days_remaining: getDaysRemainingUntil(profileTrial.expires_at),
-        progress_percent: getTrialProgressPercent(profileTrial.started_at, profileTrial.expires_at),
-      };
-    }
     let found = null;
     for (const identity of getSubscriptionIdentities(normalizedRole, profile)) {
       const scopedProfile = { ...(profile || {}), email: identity };
@@ -333,12 +273,13 @@ function getFreeProTrialPromptState(role = 'worker', profile = null) {
         return { show: false, paid: true };
       }
     }
-    const activeBeforePrompt = getActiveFreeProTrial(normalizedRole, profile);
-    if (activeBeforePrompt) return { show: false, active: true, ...activeBeforePrompt };
-    const claimed = hasClaimedFreeProTrial(normalizedRole, profile);
+    const claimed = getSubscriptionIdentities(normalizedRole, profile).some((accountId) => {
+      const keys = getFreeTrialKeys(normalizedRole, { ...(profile || {}), email: accountId });
+      return localStorage.getItem(keys.claimed) === 'yes' || !!localStorage.getItem(keys.started) || !!localStorage.getItem(keys.expires);
+    });
     if (claimed) {
-      const profileTrial = getProfileTrialRecord(profile);
-      return { show: false, active: false, expired: true, ...(profileTrial || {}) };
+      const active = getActiveFreeProTrial(normalizedRole, profile);
+      return { show: false, active: !!active, ...(active || {}) };
     }
     const start = new Date();
     const end = new Date(start);
@@ -454,6 +395,39 @@ async function getFreshAccessToken(preferredToken) {
     }
   } catch {}
   return saved?.session?.access_token || null;
+}
+
+function dashboardScreenForRole(role) {
+  if (role === 'admin') return 'admin-app';
+  if (role === 'employer') return 'employer-app';
+  return 'worker-app';
+}
+
+function getCanonicalAppUrl() {
+  const envUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://work2wish.com').trim();
+  return envUrl.replace(/\/$/, '');
+}
+
+function isLocalHostName(hostname = '') {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+}
+
+function isTemporaryVercelHost(hostname = '') {
+  return hostname.endsWith('.vercel.app') || hostname.includes('-vercel.app');
+}
+
+function redirectToCanonicalDomainIfNeeded({ keepPath = true } = {}) {
+  if (typeof window === 'undefined') return false;
+  const canonical = getCanonicalAppUrl();
+  if (!canonical || canonical.includes('localhost')) return false;
+  const target = new URL(canonical);
+  const currentHost = window.location.hostname;
+  if (isLocalHostName(currentHost)) return false;
+  if (currentHost === target.hostname) return false;
+  if (!isTemporaryVercelHost(currentHost)) return false;
+  const nextUrl = `${target.origin}${keepPath ? `${window.location.pathname}${window.location.search}${window.location.hash}` : ''}`;
+  window.location.replace(nextUrl);
+  return true;
 }
 
 async function api(path, { method = 'GET', body, token } = {}) {
@@ -726,7 +700,7 @@ const jobBenefits = (job = {}) => {
   return ([
     isYes(pickFirst(job.food_included, job.food, job.food_available, extra.food_included, extra.food, extra.food_available)) ? 'Food' : null,
     isYes(pickFirst(job.accommodation_available, job.accommodation, job.accomodation_available, job.accomodation, extra.accommodation_available, extra.accommodation, extra.accomodation_available, extra.accomodation)) ? 'Accommodation' : null,
-    isYes(pickFirst(job.transportation_provided, job.transportation, job.transport, job.travel, extra.transportation_provided, extra.transportation, extra.transport, extra.travel)) ? 'Transport' : null,
+    isYes(pickFirst(job.transportation_provided, job.transportation, job.transport, job.travel, extra.transportation_provided, extra.transportation, extra.transport, extra.travel)) ? 'Travel' : null,
     isYes(pickFirst(job.overtime_available, job.overtime, extra.overtime_available, extra.overtime)) ? 'Overtime' : null,
   ].filter(Boolean));
 };
@@ -1143,9 +1117,17 @@ export default function App() {
   useEffect(() => {
     const boot = async () => {
       const s = loadSession();
-      if (s?.session?.access_token) {
-        // Validate saved session against the server. Also restore the Supabase
-        // client session so authenticated actions continue working after deploy/refresh.
+      if (s?.session?.access_token && s?.role) {
+        const restored = {
+          session: s.session,
+          role: s.role,
+          profile: s.profile || {},
+        };
+        setAuth(restored);
+        setScreenState(dashboardScreenForRole(restored.role));
+
+        // Restore and validate in the background. The user stays on the dashboard
+        // instead of seeing login again during a normal mobile/browser refresh.
         try {
           if (s.session?.refresh_token) {
             await getSupabase().auth.setSession({
@@ -1162,13 +1144,13 @@ export default function App() {
             };
             saveSession(validated.session, validated.role, validated.profile);
             setAuth(validated);
-            setScreen(validated.role === 'admin' ? 'admin-app' : validated.role === 'employer' ? 'employer-app' : 'worker-app');
-            return;
+            setScreenState(dashboardScreenForRole(validated.role));
           }
         } catch {
-          // token invalid/expired — fall through to login
+          // Keep the saved dashboard session. Authenticated API calls will refresh
+          // the token when needed and ask for login only if the server rejects it.
         }
-        clearSession();
+        return;
       }
 
       // Detect Supabase OAuth callback (hash fragment with access_token)
@@ -1196,7 +1178,7 @@ export default function App() {
           const payload = { session: data.session, role: fin.role, profile };
           saveSession(payload.session, payload.role, payload.profile);
           setAuth(payload);
-          setScreen(fin.role === 'admin' ? 'admin-app' : fin.role === 'employer' ? 'employer-app' : 'worker-app');
+          setScreenState(dashboardScreenForRole(fin.role));
           setTimeout(() => enableDeviceNotifications(payload.session?.access_token).catch(() => {}), 600);
           if (typeof window !== 'undefined' && window.location.hash) {
             window.history.replaceState({}, '', window.location.pathname);
@@ -1242,7 +1224,7 @@ export default function App() {
       }
     } catch {}
     setAuth(payload);
-    setScreen(data.role === 'admin' ? 'admin-app' : data.role === 'employer' ? 'employer-app' : 'worker-app');
+    setScreenState(dashboardScreenForRole(data.role));
     setTimeout(() => enableDeviceNotifications(payload.session?.access_token).catch(() => {}), 600);
     toast.success('Welcome to Work2Wish!');
   };
@@ -3368,16 +3350,8 @@ function WorkerApp({ auth, onLogout }) {
         role="worker"
         trial={trialNotice}
         onClose={() => setTrialNotice(null)}
-        onClaim={async () => {
-          let result = claimFreeProTrial('worker', me?.profile);
-          try {
-            const saved = await api('subscription/claim-trial', { method: 'POST', token, body: { role: 'worker' } });
-            if (saved?.subscription) {
-              result = { active: saved.subscription.status === 'active', started_at: saved.subscription.started_at, expires_at: saved.subscription.expires_at };
-              syncFreeTrialToLocalStorage('worker', me?.profile, result);
-              await refreshMe?.();
-            }
-          } catch {}
+        onClaim={() => {
+          const result = claimFreeProTrial('worker', me?.profile);
           setTrialNotice(null);
           if (result?.active) toast.success('3 Month Free Pro Trial activated');
         }}
@@ -4942,7 +4916,7 @@ function FeedbackStarsButton({ token, applicationId, target = 'worker', label = 
   return (
     <>
       <Button size={size} variant="outline" className={`${className || 'flex-1 border-amber-200 text-amber-700 hover:bg-amber-50'} font-bold`} onClick={() => setOpen(true)}>
-        <Star className="w-4 h-4 mr-1 shrink-0" /> <span className="!text-white font-bold drop-shadow-sm">{label}</span>
+        <Star className="w-4 h-4 mr-1 shrink-0" /> <span className="text-current font-bold">{label}</span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="w-[calc(100vw-24px)] max-w-md max-h-[calc(100dvh-170px)] rounded-3xl border-0 shadow-2xl bg-white p-0 overflow-hidden text-slate-950">
@@ -6454,10 +6428,10 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
                 <Copy className="w-3 h-3 opacity-60" />
               </button>
             )}
-            {(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url) && (
+            {(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url) && (
               <button
                 type="button"
-                onClick={() => window.open(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url, '_blank')}
+                onClick={() => window.open(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url, '_blank')}
                 className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs bg-white text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-full hover:bg-indigo-50">
                 <FileText className="w-3 h-3" /> Resume
               </button>
@@ -6649,11 +6623,11 @@ function WorkerProfile({ token, me, onSaved, onLogout }) {
               <div>
                 <Label>Resume upload <span className="text-xs font-normal text-muted-foreground">optional</span></Label>
                 <p className="text-xs text-muted-foreground mt-1">Upload resume so employers can view it from your profile.</p>
-                {(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url) && <button type="button" onClick={() => window.open(form.resume_url || me?.extra?.resume_url || me?.profile?.resume_url || me?.extra?.resume_file_url || me?.profile?.resume_file_url || me?.extra?.cv_url || me?.profile?.cv_url, '_blank')} className="mt-2 text-xs font-bold text-indigo-700 hover:underline">View uploaded resume</button>}
+                {form.resume_url && <button type="button" onClick={() => window.open(form.resume_url, '_blank')} className="mt-2 text-xs font-bold text-indigo-700 hover:underline">View uploaded resume</button>}
               </div>
               <label className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-semibold text-indigo-700 cursor-pointer hover:bg-indigo-50">
                 <Upload className="w-4 h-4" /> {form.resume_url ? 'Change Resume' : 'Upload Resume'}
-                <input type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'resume', token); setForm(f => ({ ...f, resume_url: url, resume_file_url: url, cv_url: url })); toast.success('Resume uploaded. Click Send for Verification to update profile.'); } catch (err) { toast.error(err.message || 'Resume upload failed'); } finally { e.target.value = ''; } }} />
+                <input type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" disabled={busy} onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const { url } = await uploadFile(file, 'resume', token); setForm(f => ({ ...f, resume_url: url })); toast.success('Resume uploaded. Click Send for Verification to update profile.'); } catch (err) { toast.error(err.message || 'Resume upload failed'); } finally { e.target.value = ''; } }} />
               </label>
             </div>
           </div>
@@ -7644,16 +7618,8 @@ function EmployerApp({ auth, onLogout }) {
         role="employer"
         trial={trialNotice}
         onClose={() => setTrialNotice(null)}
-        onClaim={async () => {
-          let result = claimFreeProTrial('employer', me?.profile);
-          try {
-            const saved = await api('subscription/claim-trial', { method: 'POST', token, body: { role: 'employer' } });
-            if (saved?.subscription) {
-              result = { active: saved.subscription.status === 'active', started_at: saved.subscription.started_at, expires_at: saved.subscription.expires_at };
-              syncFreeTrialToLocalStorage('employer', me?.profile, result);
-              await refreshMe?.();
-            }
-          } catch {}
+        onClaim={() => {
+          const result = claimFreeProTrial('employer', me?.profile);
           setTrialNotice(null);
           if (result?.active) toast.success('3 Month Free Pro Trial activated');
         }}
@@ -9977,6 +9943,12 @@ function SubscriptionPlansDialog({ open, onOpenChange, role = 'worker', me }) {
 
   const startRazorpayPayment = async (plan) => {
     if (!plan || paymentBusy) return;
+
+    // Razorpay Live mode blocks checkout when opened from an unregistered
+    // temporary Vercel URL on mobile. Payments must start from the registered
+    // production domain so mobile and desktop behave the same.
+    if (redirectToCanonicalDomainIfNeeded({ keepPath: true })) return;
+
     setPaymentBusy(true);
     setPaymentError('');
     const planName = plan.name;

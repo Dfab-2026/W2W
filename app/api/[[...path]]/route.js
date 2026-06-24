@@ -122,7 +122,7 @@ async function getActiveSubscription(admin, userId, role) {
     if (sub) return sub;
 
     const { data: trialHistory } = await admin.from('user_subscriptions')
-      .select('id,status,started_at,expires_at')
+      .select('id,status,expires_at')
       .eq('user_id', userId)
       .eq('role', normalizedRole)
       .eq('plan_name', 'Trial')
@@ -130,11 +130,25 @@ async function getActiveSubscription(admin, userId, role) {
       .limit(1)
       .maybeSingle();
 
-    // Free trial is created only when the user clicks Claim. If it was already
-    // claimed and later expired, do not create a second trial and do not show
-    // the claim popup again.
     if (trialHistory) return null;
-    return null;
+
+    const startedAt = new Date();
+    const expiresAt = new Date(startedAt);
+    expiresAt.setMonth(expiresAt.getMonth() + 3);
+    const payload = {
+      user_id: userId,
+      role: normalizedRole,
+      plan_name: 'Trial',
+      status: 'active',
+      source: 'free_pro_trial',
+      validity_months: 3,
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { data: created, error } = await admin.from('user_subscriptions').insert(payload).select('*').single();
+    if (error) return null;
+    return created || payload;
   } catch {
     return null;
   }
@@ -868,55 +882,6 @@ async function route(request, { params }) {
       }
     }
 
-    if (path === 'subscription/claim-trial' && method === 'POST') {
-      const body = await request.json().catch(() => ({}));
-      const profileRole = await getSignedInProfileRole();
-      const role = body.role === 'employer' ? 'employer' : 'worker';
-      const signedInRole = profileRole === 'admin' ? 'admin' : (profileRole === 'employer' ? 'employer' : 'worker');
-      if (signedInRole !== role && signedInRole !== 'admin') return err('Subscription role mismatch', 403);
-
-      const { data: existingTrial } = await admin.from('user_subscriptions')
-        .select('*')
-        .eq('user_id', me.id)
-        .eq('role', role)
-        .eq('plan_name', 'Trial')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingTrial) {
-        const activeTrial = existingTrial.status === 'active' && !subscriptionExpired(existingTrial);
-        if (activeTrial) {
-          await admin.from('user_profiles').update({ subscription_plan: 'Trial', subscription_status: 'active', subscription_expiry: existingTrial.expires_at }).eq('id', me.id);
-        }
-        return json({ subscription: { ...existingTrial, status: activeTrial ? 'active' : 'expired' }, features: planFeatures(role, activeTrial ? 'Trial' : 'Free'), already_claimed: true });
-      }
-
-      const startedAt = new Date();
-      const expiresAt = new Date(startedAt);
-      expiresAt.setMonth(expiresAt.getMonth() + 3);
-      const payload = {
-        user_id: me.id,
-        role,
-        plan_name: 'Trial',
-        status: 'active',
-        source: 'free_pro_trial_claim',
-        validity_months: 3,
-        started_at: startedAt.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      try {
-        await admin.from('user_subscriptions').update({ status: 'inactive', updated_at: new Date().toISOString() }).eq('user_id', me.id).eq('role', role).eq('status', 'active');
-        const { data, error } = await admin.from('user_subscriptions').insert(payload).select().single();
-        if (error) return err(error.message, 400);
-        await admin.from('user_profiles').update({ subscription_plan: 'Trial', subscription_status: 'active', subscription_expiry: payload.expires_at }).eq('id', me.id);
-        return json({ subscription: data || payload, features: planFeatures(role, 'Trial'), already_claimed: false });
-      } catch (e) {
-        return json({ subscription: payload, features: planFeatures(role, 'Trial'), saved: false, already_claimed: false });
-      }
-    }
-
     if (path === 'subscription/current' && method === 'GET') {
       const profileRole = await getSignedInProfileRole();
       const role = profileRole === 'employer' ? 'employer' : 'worker';
@@ -1304,10 +1269,10 @@ async function route(request, { params }) {
 
       if (role === 'worker') {
         const wf = ['age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known',
-                    'bank_account', 'account_holder_name', 'bank_name', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url', 'resume_url', 'resume_file_url', 'cv_url', 'section_statuses', 'verified_sections', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url', 'selfie_verified', 'selfie_verified_at', 'certificate_url', 'previous_employer_reference',
+                    'bank_account', 'account_holder_name', 'bank_name', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url', 'selfie_verified', 'selfie_verified_at', 'certificate_url', 'previous_employer_reference',
                     'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'bio', 'available', 'address',
                     'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url',
-                    'verification_status', 'verification_section', 'verification_notes', 'badge_immediate_joiner', 'resume_url', 'resume_file_url', 'cv_url', 'section_statuses', 'verified_sections'];
+                    'verification_status', 'verification_section', 'verification_notes', 'badge_immediate_joiner'];
         const wu = {}; for (const k of wf) if (k in body) wu[k] = body[k];
         if ('available' in body) wu.badge_immediate_joiner = !!body.available;
 
@@ -1327,7 +1292,7 @@ async function route(request, { params }) {
             result = await admin.from('workers').insert({ user_id: me.id, ...wu }).select().maybeSingle();
           }
           if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','resume_url','resume_file_url','cv_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','selfie_front_url','selfie_left_url','selfie_right_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','selfie_front_url','selfie_left_url','selfie_right_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
             const safe = {}; for (const k of safeKeys) if (k in wu) safe[k] = wu[k];
             result = existingWorker
               ? await admin.from('workers').update(safe).eq('user_id', me.id).select().maybeSingle()
@@ -1640,16 +1605,8 @@ async function route(request, { params }) {
 
       // Extra job-form fields. These will be saved if your Supabase jobs table has these columns.
       // If the columns are not added yet, the API retries with the base payload so posting still works.
-      const benefitExtra = {
-        ...(body.extra && typeof body.extra === 'object' ? body.extra : {}),
-        accommodation_available: body.accommodation_available === true || body.accommodation_available === 'yes',
-        food_included: body.food_included === true || body.food_included === 'yes',
-        transportation_provided: !!body.transportation_provided,
-        overtime_available: !!body.overtime_available,
-      };
       const extendedPayload = {
         ...basePayload,
-        extra: benefitExtra,
         workers_needed: Number(body.workers_needed) || 1,
         skill_needed: body.skill_needed || null,
         shift_timing: body.shift_timing || null,
@@ -1680,9 +1637,6 @@ async function route(request, { params }) {
 
       let { data, error } = await admin.from('jobs').insert(extendedPayload).select().single();
       if (error && String(error.message || '').toLowerCase().includes('column')) {
-        ({ data, error } = await admin.from('jobs').insert({ ...basePayload, extra: benefitExtra }).select().single());
-      }
-      if (error && String(error.message || '').toLowerCase().includes('column')) {
         ({ data, error } = await admin.from('jobs').insert(basePayload).select().single());
       }
       if (error) return err(error.message, 400);
@@ -1708,17 +1662,8 @@ async function route(request, { params }) {
       const attendanceLongitude = body.attendance_longitude !== undefined && body.attendance_longitude !== null && body.attendance_longitude !== '' ? Number(body.attendance_longitude) : current.attendance_longitude;
       const days = Number(body.post_valid_days || current.post_valid_days || 5);
       const expires = new Date(); expires.setDate(expires.getDate() + days);
-      const benefitExtra = {
-        ...(current.extra && typeof current.extra === 'object' ? current.extra : {}),
-        ...(body.extra && typeof body.extra === 'object' ? body.extra : {}),
-        accommodation_available: body.accommodation_available === true || body.accommodation_available === 'yes',
-        food_included: body.food_included === true || body.food_included === 'yes',
-        transportation_provided: !!body.transportation_provided,
-        overtime_available: !!body.overtime_available,
-      };
       const updatePayload = {
         title: body.title,
-        extra: benefitExtra,
         category: body.category,
         description: body.description,
         location_text: employer?.location_text || body.location_text || current.location_text,
@@ -1755,10 +1700,6 @@ async function route(request, { params }) {
         status: body.status || current.status || 'open',
       };
       let { data, error } = await admin.from('jobs').update(updatePayload).eq('id', jobId).select().single();
-      if (error && String(error.message || '').toLowerCase().includes('column')) {
-        const basicWithExtra = { title: updatePayload.title, category: updatePayload.category, description: updatePayload.description, location_text: updatePayload.location_text, daily_pay: updatePayload.daily_pay, duration_days: updatePayload.duration_days, start_date: updatePayload.start_date, status: updatePayload.status, extra: benefitExtra };
-        ({ data, error } = await admin.from('jobs').update(basicWithExtra).eq('id', jobId).select().single());
-      }
       if (error && String(error.message || '').toLowerCase().includes('column')) {
         const basic = { title: updatePayload.title, category: updatePayload.category, description: updatePayload.description, location_text: updatePayload.location_text, daily_pay: updatePayload.daily_pay, duration_days: updatePayload.duration_days, start_date: updatePayload.start_date, status: updatePayload.status };
         ({ data, error } = await admin.from('jobs').update(basic).eq('id', jobId).select().single());
