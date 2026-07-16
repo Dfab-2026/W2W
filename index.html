@@ -4218,8 +4218,31 @@ button,
     min-height: 0;
   }
 }
+
+/* In-page legal popup panels */
+.legal-inline-popup{display:none;position:fixed;inset:0;z-index:99999;padding:clamp(12px,3vw,30px);background:rgba(0,0,0,.18);opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease;align-items:center;justify-content:center}
+.legal-inline-popup.open{display:flex;opacity:1;visibility:visible}
+.legal-paper{position:relative;width:min(760px,94vw);max-height:88dvh;overflow-y:auto;background:#fff;border:2px solid #1f2937;border-radius:4px;padding:clamp(24px,4vw,48px);box-shadow:0 14px 38px rgba(0,0,0,.24);color:#172033;transform:translateY(14px) scale(.99);transition:transform .28s ease;font-family:Arial,sans-serif}
+.legal-inline-popup.open .legal-paper{transform:translateY(0) scale(1)}
+.legal-paper h1{margin:0 42px 6px 0;font-size:clamp(24px,4vw,34px);line-height:1.2;color:#0f2f78}
+.legal-paper .legal-updated{margin:0 0 24px;color:#64748b;font-size:14px;font-weight:700}
+.legal-paper h2{margin:22px 0 7px;font-size:18px;line-height:1.35;color:#111827}
+.legal-paper p{margin:0 0 12px;font-size:15px;line-height:1.72;color:#334155;text-align:left}
+.legal-paper .legal-final{margin-top:22px;font-weight:700;color:#0f2f78}
+.legal-paper-close{position:absolute;top:12px;right:14px;width:34px;height:34px;border:1px solid #94a3b8;border-radius:50%;background:#fff;color:#172033;font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.legal-paper-close:hover{background:#f1f5f9}
+body.legal-popup-open{overflow:hidden}
+@media(max-width:700px){.legal-inline-popup{padding:10px}.legal-paper{width:96vw;max-height:90dvh;padding:28px 20px 26px}.legal-paper h1{font-size:25px}.legal-paper h2{font-size:16px}.legal-paper p{font-size:14px;line-height:1.65}}
 </style>
-<meta content="origin-when-cross-origin" name="referrer"/><meta content="#050d2e" name="theme-color"/><meta content="dark" name="color-scheme"/><meta content="yes" name="mobile-web-app-capable"/><meta content="yes" name="apple-mobile-web-app-capable"/><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/></head>
+<meta content="origin-when-cross-origin" name="referrer"/><meta content="#050d2e" name="theme-color"/><meta content="dark" name="color-scheme"/><meta content="yes" name="mobile-web-app-capable"/><meta content="yes" name="apple-mobile-web-app-capable"/><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
+<style>
+/* Legal pages and final responsive hardening */
+.legal-viewer-section{min-height:100vh;padding:110px clamp(14px,4vw,56px) 40px;max-width:1440px;margin:0 auto}.legal-viewer-header{display:flex;align-items:center;gap:20px;margin-bottom:22px}.legal-viewer-header h1{font-size:clamp(28px,4vw,46px);line-height:1.15}.legal-back-btn{border:1px solid rgba(124,200,255,.28);background:rgba(255,255,255,.06);color:#fff;border-radius:12px;padding:11px 18px;font:700 14px Arial;cursor:pointer;transition:.2s;flex:0 0 auto}.legal-back-btn:hover{transform:translateX(-3px);border-color:var(--cyan);color:var(--cyan)}.legal-document-frame{height:calc(100dvh - 205px);min-height:560px;border:1px solid var(--border);border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 18px 50px rgba(0,0,0,.3)}.legal-document-frame iframe{width:100%;height:100%;border:0;display:block}.legal-fallback{display:none;color:#111;padding:16px}.legal-fallback a{color:#0f3090}.legal-page footer{display:none}
+@media(max-width:900px){nav{padding-left:16px;padding-right:16px}.legal-viewer-section{padding-top:92px}.legal-viewer-header{align-items:flex-start}.legal-document-frame{height:calc(100dvh - 180px);min-height:500px}.footer-bottom.premium-footer-bottom>div{flex-wrap:wrap;row-gap:8px}.footer-grid.premium-footer-grid.footer-unified-panel{padding-left:18px!important;padding-right:18px!important}}
+@media(max-width:600px){html,body{max-width:100%;overflow-x:hidden}.section,.hero,.inner-hero,.cta-banner,.dashboard-motion-section{padding-left:14px!important;padding-right:14px!important}.container{width:100%;max-width:100%}.btn,.btn-launch{white-space:normal;text-align:center;justify-content:center}.legal-viewer-section{padding:86px 10px 14px}.legal-viewer-header{gap:12px;margin-bottom:14px}.legal-back-btn{padding:10px 13px}.legal-document-frame{height:calc(100dvh - 150px);min-height:430px;border-radius:12px}.footer-bottom.premium-footer-bottom>div{gap:14px!important}.footer-bottom.premium-footer-bottom a{display:inline-block;padding:4px 0}.contact-grid,.hero-inner,.domains-grid,.why-grid,.who-grid,.complete-flow-grid{min-width:0}.contact-grid>* ,.hero-inner>* ,.domains-grid>* ,.why-grid>* ,.who-grid>*{min-width:0}.footer-app-web,.footer-app-item{width:100%}}
+@media(max-width:380px){.legal-viewer-header h1{font-size:24px}.legal-back-btn{font-size:13px}.legal-document-frame{height:calc(100dvh - 142px)}}
+</style>
+</head>
 <body>
 <!-- SCROLL PROGRESS BAR -->
 <div id="progress-bar"></div>
@@ -4806,7 +4829,7 @@ button,
 </div>
 </a>
 <p>India's blue-collar freelancing platform — connecting skilled workers with local employers across the country.</p>
-<div class="footer-socials footer-social-icon-row"><a aria-label="Instagram" class="footer-social-icon" href="#" title="Instagram"><svg aria-hidden="true" viewbox="0 0 24 24">
+<div class="footer-socials footer-social-icon-row"><a aria-label="Instagram" class="footer-social-icon" href="https://www.instagram.com/work2wish_?igsh=MWMxdXcyc3AxbzFlOA==" target="_blank" rel="noopener noreferrer" title="Instagram"><svg aria-hidden="true" viewbox="0 0 24 24">
 <rect height="18" rx="5" width="18" x="3" y="3"></rect>
 <circle cx="12" cy="12" r="4.2"></circle>
 <circle cx="17.4" cy="6.7" r="1"></circle>
@@ -4834,8 +4857,8 @@ button,
 <div class="footer-col footer-premium-card premium-app-card footer-unified-column">
 <h5 class="footer-premium-title">Legal</h5>
 <ul>
-<li><a href="legal/Work2Wish_Terms_and_Conditions.pdf" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a></li>
-<li><a href="legal/Work2Wish_Privacy_Policy.pdf" target="_blank" rel="noopener noreferrer">Privacy Policy</a></li>
+<li><a href="#" onclick="return openLegalPopup('terms')">Terms &amp; Conditions</a></li>
+<li><a href="#" onclick="return openLegalPopup('privacy')">Privacy Policy</a></li>
 </ul>
 <div class="footer-app-section"><h5 class="footer-premium-title">Download App</h5><div class="footer-app-panel"><a class="footer-app-web" href="https://app.work2wish.com" rel="noopener noreferrer" target="_blank"><span class="footer-app-icon">↗</span><span class="footer-app-copy"><strong>Launch Web App</strong><small>Available now</small></span></a><div class="footer-app-item coming-soon"><span class="footer-app-icon"></span><span class="footer-app-copy"><strong>iOS App</strong><small class="footer-coming-badge">Coming Soon</small></span></div><div class="footer-app-item coming-soon"><span class="footer-app-icon">◆</span><span class="footer-app-copy"><strong>Android App</strong><small class="footer-coming-badge">Coming Soon</small></span></div></div></div>
 </div>
@@ -4849,9 +4872,50 @@ button,
 </div>
 <div class="footer-bottom premium-footer-bottom">
 <p>© 2026 Work2Wish. All rights reserved by <a href="#">Samastha DPST Solutions</a>.</p>
-<div style="display:flex;gap:20px"><a href="legal/Work2Wish_Privacy_Policy.pdf" target="_blank" rel="noopener noreferrer">Privacy</a><a href="legal/Work2Wish_Terms_and_Conditions.pdf" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a></div>
+<div style="display:flex;gap:20px"><a href="#" onclick="return openLegalPopup('privacy')">Privacy</a><a href="#" onclick="return openLegalPopup('terms')">Terms &amp; Conditions</a></div>
 </div>
 </footer>
+
+<!-- ══════════════════════════════
+  PAGE: LEGAL DOCUMENTS
+══════════════════════════════ -->
+<div aria-hidden="true" class="legal-inline-popup" hidden id="legal-popup-privacy">
+  <article class="legal-paper" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+    <button class="legal-paper-close" type="button" onclick="return closeLegalPopup(false)" aria-label="Close">×</button>
+    <h1 id="privacy-title">Work2Wish (W2W) – Privacy Policy</h1>
+    <p class="legal-updated">Last Updated: June 2026</p>
+    <p>Work2Wish (W2W) values your privacy and is committed to protecting your personal information. By using the Work2Wish platform, you agree to this Privacy Policy.</p>
+    <h2>1. Information We Collect</h2><p>We may collect personal information including your name, phone number, email address, location, skills, work experience, company details, and other information required for providing our services.</p>
+    <h2>2. How We Use Information</h2><p>Your information is used to create user profiles, connect workers with companies, provide platform services, improve user experience, and communicate important updates.</p>
+    <h2>3. Information Sharing</h2><p>W2W may share relevant profile information with companies, workers, service providers, insurance partners, or legal authorities when required by law. We do not sell personal information to third parties.</p>
+    <h2>4. Data Security</h2><p>We take reasonable measures to protect user information from unauthorized access, misuse, or disclosure. However, no digital platform can guarantee complete security.</p>
+    <h2>5. Insurance Services</h2><p>If users opt for insurance-related services, relevant information may be shared with the respective insurance provider solely for policy processing and servicing purposes.</p>
+    <h2>6. User Responsibilities</h2><p>Users are responsible for providing accurate information and maintaining the confidentiality of their account credentials.</p>
+    <h2>7. Cookies &amp; Analytics</h2><p>W2W may use cookies and analytics tools to improve platform performance, security, and user experience.</p>
+    <h2>8. Changes to Policy</h2><p>W2W may update this Privacy Policy from time to time. Continued use of the platform indicates acceptance of any updates.</p>
+    <h2>9. Contact Us</h2><p>For any privacy-related concerns, users may contact Work2Wish through the official support channels.</p>
+    <p class="legal-final">By using Work2Wish, you consent to this Privacy Policy.</p>
+  </article>
+</div>
+<div aria-hidden="true" class="legal-inline-popup" hidden id="legal-popup-terms">
+  <article class="legal-paper" role="dialog" aria-modal="true" aria-labelledby="terms-title">
+    <button class="legal-paper-close" type="button" onclick="return closeLegalPopup(false)" aria-label="Close">×</button>
+    <h1 id="terms-title">Work2Wish (W2W) – Terms &amp; Conditions</h1>
+    <p class="legal-updated">Last Updated: June 2026</p>
+    <p>By registering or using Work2Wish (W2W), you agree to the following Terms &amp; Conditions:</p>
+    <h2>1. Platform Role</h2><p>Work2Wish is a technology platform that connects companies, contractors, and workers. W2W acts only as an aggregator/intermediary and does not employ, hire, or guarantee work opportunities.</p>
+    <h2>2. User Information</h2><p>Users must provide accurate and complete information during registration. W2W reserves the right to suspend accounts containing false or misleading information.</p>
+    <h2>3. Company Responsibilities</h2><p>Companies are responsible for verifying workers, providing accurate job details, paying salaries and statutory dues, and ensuring workplace safety.</p>
+    <h2>4. Worker Responsibilities</h2><p>Workers are responsible for providing accurate information, verifying job details, and following workplace safety regulations.</p>
+    <h2>5. Insurance Disclaimer</h2><p>W2W may facilitate access to insurance services but is not an insurance provider. Insurance approvals, claims, coverage, and settlements are solely handled by the respective insurance company.</p>
+    <h2>6. No Liability</h2><p>W2W is not responsible for employment disputes, salary issues, worker performance, workplace accidents, insurance claims, or agreements between companies and workers.</p>
+    <h2>7. Account Suspension</h2><p>W2W may suspend or terminate accounts that violate these terms or engage in fraudulent activities.</p>
+    <h2>8. Privacy</h2><p>By using the platform, users consent to the collection and use of information necessary to provide W2W services.</p>
+    <h2>9. Changes to Terms</h2><p>W2W may update these Terms &amp; Conditions at any time. Continued use of the platform constitutes acceptance of updated terms.</p>
+    <h2>10. Acceptance</h2><p>By creating an account or using Work2Wish, you acknowledge that W2W is solely an aggregator platform connecting companies and workers.</p>
+    <p class="legal-final">I Agree to the Terms &amp; Conditions of Work2Wish.</p>
+  </article>
+</div>
 <!-- ══════════════════════════════
   THREE.JS + ANIMATIONS
 ══════════════════════════════ -->
@@ -5493,7 +5557,59 @@ function animateCounters() {
 /* ════════════════════════════════
    7. PAGE NAVIGATION
 ════════════════════════════════ */
+let activeLegalPopup = null;
+let legalPopupOpenScrollY = 0;
+
+function openLegalPopup(type) {
+  const popup = document.getElementById('legal-popup-' + type);
+  if (!popup) return false;
+
+  document.querySelectorAll('.legal-inline-popup').forEach(panel => {
+    panel.classList.remove('open');
+    panel.hidden = true;
+    panel.setAttribute('aria-hidden', 'true');
+  });
+
+  legalPopupOpenScrollY = window.scrollY;
+  popup.hidden = false;
+  popup.setAttribute('aria-hidden', 'false');
+  activeLegalPopup = popup;
+  document.body.classList.add('legal-popup-open');
+
+  requestAnimationFrame(() => {
+    popup.classList.add('open');
+    const paper = popup.querySelector('.legal-paper');
+    if (paper) paper.focus({ preventScroll: true });
+  });
+  return false;
+}
+
+function closeLegalPopup(scrollBack) {
+  if (!activeLegalPopup) return false;
+  const popup = activeLegalPopup;
+  popup.classList.remove('open');
+  document.body.classList.remove('legal-popup-open');
+  setTimeout(() => {
+    popup.hidden = true;
+    popup.setAttribute('aria-hidden', 'true');
+  }, 360);
+  activeLegalPopup = null;
+  if (scrollBack) window.scrollTo({ top: legalPopupOpenScrollY, behavior: 'smooth' });
+  return false;
+}
+
+document.querySelectorAll('.legal-inline-popup').forEach(panel => {
+  panel.addEventListener('click', event => {
+    if (event.target === panel) closeLegalPopup(false);
+  });
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && activeLegalPopup) closeLegalPopup(false);
+});
+
 function showPage(id) {
+  closeLegalPopup(false);
   const target = document.getElementById('page-' + id);
   if (!target) return false;
 
