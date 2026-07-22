@@ -1,0 +1,21 @@
+WORK2WISH VERCEL ENVIRONMENT SETUP
+
+Add the following in Vercel -> Project -> Settings -> Environment Variables:
+
+Required public variables:
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+NEXT_PUBLIC_APP_URL=https://app.work2wish.com
+
+Required server-only variable:
+SUPABASE_SECRET_KEY
+
+The project also supports the older server variable name:
+SUPABASE_SERVICE_ROLE_KEY
+
+Important:
+- Use the Supabase anon/publishable key for NEXT_PUBLIC_SUPABASE_ANON_KEY.
+- Use the Supabase secret/service-role key only for SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.
+- Never use NEXT_PUBLIC_ for a secret key.
+- After adding or changing variables, redeploy the Vercel project.
+- Do not commit .env.local to GitHub.

@@ -1,0 +1,2771 @@
+import { NextResponse } from 'next/server';
+import { getAdmin, getUserFromRequest } from '@/lib/supabase/admin';
+import { Resend } from 'resend';
+
+export const runtime = 'nodejs';
+
+const json = (data, status = 200) => NextResponse.json(data, { status });
+const err  = (message, status = 400) => NextResponse.json({ error: message }, { status });
+
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const aLat = Number(lat1), aLon = Number(lon1), bLat = Number(lat2), bLon = Number(lon2);
+  if (![aLat, aLon, bLat, bLon].every(Number.isFinite)) return null;
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLon = ((bLon - aLon) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function normalizeVerifySectionName(section) {
+  return section === 'verification' ? 'documents' : section;
+}
+
+function buildSectionStatusPatch(existing, sections, state = 'verified') {
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+  for (const raw of sections) {
+    const section = normalizeVerifySectionName(raw);
+    base[section] = state;
+    if (section === 'documents') base.verification = state;
+  }
+  return base;
+}
+
+
+async function buildPendingSectionPayload(admin, table, userId, section) {
+  const normalized = normalizeVerifySectionName(section || 'profile');
+  let current = null;
+  try {
+    const { data, error } = await admin
+      .from(table)
+      .select('section_statuses,verified_sections')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!error) current = data || null;
+  } catch (_) {
+    current = null;
+  }
+
+  const sectionStatuses = buildSectionStatusPatch(current?.section_statuses, [normalized], 'pending');
+  const verifiedSections = (Array.isArray(current?.verified_sections) ? current.verified_sections : [])
+    .map(normalizeVerifySectionName)
+    .filter((item) => item !== normalized);
+
+  const payload = {
+    section_statuses: sectionStatuses,
+    verified_sections: Array.from(new Set(verifiedSections)),
+  };
+
+  if (normalized === 'profile') payload.profile_verified = false;
+  if (normalized === 'bank') payload.bank_verified = false;
+  if (normalized === 'documents') {
+    payload.documents_verified = false;
+    payload.document_verified = false;
+    payload.verification_verified = false;
+  }
+
+  return payload;
+}
+
+async function persistVerifiedSections(admin, table, userId, sections = [], extraPayload = {}) {
+  const normalized = sections.map(normalizeVerifySectionName);
+  let current = null;
+  try {
+    const { data, error } = await admin
+      .from(table)
+      .select('section_statuses,verified_sections')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    // Supabase query builders are not real Promises, so do not use .catch() directly
+    // after maybeSingle(). Ignore missing-row responses and continue with a clean patch.
+    if (!error) current = data || null;
+  } catch (_) {
+    current = null;
+  }
+  const nowIso = new Date().toISOString();
+  const sectionStatuses = buildSectionStatusPatch(current?.section_statuses, normalized, 'verified');
+  const verifiedSections = Array.from(new Set([...(Array.isArray(current?.verified_sections) ? current.verified_sections : []), ...normalized]));
+  const directFlags = {};
+  if (normalized.includes('profile')) directFlags.profile_verified = true;
+  if (normalized.includes('bank')) directFlags.bank_verified = true;
+  if (normalized.includes('documents')) {
+    directFlags.documents_verified = true;
+    directFlags.document_verified = true;
+    directFlags.verification_verified = true;
+  }
+  const payload = {
+    ...extraPayload,
+    ...directFlags,
+    section_statuses: sectionStatuses,
+    verified_sections: verifiedSections,
+    verification_status: 'verified',
+    verification_notes: null,
+    verified_at: nowIso,
+    updated_at: nowIso,
+  };
+  let { error } = await admin.from(table).update(payload).eq('user_id', userId);
+  if (error && String(error.message || '').toLowerCase().includes('column')) {
+    const safePayload = { ...payload };
+    delete safePayload.section_statuses;
+    delete safePayload.verified_sections;
+    delete safePayload.profile_verified;
+    delete safePayload.bank_verified;
+    delete safePayload.documents_verified;
+    delete safePayload.document_verified;
+    delete safePayload.verification_verified;
+    delete safePayload.updated_at;
+    ({ error } = await admin.from(table).update(safePayload).eq('user_id', userId));
+  }
+  return { error };
+}
+
+async function sendEmail({ to, subject, html }) {
+  try {
+    if (!process.env.RESEND_API_KEY) return;
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    await resend.emails.send({
+      from: 'Work2Wish <work2wish@work2wish.com>',
+      to: [to],
+      subject,
+      html,
+    });
+  } catch (e) {
+    console.warn('Resend email failed:', e?.message);
+  }
+}
+
+
+async function getActiveSubscription(admin, userId, role) {
+  const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+  try {
+    let { data: sub } = await admin.from('user_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('role', normalizedRole)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (sub && subscriptionExpired(sub)) {
+      await admin.from('user_subscriptions')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('id', sub.id);
+      sub = null;
+    }
+
+    if (sub) return sub;
+
+    const { data: trialHistory } = await admin.from('user_subscriptions')
+      .select('id,status,expires_at')
+      .eq('user_id', userId)
+      .eq('role', normalizedRole)
+      .eq('plan_name', 'Trial')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (trialHistory) return null;
+
+    const startedAt = new Date();
+    const expiresAt = new Date(startedAt);
+    expiresAt.setMonth(expiresAt.getMonth() + 3);
+    const payload = {
+      user_id: userId,
+      role: normalizedRole,
+      plan_name: 'Trial',
+      status: 'active',
+      source: 'free_pro_trial',
+      validity_months: 3,
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { data: created, error } = await admin.from('user_subscriptions').insert(payload).select('*').single();
+    if (error) return null;
+    return created || payload;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeSubscriptionPlan(planName) {
+  if (!planName) return 'Free';
+  const value = String(planName).trim();
+  if (['Trial', 'Free Pro Trial', 'FreeProTrial', 'free_trial', 'free_pro_trial'].includes(value)) return 'Trial';
+  return value;
+}
+
+function planValidityMonths(role, planName) {
+  const workerValidity = { Free: 0, Trial: 3, Basic: 1, Growth: 6, Premium: 12 };
+  const employerValidity = { Free: 0, Trial: 3, Starter: 1, Business: 6, Enterprise: 12 };
+  const map = role === 'employer' ? employerValidity : workerValidity;
+  const normalizedPlan = normalizeSubscriptionPlan(planName);
+  return map[normalizedPlan] ?? 1;
+}
+
+function planExpiryDate(role, planName, start = new Date()) {
+  const d = new Date(start);
+  d.setMonth(d.getMonth() + planValidityMonths(role, planName));
+  return d;
+}
+
+function subscriptionExpired(sub) {
+  return !!sub?.expires_at && new Date(sub.expires_at).getTime() <= Date.now();
+}
+
+function planFeatures(role, planName) {
+  const roleKey = role === 'employer' ? 'employer' : 'worker';
+  const normalizedPlanName = normalizeSubscriptionPlan(planName);
+  const plans = {
+    worker: {
+      Free: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 0, nearbySearch: false, mailAlerts: false, profileVisibility: 'basic', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
+      Basic: { manualAttendance: true, gpsAttendance: false, maxApplicationsPerMonth: 5, nearbySearch: true, mailAlerts: true, profileVisibility: 'medium', languageSupport: true, priorityVisibility: false, skillBadge: false, interviewNotifications: false, betterSearchRanking: false, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: false, analytics: false },
+      Growth: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'high', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: false, verifiedBadge: false, directEmployerContact: false, fasterMatching: false, topVisibility: false, highPayingJobsAccess: false, featuredProfile: true, analytics: true },
+      Premium: { manualAttendance: false, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
+      Trial: { manualAttendance: true, gpsAttendance: true, maxApplicationsPerMonth: null, nearbySearch: true, mailAlerts: true, profileVisibility: 'top', languageSupport: true, priorityVisibility: true, skillBadge: true, interviewNotifications: true, betterSearchRanking: true, premiumBadge: true, verifiedBadge: true, directEmployerContact: true, fasterMatching: true, topVisibility: true, highPayingJobsAccess: true, featuredProfile: true, analytics: true },
+    },
+    employer: {
+      Free: { manualAttendance: false, gpsAttendance: false, maxActiveJobs: 0, maxWorkersPerJob: 0, limitedWorkerDatabase: false, fullWorkerDatabase: false, mailAlerts: false, basicSupport: true, prioritySupport: false, directEmployeeChat: false, companyBranding: false, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false },
+      Starter: { manualAttendance: true, gpsAttendance: false, maxActiveJobs: 5, maxWorkersPerJob: 5, limitedWorkerDatabase: true, fullWorkerDatabase: false, mailAlerts: true, basicSupport: true, prioritySupport: false, directEmployeeChat: false, companyBranding: false, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: false, featuredJobs: false, analytics: false, multiLocation: false },
+      Business: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 10, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: false, urgentHiringBoost: false, bulkHiring: false, multiUserAccess: false, dedicatedSupport: false, radiusControl: true, featuredJobs: false, analytics: true, multiLocation: false },
+      Enterprise: { manualAttendance: false, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 20, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true },
+      Trial: { manualAttendance: true, gpsAttendance: true, maxActiveJobs: null, maxWorkersPerJob: 20, limitedWorkerDatabase: false, fullWorkerDatabase: true, mailAlerts: true, basicSupport: true, prioritySupport: true, directEmployeeChat: true, companyBranding: true, featuredCompanyBadge: true, urgentHiringBoost: true, bulkHiring: true, multiUserAccess: true, dedicatedSupport: true, radiusControl: true, featuredJobs: true, analytics: true, multiLocation: true },
+    },
+  };
+  const fallbackPlan = 'Free';
+  const plan = plans[roleKey][normalizedPlanName] ? normalizedPlanName : fallbackPlan;
+  return { plan_name: plan, ...(plans[roleKey][plan] || plans[roleKey].Free) };
+}
+
+
+async function sendDevicePush(admin, userIds, payload) {
+  try {
+    const ids = Array.isArray(userIds) ? userIds.filter(Boolean) : [userIds].filter(Boolean);
+    if (!ids.length) return;
+    if (!process.env.VAPID_PRIVATE_KEY || !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return;
+
+    const webpushModule = await import('web-push');
+    const webpush = webpushModule.default || webpushModule;
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:support@work2wish.com',
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+
+    const { data: subs } = await admin
+      .from('user_push_subscriptions')
+      .select('id,user_id,endpoint,p256dh,auth')
+      .in('user_id', ids)
+      .eq('enabled', true);
+
+    for (const sub of subs || []) {
+      try {
+        await webpush.sendNotification({
+          endpoint: sub.endpoint,
+          keys: { p256dh: sub.p256dh, auth: sub.auth },
+        }, JSON.stringify({
+          title: payload.title || 'Work2Wish',
+          body: payload.body || payload.message || 'You have a new update',
+          url: payload.url || '/',
+          type: payload.type || 'update',
+          related_id: payload.related_id || null,
+        }));
+      } catch (e) {
+        if ([404, 410].includes(Number(e?.statusCode))) {
+          await admin.from('user_push_subscriptions').update({ enabled: false, updated_at: new Date().toISOString() }).eq('id', sub.id);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('device push skipped:', e?.message);
+  }
+}
+
+async function notify(admin, userId, title, body, type, relatedId) {
+  try {
+    await admin.from('notifications').insert({
+      user_id: userId, title, body, type, related_id: relatedId || null,
+    });
+    await sendDevicePush(admin, userId, { title, body, type, related_id: relatedId || null });
+  } catch (e) { console.warn('notify failed', e?.message); }
+}
+
+async function logActivity(admin, userId, action, details = {}, actorId = null) {
+  try {
+    await admin.from('activity_logs').insert({
+      user_id: userId,
+      actor_id: actorId || userId,
+      action,
+      details,
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    // activity_logs is optional until the SQL in this zip is added. Never block main app flow.
+    console.warn('activity log skipped:', e?.message);
+  }
+}
+
+function getTwoFactorApiKey() {
+  return process.env.TWO_FACTOR_API_KEY || process.env.TWOFACTOR_API_KEY || process.env.TWO_FACTOR_AUTH_KEY || '';
+}
+
+function getTwoFactorTemplateName() {
+  return process.env.TWO_FACTOR_TEMPLATE_NAME || process.env.TWOFACTOR_TEMPLATE_NAME || process.env.TWO_FACTOR_OTP_TEMPLATE || '';
+}
+
+function isTwoFactorConfigured() {
+  return !!getTwoFactorApiKey();
+}
+
+function isMsg91Configured() {
+  return !!process.env.MSG91_AUTH_KEY && !!process.env.MSG91_TEMPLATE_ID;
+}
+
+function canUseDevOtpFallback() {
+  return process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true';
+}
+
+function normalizePhone(phone) {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 11 && digits.startsWith('0')) return `+91${digits.slice(1)}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
+  return null;
+}
+
+async function sendSmsOtp(phone, code) {
+  const cleanPhone = String(phone).replace(/\D/g, '');
+
+  // Preferred provider: 2Factor.in. Add only TWO_FACTOR_API_KEY in .env.local.
+  // Optional: TWO_FACTOR_TEMPLATE_NAME if your 2Factor account uses an approved OTP template name.
+  if (isTwoFactorConfigured()) {
+    const apiKey = getTwoFactorApiKey();
+    const template = getTwoFactorTemplateName();
+    const encodedTemplate = template ? `/${encodeURIComponent(template)}` : '';
+    const url = `https://2factor.in/API/V1/${encodeURIComponent(apiKey)}/SMS/${cleanPhone}/${encodeURIComponent(code)}${encodedTemplate}`;
+
+    const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+    const data = await res.json().catch(() => null);
+    const status = String(data?.Status || data?.status || '').toLowerCase();
+
+    if (!res.ok || (status && status !== 'success')) {
+      const message = data?.Details || data?.details || data?.message || res.statusText;
+      throw new Error(`2Factor OTP send failed: ${message || 'Unknown error'}`);
+    }
+
+    return { type: 'success', provider: '2factor', response: data };
+  }
+
+  // Existing fallback provider: MSG91, kept for compatibility.
+  if (isMsg91Configured()) {
+    const url = new URL('https://control.msg91.com/api/v5/otp');
+    url.searchParams.set('template_id', process.env.MSG91_TEMPLATE_ID);
+    url.searchParams.set('mobile', cleanPhone);
+    url.searchParams.set('otp', code);
+
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { authkey: process.env.MSG91_AUTH_KEY },
+      cache: 'no-store',
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data?.type && data.type !== 'success')) {
+      const message = data?.message || data?.errors?.[0] || data?.error || res.statusText;
+      throw new Error(`MSG91 OTP send failed: ${message || 'Unknown error'}`);
+    }
+
+    return data || { type: 'success', provider: 'msg91' };
+  }
+
+  if (canUseDevOtpFallback()) {
+    console.warn(`DEV OTP for ${phone}: ${code}`);
+    return { type: 'success', dev: true };
+  }
+
+  throw new Error('SMS OTP is not configured. Add TWO_FACTOR_API_KEY in .env.local. Optional: TWO_FACTOR_TEMPLATE_NAME. For local testing only, set ALLOW_DEV_OTP=true.');
+}
+
+// Generate a unique 6-digit login_id, retrying on collision.
+async function generateLoginId(admin) {
+  for (let i = 0; i < 8; i++) {
+    const id = String(Math.floor(100000 + Math.random() * 900000));
+    const { data } = await admin.from('user_profiles').select('id').eq('login_id', id).maybeSingle();
+    if (!data) return id;
+  }
+  return String(Date.now()).slice(-6);
+}
+
+function otpEmailHtml(code, name) {
+  return `
+  <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#f8fafc">
+    <div style="background:linear-gradient(135deg,#4f46e5,#10b981);color:white;padding:28px;border-radius:16px;text-align:center">
+      <div style="font-size:14px;opacity:.85">Work2Wish</div>
+      <div style="font-size:22px;font-weight:700;margin-top:6px">Verify your email</div>
+    </div>
+    <div style="background:white;padding:28px;border-radius:16px;margin-top:-12px;box-shadow:0 4px 16px rgba(0,0,0,.06)">
+      <p style="font-size:15px;color:#0f172a">Hi ${name || 'there'},</p>
+      <p style="font-size:15px;color:#475569">Use this code to verify your email and finish creating your account:</p>
+      <div style="font-size:32px;letter-spacing:10px;font-weight:800;background:#eef2ff;color:#4338ca;padding:18px;border-radius:12px;text-align:center;margin:20px 0">${code}</div>
+      <p style="font-size:13px;color:#94a3b8">This code expires in 10 minutes. If you didn't request it, ignore this email.</p>
+    </div>
+    <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:16px">© Work2Wish</p>
+  </div>`;
+}
+
+async function route(request, { params }) {
+  const path = (params?.path || []).join('/');
+  const method = request.method;
+
+  try {
+    // ---------- Health ----------
+    if (path === '' || path === 'health') {
+      return json({ ok: true, app: 'Work2Wish', time: Date.now() });
+    }
+
+    const admin = getAdmin();
+
+    // ---------- Authenticated mobile SMS OTP ----------
+    if (path === 'auth/mobile-send-otp' && method === 'POST') {
+      const me = await getUserFromRequest(request);
+      if (!me) return err('Unauthorized', 401);
+      const body = await request.json().catch(() => ({}));
+      const phone = normalizePhone(String(body.phone || '').trim());
+      if (!phone) return err('Enter phone in international format, e.g. +919876543210', 400);
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expires_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      await admin.from('otp_codes').update({ consumed: true }).eq('email', phone).eq('consumed', false);
+      const { error } = await admin.from('otp_codes').insert({
+        email: phone,
+        code,
+        attempts: 0,
+        expires_at,
+        payload: { type: 'mobile', user_id: me.id, phone, provider: 'msg91' },
+      });
+      if (error) return err(error.message, 400);
+      await sendSmsOtp(phone, code);
+      return json({ ok: true, expires_at, dev_otp: canUseDevOtpFallback() ? code : undefined });
+    }
+
+    if (path === 'auth/mobile-verify-otp' && method === 'POST') {
+      const me = await getUserFromRequest(request);
+      if (!me) return err('Unauthorized', 401);
+      const body = await request.json().catch(() => ({}));
+      const phone = normalizePhone(String(body.phone || '').trim());
+      const otp = String(body.otp || '').trim();
+      if (!phone) return err('Enter phone in international format, e.g. +919876543210', 400);
+      if (!otp) return err('Enter OTP', 400);
+
+      const { data: row } = await admin.from('otp_codes').select('*')
+        .eq('email', phone).eq('consumed', false).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!row) return err('Invalid or expired OTP', 400);
+      if (row.expires_at && new Date(row.expires_at) < new Date()) {
+        await admin.from('otp_codes').update({ consumed: true }).eq('id', row.id);
+        return err('OTP expired', 400);
+      }
+      if ((row.attempts || 0) >= 5) return err('Too many attempts. Request a new OTP.', 400);
+      if (String(row.code) !== String(otp)) {
+        await admin.from('otp_codes').update({ attempts: (row.attempts || 0) + 1 }).eq('id', row.id);
+        return err('Invalid OTP', 400);
+      }
+      await admin.from('otp_codes').update({ consumed: true }).eq('id', row.id);
+      await admin.from('user_profiles').update({ phone, updated_at: new Date().toISOString() }).eq('id', me.id);
+      const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
+      if (profile?.role === 'worker') {
+        await admin.from('workers').update({ mobile_verified: true }).eq('user_id', me.id);
+      } else if (profile?.role === 'employer') {
+        await admin.from('employers').update({ mobile_verified: true }).eq('user_id', me.id);
+      }
+      return json({ ok: true, mobile_verified: true });
+    }
+
+    // ---------- Public: app downloads tracking ----------
+    if (path === 'app-downloads' && method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const platform = body.platform || 'web';
+      const ua = request.headers.get('user-agent') || '';
+      await admin.from('app_downloads').insert({ platform, user_agent: ua });
+      return json({ ok: true });
+    }
+
+    // ---------- AUTH ----------
+    // STEP 1: send OTP. We hold the pending signup data in otp_codes.payload.
+    if (path === 'auth/send-otp' && method === 'POST') {
+      const { email, password, role, full_name } = await request.json();
+      if (!email || !password || !role) return err('email, password, role required', 400);
+      if (!['worker', 'employer'].includes(role)) return err('Invalid role', 400);
+
+      // Reject if email already has an auth user
+      const { data: existing } = await admin.from('user_profiles').select('id').eq('email', email).maybeSingle();
+      if (existing) return err('An account with this email already exists. Please log in.', 409);
+
+      // Generate 6-digit OTP
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expires_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      // Invalidate previous OTPs for the email
+      await admin.from('otp_codes').update({ consumed: true })
+        .eq('email', email).eq('consumed', false);
+
+      const { error: insErr } = await admin.from('otp_codes').insert({
+        email, code, expires_at,
+        payload: { role, full_name, password },
+      });
+      if (insErr) return err(insErr.message, 400);
+
+      // Send via Resend
+      sendEmail({
+        to: email,
+        subject: `Your Work2Wish code: ${code}`,
+        html: otpEmailHtml(code, full_name),
+      });
+
+      return json({ ok: true, expires_at });
+    }
+
+    // STEP 2: verify OTP -> create user, return session.
+    if (path === 'auth/verify-otp' && method === 'POST') {
+      const { email, otp } = await request.json();
+      if (!email || !otp) return err('email and otp required', 400);
+
+      const { data: row } = await admin.from('otp_codes').select('*')
+        .eq('email', email).eq('consumed', false)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+      if (!row) return err('No pending verification. Please request a new code.', 400);
+      if (row.payload?.type === 'reset') return err('This code is for password reset, not signup.', 400);
+      if (new Date(row.expires_at) < new Date()) return err('Code expired. Request a new one.', 400);
+      if (row.attempts >= 5) return err('Too many attempts. Request a new code.', 400);
+
+      if (String(row.code) !== String(otp)) {
+        await admin.from('otp_codes').update({ attempts: row.attempts + 1 }).eq('id', row.id);
+        return err('Invalid code', 400);
+      }
+
+      // Mark consumed
+      await admin.from('otp_codes').update({ consumed: true }).eq('id', row.id);
+
+      const { role, full_name, password } = row.payload || {};
+      // Create user
+      const { data: created, error: cErr } = await admin.auth.admin.createUser({
+        email, password, email_confirm: true,
+        user_metadata: { role, full_name },
+      });
+      if (cErr) return err(cErr.message, 400);
+      const user = created.user;
+      const login_id = await generateLoginId(admin);
+
+      await admin.from('user_profiles').insert({
+        id: user.id,
+        email,
+        role,
+        full_name: full_name || null,
+        login_id,
+      });
+      if (role === 'worker') {
+        await admin.from('workers').insert({ user_id: user.id });
+      } else {
+        await admin.from('employers').insert({ user_id: user.id });
+      }
+
+      // Sign in
+      const supaAnon = (await import('@supabase/supabase-js')).createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data: signed, error: sErr } = await supaAnon.auth.signInWithPassword({ email, password });
+      if (sErr) return err(sErr.message, 400);
+
+      await sendEmail({
+        to: email,
+        subject: 'Welcome to Work2Wish',
+        html: `
+          <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#f8fafc">
+            <div style="background:#4f46e5;color:#ffffff;padding:24px;border-radius:16px;text-align:center">
+              <h1 style="margin:0;font-size:24px;">Welcome to Work2Wish</h1>
+            </div>
+            <div style="background:#ffffff;padding:24px;border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,0.08);margin-top:-16px">
+              <p style="font-size:16px;color:#0f172a;margin:0 0 16px;">Hi ${full_name || 'there'},</p>
+              <p style="font-size:15px;color:#334155;line-height:1.7;margin:0 0 16px;">Your ${role} account has been created successfully. You can now sign in using your email address or your unique Work2Wish login ID.</p>
+              <p style="font-size:15px;color:#334155;line-height:1.7;margin:0 0 12px;">Login ID:</p>
+              <div style="font-size:22px;font-weight:700;color:#4f46e5;padding:16px 18px;background:#eef2ff;border-radius:12px;text-align:center;letter-spacing:2px;">${login_id}</div>
+              <p style="font-size:14px;color:#64748b;line-height:1.7;margin:18px 0 0;">If you ever need help, reply to this email or visit Work2Wish support.</p>
+            </div>
+          </div>
+        `,
+      });
+
+      return json({ user: signed.user, session: signed.session, role, login_id });
+    }
+
+    // Resend OTP (signup flow)
+    if (path === 'auth/resend-otp' && method === 'POST') {
+      const { email } = await request.json();
+      if (!email) return err('email required', 400);
+      const { data: prev } = await admin.from('otp_codes').select('payload')
+        .eq('email', email).eq('consumed', false)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!prev) return err('No pending signup. Start signup again.', 400);
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expires_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await admin.from('otp_codes').update({ consumed: true }).eq('email', email).eq('consumed', false);
+      await admin.from('otp_codes').insert({ email, code, expires_at, payload: prev.payload });
+      sendEmail({
+        to: email,
+        subject: `Your Work2Wish code: ${code}`,
+        html: otpEmailHtml(code, prev.payload?.full_name),
+      });
+      return json({ ok: true, expires_at });
+    }
+
+    // ===== FORGOT PASSWORD (OTP-based reset) =====
+    if (path === 'auth/forgot-password' && method === 'POST') {
+      const { email } = await request.json();
+      if (!email) return err('email required', 400);
+      const { data: prof } = await admin.from('user_profiles').select('id,full_name').eq('email', email).maybeSingle();
+      // Always respond 200 to avoid email enumeration; only send mail if exists.
+      if (prof) {
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expires_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        await admin.from('otp_codes').update({ consumed: true })
+          .eq('email', email).eq('consumed', false);
+        await admin.from('otp_codes').insert({
+          email, code, expires_at,
+          payload: { type: 'reset', user_id: prof.id, full_name: prof.full_name },
+        });
+        sendEmail({
+          to: email,
+          subject: `Work2Wish password reset code: ${code}`,
+          html: otpEmailHtml(code, prof.full_name).replace('Verify your email', 'Reset your password'),
+        });
+      }
+      return json({ ok: true });
+    }
+
+    if (path === 'auth/reset-password' && method === 'POST') {
+      const { email, otp, new_password } = await request.json();
+      if (!email || !otp || !new_password) return err('email, otp, new_password required', 400);
+      if (new_password.length < 6) return err('Password must be at least 6 characters', 400);
+
+      const { data: row } = await admin.from('otp_codes').select('*')
+        .eq('email', email).eq('consumed', false)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!row || row.payload?.type !== 'reset') return err('No pending reset. Request a new code.', 400);
+      if (new Date(row.expires_at) < new Date()) return err('Code expired. Request a new one.', 400);
+      if (row.attempts >= 5) return err('Too many attempts. Request a new code.', 400);
+      if (String(row.code) !== String(otp)) {
+        await admin.from('otp_codes').update({ attempts: row.attempts + 1 }).eq('id', row.id);
+        return err('Invalid code', 400);
+      }
+
+      const userId = row.payload.user_id;
+      const { error: uErr } = await admin.auth.admin.updateUserById(userId, { password: new_password });
+      if (uErr) return err(uErr.message, 400);
+
+      await admin.from('otp_codes').update({ consumed: true }).eq('id', row.id);
+
+      // Auto sign-in with new password
+      const supaAnon = (await import('@supabase/supabase-js')).createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data: signed } = await supaAnon.auth.signInWithPassword({ email, password: new_password });
+      const { data: profile } = await admin.from('user_profiles').select('*').eq('id', userId).maybeSingle();
+      if (profile?.blocked) return err('Your account has been blocked by admin.', 403);
+
+      sendEmail({
+        to: email,
+        subject: 'Your Work2Wish password was reset',
+        html: `<p>Your password was just reset. If this wasn't you, contact support immediately.</p>`,
+      });
+
+      return json({ ok: true, user: signed?.user, session: signed?.session, role: profile?.role, login_id: profile?.login_id, profile });
+    }
+
+    // Legacy direct signup kept for backwards compat (auto-confirm)
+    if (path === 'auth/signup' && method === 'POST') {
+      const { email, password, role, full_name } = await request.json();
+      if (!email || !password || !role) return err('email, password, role required', 400);
+      if (!['worker', 'employer'].includes(role)) return err('Invalid role', 400);
+
+      const { data: created, error: cErr } = await admin.auth.admin.createUser({
+        email, password, email_confirm: true,
+        user_metadata: { role, full_name },
+      });
+      if (cErr) return err(cErr.message, 400);
+      const user = created.user;
+      const login_id = await generateLoginId(admin);
+      await admin.from('user_profiles').insert({
+        id: user.id, email, role, full_name: full_name || null, login_id,
+      });
+      if (role === 'worker') await admin.from('workers').insert({ user_id: user.id });
+      else                   await admin.from('employers').insert({ user_id: user.id });
+
+      const supaAnon = (await import('@supabase/supabase-js')).createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data: signed, error: sErr } = await supaAnon.auth.signInWithPassword({ email, password });
+      if (sErr) return err(sErr.message, 400);
+      return json({ user: signed.user, session: signed.session, role, login_id });
+    }
+
+    // OAuth (Google) finalize: after Supabase OAuth completes on the client,
+    // the client posts the access_token here so the server can ensure a profile row
+    // exists. If no role yet, the client passes role=null and we return needs_role: true.
+    if (path === 'auth/oauth-finalize' && method === 'POST') {
+      const { access_token, role: chosenRole } = await request.json();
+      if (!access_token) return err('access_token required', 400);
+      const { data: u } = await admin.auth.getUser(access_token);
+      if (!u?.user) return err('Invalid token', 401);
+      const user = u.user;
+      const { data: profile } = await admin.from('user_profiles').select('*').eq('id', user.id).maybeSingle();
+      if (profile) {
+        if (profile.blocked) return err('Your account has been blocked by admin.', 403);
+        return json({ ok: true, role: profile.role, login_id: profile.login_id, profile });
+      }
+      // No profile yet — need role
+      if (!chosenRole) return json({ needs_role: true, email: user.email, full_name: user.user_metadata?.full_name || user.user_metadata?.name });
+      if (!['worker', 'employer'].includes(chosenRole)) return err('Invalid role', 400);
+
+      const login_id = await generateLoginId(admin);
+      await admin.from('user_profiles').insert({
+        id: user.id,
+        email: user.email,
+        role: chosenRole,
+        full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+        photo_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+        login_id,
+      });
+      if (chosenRole === 'worker') await admin.from('workers').insert({ user_id: user.id });
+      else                          await admin.from('employers').insert({ user_id: user.id });
+      return json({ ok: true, role: chosenRole, login_id });
+    }
+
+
+    // Google signup OTP: used when a new Google user completes the normal Create Account flow.
+    if (path === 'auth/google-send-otp' && method === 'POST') {
+      const { email, password, role, full_name, google_access_token } = await request.json();
+      if (!email || !password || !role || !google_access_token) {
+        return err('email, password, role, google_access_token required', 400);
+      }
+      if (!['worker', 'employer'].includes(role)) return err('Invalid role', 400);
+
+      const { data: u } = await admin.auth.getUser(google_access_token);
+      if (!u?.user) return err('Invalid Google session', 401);
+      if (u.user.email !== email) return err('Google email mismatch', 400);
+
+      const { data: existing } = await admin.from('user_profiles').select('id').eq('email', email).maybeSingle();
+      if (existing) return err('An account with this email already exists. Please log in.', 409);
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expires_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      await admin.from('otp_codes').update({ consumed: true })
+        .eq('email', email).eq('consumed', false);
+
+      const { error: insErr } = await admin.from('otp_codes').insert({
+        email,
+        code,
+        expires_at,
+        payload: {
+          type: 'google_signup',
+          user_id: u.user.id,
+          role,
+          full_name,
+          password,
+          photo_url: u.user.user_metadata?.avatar_url || u.user.user_metadata?.picture || null,
+        },
+      });
+      if (insErr) return err(insErr.message, 400);
+
+      await sendEmail({
+        to: email,
+        subject: `Your Work2Wish code: ${code}`,
+        html: otpEmailHtml(code, full_name),
+      });
+
+      return json({ ok: true, expires_at });
+    }
+
+    if (path === 'auth/google-verify-otp' && method === 'POST') {
+      const { email, otp, google_access_token } = await request.json();
+      if (!email || !otp || !google_access_token) {
+        return err('email, otp, google_access_token required', 400);
+      }
+
+      const { data: u } = await admin.auth.getUser(google_access_token);
+      if (!u?.user) return err('Invalid Google session', 401);
+      if (u.user.email !== email) return err('Google email mismatch', 400);
+
+      const { data: row } = await admin.from('otp_codes').select('*')
+        .eq('email', email).eq('consumed', false)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+      if (!row || row.payload?.type !== 'google_signup') {
+        return err('No pending Google signup. Please request a new code.', 400);
+      }
+      if (new Date(row.expires_at) < new Date()) return err('Code expired. Request a new one.', 400);
+      if (row.attempts >= 5) return err('Too many attempts. Request a new code.', 400);
+
+      if (String(row.code) !== String(otp)) {
+        await admin.from('otp_codes').update({ attempts: row.attempts + 1 }).eq('id', row.id);
+        return err('Invalid code', 400);
+      }
+
+      await admin.from('otp_codes').update({ consumed: true }).eq('id', row.id);
+
+      const { user_id, role, full_name, password, photo_url } = row.payload || {};
+
+      const { error: updateErr } = await admin.auth.admin.updateUserById(user_id, {
+        password,
+        email_confirm: true,
+        user_metadata: { role, full_name, avatar_url: photo_url || null },
+      });
+      if (updateErr) return err(updateErr.message, 400);
+
+      const login_id = await generateLoginId(admin);
+
+      const { error: profileErr } = await admin.from('user_profiles').insert({
+        id: user_id,
+        email,
+        role,
+        full_name: full_name || null,
+        photo_url: photo_url || null,
+        login_id,
+      });
+      if (profileErr) return err(profileErr.message, 400);
+
+      if (role === 'worker') await admin.from('workers').insert({ user_id });
+      else await admin.from('employers').insert({ user_id });
+
+      const supaAnon = (await import('@supabase/supabase-js')).createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data: signed, error: signErr } = await supaAnon.auth.signInWithPassword({ email, password });
+      if (signErr) return err(signErr.message, 400);
+
+      await sendEmail({
+        to: email,
+        subject: 'Welcome to Work2Wish',
+        html: `<h2>Welcome, ${full_name || 'there'}!</h2><p>Your ${role} account is ready. Your Login ID is <b>${login_id}</b>.</p>`,
+      });
+
+      return json({
+        user: signed.user,
+        session: signed.session,
+        role,
+        login_id,
+        profile: { id: user_id, email, role, full_name, photo_url, login_id },
+      });
+    }
+
+    // LOGIN — accepts email OR 6-digit login_id
+    if (path === 'auth/login' && method === 'POST') {
+      const { identifier, email, password } = await request.json();
+      const idf = (identifier || email || '').trim();
+      if (!idf || !password) return err('identifier and password required', 400);
+
+      let resolvedEmail = idf;
+      // If looks like a login_id (6 digits) or no '@', try lookup
+      if (!idf.includes('@')) {
+        const { data: row } = await admin.from('user_profiles').select('email').eq('login_id', idf).maybeSingle();
+        if (!row) return err('No account with that login ID', 401);
+        resolvedEmail = row.email;
+      }
+
+      const supaAnon = (await import('@supabase/supabase-js')).createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data: signed, error: sErr } = await supaAnon.auth.signInWithPassword({ email: resolvedEmail, password });
+      if (sErr) return err(sErr.message, 401);
+      const { data: profile } = await admin.from('user_profiles').select('*').eq('id', signed.user.id).maybeSingle();
+      if (profile?.blocked) return err('Your account has been blocked by admin.', 403);
+      await logActivity(admin, signed.user.id, 'login', { role: profile?.role || 'worker', email: profile?.email || resolvedEmail }, signed.user.id);
+      return json({ user: signed.user, session: signed.session, role: profile?.role || 'worker', login_id: profile?.login_id, profile });
+    }
+
+    // ---------- Auth required for everything below ----------
+    const me = await getUserFromRequest(request);
+    if (!me) return err('Unauthorized', 401);
+
+
+    async function requireAdmin() {
+      const { data: profile } = await admin.from('user_profiles').select('role,blocked').eq('id', me.id).maybeSingle();
+      if (!profile || profile.role !== 'admin') return { error: 'Admin access required', status: 403 };
+      if (profile.blocked) return { error: 'Admin account is blocked', status: 403 };
+      return { ok: true };
+    }
+
+
+
+    // ---------- One-time free trial eligibility / claim ----------
+    async function getTrialIdentity(role) {
+      const { data: profile } = await admin
+        .from('user_profiles')
+        .select('id,email,phone,role,created_at')
+        .eq('id', me.id)
+        .maybeSingle();
+      const normalizedRole = role === 'employer' ? 'employer' : 'worker';
+      const phone = normalizePhone(profile?.phone || '');
+      const email = String(profile?.email || me?.email || '').trim().toLowerCase();
+      const identityKey = phone ? `phone:${phone}` : `email:${email}`;
+      return { profile, normalizedRole, identityKey };
+    }
+
+    if (path === 'subscription/trial-status' && method === 'GET') {
+      const requestedRole = new URL(request.url).searchParams.get('role');
+      const { profile, normalizedRole, identityKey } = await getTrialIdentity(requestedRole);
+      if (profile?.role !== normalizedRole && profile?.role !== 'admin') return err('Subscription role mismatch', 403);
+
+      const { data: history, error: historyError } = await admin
+        .from('trial_claim_history')
+        .select('*')
+        .eq('identity_key', identityKey)
+        .eq('role', normalizedRole)
+        .maybeSingle();
+      if (historyError) return err('Run TRIAL_CLAIM_HISTORY.sql in Supabase before using the trial.', 500);
+
+      if (history) {
+        const expiresAt = history.expires_at ? new Date(history.expires_at) : null;
+        const expired = !expiresAt || expiresAt.getTime() <= Date.now();
+        return json({
+          eligible: false,
+          claimed: true,
+          active: !expired,
+          expired,
+          started_at: history.claimed_at,
+          expires_at: history.expires_at,
+          show_popup: false,
+        });
+      }
+
+      const previewStart = new Date();
+      const previewEnd = new Date(previewStart.getTime() + 90 * 24 * 60 * 60 * 1000);
+      return json({
+        eligible: true,
+        claimed: false,
+        active: false,
+        expired: false,
+        show_popup: true,
+        started_at: previewStart.toISOString(),
+        expires_at: previewEnd.toISOString(),
+      });
+    }
+
+    if (path === 'subscription/claim-trial' && method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const { profile, normalizedRole, identityKey } = await getTrialIdentity(body.role);
+      if (profile?.role !== normalizedRole && profile?.role !== 'admin') return err('Subscription role mismatch', 403);
+
+      const startedAt = new Date();
+      const expiresAt = new Date(startedAt.getTime() + 90 * 24 * 60 * 60 * 1000);
+      const historyPayload = {
+        identity_key: identityKey,
+        role: normalizedRole,
+        first_user_id: me.id,
+        latest_user_id: me.id,
+        claimed_at: startedAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      };
+
+      const { data: history, error: historyError } = await admin
+        .from('trial_claim_history')
+        .insert(historyPayload)
+        .select('*')
+        .single();
+      if (historyError) {
+        if (String(historyError.code || '') === '23505' || /duplicate|unique/i.test(historyError.message || '')) {
+          return err('This person has already used the free trial.', 409);
+        }
+        return err('Run TRIAL_CLAIM_HISTORY.sql in Supabase before using the trial.', 500);
+      }
+
+      const subscriptionPayload = {
+        user_id: me.id,
+        role: normalizedRole,
+        plan_name: 'Trial',
+        status: 'active',
+        source: 'free_pro_trial',
+        validity_months: 3,
+        started_at: startedAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        updated_at: startedAt.toISOString(),
+      };
+
+      try {
+        await admin.from('user_subscriptions')
+          .update({ status: 'inactive', updated_at: startedAt.toISOString() })
+          .eq('user_id', me.id)
+          .eq('role', normalizedRole)
+          .eq('status', 'active');
+        const { data: subscription, error: subscriptionError } = await admin
+          .from('user_subscriptions')
+          .insert(subscriptionPayload)
+          .select('*')
+          .single();
+        if (subscriptionError) throw subscriptionError;
+        await admin.from('user_profiles').update({
+          subscription_plan: 'Trial',
+          subscription_status: 'active',
+          subscription_expiry: expiresAt.toISOString(),
+        }).eq('id', me.id);
+        return json({ subscription, history });
+      } catch (e) {
+        await admin.from('trial_claim_history').delete().eq('id', history.id);
+        return err(e?.message || 'Unable to activate trial', 500);
+      }
+    }
+
+    // ---------- Subscription current/select (UI + feature gating ready) ----------
+    async function getSignedInProfileRole() {
+      if (me?.role === 'employer' || me?.role === 'worker' || me?.role === 'admin') return me.role;
+      try {
+        const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
+        return profile?.role || 'worker';
+      } catch {
+        return 'worker';
+      }
+    }
+
+    if (path === 'subscription/current' && method === 'GET') {
+      const profileRole = await getSignedInProfileRole();
+      const role = profileRole === 'employer' ? 'employer' : 'worker';
+      let sub = await getActiveSubscription(admin, me.id, role);
+      if (sub && subscriptionExpired(sub)) {
+        const expiredAt = new Date(sub.expires_at).toISOString();
+        try {
+          await admin.from('user_subscriptions').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('id', sub.id);
+          await admin.from('user_profiles').update({ subscription_status: 'expired', subscription_expiry: expiredAt }).eq('id', me.id);
+          await notify(admin, me.id, 'Subscription expired', 'Your subscription validity is over. Please subscribe again to continue premium features.', 'subscription_expired', sub.id);
+        } catch (e) { console.warn('subscription expiry update skipped:', e?.message); }
+        sub = { ...sub, status: 'expired' };
+      }
+      const activePlan = sub?.status === 'active' ? sub.plan_name : 'Free';
+      const features = planFeatures(role, activePlan);
+      const subscription = sub || { user_id: me.id, role, status: 'active' };
+      return json({ subscription: { ...subscription, plan_name: features.plan_name, validity_months: planValidityMonths(role, features.plan_name) }, features });
+    }
+
+    if (path === 'subscription/select' && method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const role = body.role === 'employer' ? 'employer' : 'worker';
+      const profileRole = await getSignedInProfileRole();
+      const signedInRole = profileRole === 'admin' ? 'admin' : (profileRole === 'employer' ? 'employer' : 'worker');
+      if (signedInRole !== role && signedInRole !== 'admin') return err('Subscription role mismatch', 403);
+      const allowed = role === 'employer' ? ['Starter','Business','Enterprise'] : ['Basic','Growth','Premium'];
+      if (!allowed.includes(body.plan_name)) return err('Invalid subscription plan selected', 400);
+      const planName = body.plan_name;
+      const startedAt = new Date();
+      const expiresAt = body.expires_at ? new Date(body.expires_at) : planExpiryDate(role, planName, startedAt);
+      const payload = {
+        user_id: me.id,
+        role,
+        plan_name: planName,
+        status: 'active',
+        source: 'ui_manual',
+        validity_months: planValidityMonths(role, planName),
+        started_at: startedAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        await admin.from('user_subscriptions').update({ status: 'inactive', updated_at: new Date().toISOString() }).eq('user_id', me.id).eq('role', role).eq('status', 'active');
+        const { data, error } = await admin.from('user_subscriptions').insert(payload).select().single();
+        if (error) return err(error.message, 400);
+        await admin.from('user_profiles').update({ subscription_plan: planName, subscription_status: 'active', subscription_expiry: payload.expires_at }).eq('id', me.id);
+        return json({ subscription: data, features: planFeatures(role, planName) });
+      } catch (e) {
+        return json({ subscription: payload, features: planFeatures(role, planName), saved: false });
+      }
+    }
+
+    async function deleteUserEverywhere(userId) {
+      await admin.from('messages').delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+      await admin.from('notifications').delete().eq('user_id', userId);
+      await admin.from('applications').delete().eq('worker_id', userId);
+      const { data: ownedJobs } = await admin.from('jobs').select('id').eq('employer_id', userId);
+      const ownedJobIds = (ownedJobs || []).map(j => j.id);
+      if (ownedJobIds.length) await admin.from('applications').delete().in('job_id', ownedJobIds);
+      await admin.from('jobs').delete().eq('employer_id', userId);
+      await admin.from('workers').delete().eq('user_id', userId);
+      await admin.from('employers').delete().eq('user_id', userId);
+      await admin.from('user_profiles').delete().eq('id', userId);
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error) throw new Error(error.message);
+    }
+
+
+    async function getUserAdminDetail(userId) {
+      const { data: profile } = await admin.from('user_profiles').select('*').eq('id', userId).maybeSingle();
+      if (!profile) return null;
+      let extra = null;
+      if (profile.role === 'worker') {
+        const { data } = await admin.from('workers').select('*').eq('user_id', userId).maybeSingle();
+        extra = data;
+      } else if (profile.role === 'employer') {
+        const { data } = await admin.from('employers').select('*').eq('user_id', userId).maybeSingle();
+        extra = data;
+      }
+      return { ...profile, ...(extra || {}) };
+    }
+
+    if (path === 'admin/users' && method === 'GET') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+
+      const url = new URL(request.url);
+      const roleFilter = url.searchParams.get('role') || '';
+      const statusFilter = url.searchParams.get('status') || '';
+      const search = (url.searchParams.get('q') || '').toLowerCase();
+
+      const { data: profiles, error } = await admin.from('user_profiles')
+        .select('id,email,full_name,phone,photo_url,role,login_id,blocked,created_at,updated_at')
+        .order('created_at', { ascending: false });
+      if (error) return err(error.message, 400);
+
+      let users = [];
+      for (const p of profiles || []) {
+        const detail = await getUserAdminDetail(p.id);
+        if (!detail) continue;
+        users.push(detail);
+      }
+
+      if (roleFilter && roleFilter !== 'all') users = users.filter(u => u.role === roleFilter);
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'blocked') users = users.filter(u => u.blocked);
+        else if (statusFilter === 'verified') users = users.filter(u => u.verified);
+        else if (statusFilter === 'pending') users = users.filter(u => u.verification_status === 'submitted' || u.verification_status === 'pending');
+        else if (statusFilter === 'unverified') users = users.filter(u => !u.verified);
+      }
+      if (search) {
+        users = users.filter(u => `${u.email || ''} ${u.full_name || ''} ${u.company_name || ''} ${u.role || ''} ${u.login_id || ''} ${u.location_text || ''} ${u.address || ''} ${u.company_address || ''} ${u.aadhaar_number || ''} ${u.pan_number || ''} ${u.gst_number || ''} ${u.verification_status || ''}`.toLowerCase().includes(search));
+      }
+
+      // Show newly submitted verification requests at the top of the admin table.
+      users.sort((a, b) => {
+        const aPending = ['submitted', 'pending'].includes(a.verification_status || '');
+        const bPending = ['submitted', 'pending'].includes(b.verification_status || '');
+        if (aPending !== bPending) return aPending ? -1 : 1;
+        return new Date(b.verification_submitted_at || b.updated_at || b.created_at || 0) - new Date(a.verification_submitted_at || a.updated_at || a.created_at || 0);
+      });
+
+      return json({ users });
+    }
+
+
+    if (path.match(/^admin\/users\/[^/]+$/) && method === 'GET') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const user = await getUserAdminDetail(userId);
+      if (!user) return err('User not found', 404);
+      let jobs = [], applications = [], activity = [];
+      try {
+        if (user.role === 'employer') {
+          const { data } = await admin.from('jobs').select('*, applications(id,status,worker_id,created_at)').eq('employer_id', userId).order('created_at', { ascending: false }).limit(25);
+          jobs = data || [];
+        }
+        if (user.role === 'worker') {
+          const { data } = await admin.from('applications').select('*, jobs(title,category,location_text,daily_pay,start_date,employer_id)').eq('worker_id', userId).order('created_at', { ascending: false }).limit(25);
+          applications = data || [];
+        }
+      } catch (e) { console.warn('admin detail enrich skipped', e?.message); }
+      try {
+        const { data } = await admin.from('activity_logs').select('*').or(`user_id.eq.${userId},actor_id.eq.${userId}`).order('created_at', { ascending: false }).limit(40);
+        activity = data || [];
+      } catch (e) { activity = []; }
+      return json({ user: { ...user, jobs, applications, activity } });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+\/verify$/) && method === 'PATCH') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const body = await request.json().catch(() => ({}));
+      const verified = body.verified !== false;
+      const notes = body.notes || null;
+      const badges = body.badges || {};
+      const { data: profile } = await admin.from('user_profiles').select('role').eq('id', userId).maybeSingle();
+      if (!profile) return err('User not found', 404);
+      if (!['worker', 'employer'].includes(profile.role)) return err('Only worker/employer accounts can be verified', 400);
+      const table = profile.role === 'worker' ? 'workers' : 'employers';
+      const updatePayload = {
+        verified,
+        verification_status: verified ? 'verified' : 'rejected',
+        verification_notes: notes,
+        verified_at: verified ? new Date().toISOString() : null,
+      };
+      if (profile.role === 'worker') {
+        updatePayload.badge_verified_worker = !!badges.verified_worker;
+        updatePayload.badge_skilled_worker = !!badges.skilled_worker;
+        updatePayload.badge_experienced = !!badges.experienced;
+        updatePayload.badge_immediate_joiner = !!badges.immediate_joiner;
+        if ('mobile_verified' in body) updatePayload.mobile_verified = !!body.mobile_verified;
+        if ('selfie_verified' in body) updatePayload.selfie_verified = !!body.selfie_verified;
+      }
+      let error = null;
+      if (verified) {
+        const sectionsToVerify = profile.role === 'worker'
+          ? ['profile', 'documents', 'bank']
+          : ['profile', 'documents'];
+        const result = await persistVerifiedSections(admin, table, userId, sectionsToVerify, updatePayload);
+        error = result.error;
+        if (!error) {
+          for (const section of sectionsToVerify) {
+            await logActivity(admin, userId, 'admin_verified_section', { section, label: section === 'bank' ? 'Bank Details' : section === 'documents' ? 'Documents' : 'Profile' }, me.id);
+            await logActivity(admin, me.id, 'verified_profile_section', { user_id: userId, section, role: profile.role }, me.id);
+          }
+        }
+      } else {
+        ({ error } = await admin.from(table).update(updatePayload).eq('user_id', userId));
+        if (error && String(error.message || '').toLowerCase().includes('column')) {
+          delete updatePayload.badge_verified_worker;
+          delete updatePayload.badge_skilled_worker;
+          delete updatePayload.badge_experienced;
+          delete updatePayload.badge_immediate_joiner;
+          delete updatePayload.mobile_verified;
+          delete updatePayload.selfie_verified;
+          ({ error } = await admin.from(table).update(updatePayload).eq('user_id', userId));
+        }
+      }
+      if (error) return err(error.message, 400);
+
+      await notify(admin, userId, verified ? 'Account verified' : 'Verification update', verified ? 'Your Work2Wish account is now verified.' : 'Your verification was not approved. Please update your documents.', 'verification', userId);
+      await logActivity(admin, userId, verified ? 'admin_verified_account' : 'admin_rejected_verification', { verified, notes }, me.id);
+      await logActivity(admin, me.id, verified ? 'verified_user' : 'rejected_user', { user_id: userId, role: profile.role }, me.id);
+      return json({ ok: true, verified });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+\/section-verify$/) && method === 'PATCH') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const body = await request.json().catch(() => ({}));
+      const section = body.section || 'profile';
+      const allowed = ['profile', 'bank', 'verification', 'documents', 'identity', 'location', 'admin_message'];
+      if (!allowed.includes(section)) return err('Invalid section', 400);
+      const { data: profile } = await admin.from('user_profiles').select('role,email,full_name').eq('id', userId).maybeSingle();
+      if (!profile) return err('User not found', 404);
+      if (profile.role === 'admin') return err('Admin profile cannot be verified here', 400);
+      const label = section === 'bank' ? 'Bank Details' : (section === 'verification' || section === 'documents') ? (profile.role === 'worker' ? 'Worker Verification' : 'Employer Verification') : section === 'identity' ? 'Identity Checks' : section === 'location' ? 'Location Details' : section === 'admin_message' ? 'Admin Message' : 'Profile';
+      if (!body.messageOnly) {
+        // Keep the section approval persisted on the profile row too.
+        // This prevents a re-submitted section from staying visually Pending after admin approval
+        // when activity log rows share close timestamps or the client reloads before logs settle.
+        const table = profile.role === 'worker' ? 'workers' : 'employers';
+        const sectionKey = normalizeVerifySectionName(section);
+        const result = await persistVerifiedSections(admin, table, userId, [sectionKey], { verification_section: sectionKey });
+        if (result.error) return err(result.error.message, 400);
+        await notify(admin, userId, `${label} verified`, `Admin verified your ${label.toLowerCase()} section.`, 'verification_section', userId);
+      }
+      await logActivity(admin, userId, body.messageOnly ? 'admin_sent_message' : 'admin_verified_section', { section, label, message: body.message || null }, me.id);
+      await logActivity(admin, me.id, body.messageOnly ? 'sent_profile_message' : 'verified_profile_section', { user_id: userId, section, role: profile.role }, me.id);
+      return json({ ok: true, section });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+\/messages$/) && method === 'GET') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const { data, error } = await admin.from('messages')
+        .select('*')
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) return err(error.message, 400);
+      return json({ messages: data || [] });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+\/block$/) && method === 'PATCH') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      const body = await request.json().catch(() => ({}));
+      const blocked = !!body.blocked;
+      if (userId === me.id) return err('You cannot block your own admin account', 400);
+      const { data: target } = await admin.from('user_profiles').select('role').eq('id', userId).maybeSingle();
+      if (!target) return err('User not found', 404);
+      if (target.role === 'admin') return err('Cannot block another admin from this panel', 403);
+      const { error } = await admin.from('user_profiles').update({ blocked, updated_at: new Date().toISOString() }).eq('id', userId);
+      if (error) return err(error.message, 400);
+      await notify(admin, userId, blocked ? 'Account blocked' : 'Account unblocked', blocked ? 'Admin blocked your account.' : 'Admin unblocked your account.', 'admin_action', userId);
+      await logActivity(admin, userId, blocked ? 'admin_blocked_account' : 'admin_unblocked_account', {}, me.id);
+      await logActivity(admin, me.id, blocked ? 'blocked_user' : 'unblocked_user', { user_id: userId }, me.id);
+      return json({ ok: true, blocked });
+    }
+
+    if (path.match(/^admin\/users\/[^/]+$/) && method === 'DELETE') {
+      const check = await requireAdmin();
+      if (check.error) return err(check.error, check.status);
+      const userId = path.split('/')[2];
+      if (userId === me.id) return err('You cannot delete your own admin account', 400);
+      const { data: target } = await admin.from('user_profiles').select('role').eq('id', userId).maybeSingle();
+      if (!target) return err('User not found', 404);
+      if (target.role === 'admin') return err('Cannot delete another admin from this panel', 403);
+      await logActivity(admin, me.id, 'deleted_user', { user_id: userId, role: target.role }, me.id);
+      try { await deleteUserEverywhere(userId); } catch (e) { return err(e.message, 400); }
+      return json({ ok: true });
+    }
+
+    // ---------- ME / profile ----------
+    if (path === 'me' && method === 'GET') {
+      const { data: profile } = await admin.from('user_profiles').select('*').eq('id', me.id).maybeSingle();
+      if (profile?.blocked) return err('Your account has been blocked by admin.', 403);
+      let extra = null;
+      if (profile?.role === 'worker') {
+        const { data } = await admin.from('workers').select('*').eq('user_id', me.id).maybeSingle();
+        extra = data;
+      } else if (profile?.role === 'employer') {
+        const { data } = await admin.from('employers').select('*').eq('user_id', me.id).maybeSingle();
+        extra = data;
+      }
+
+      // Section-level verification state for profile / bank / documents.
+      // Latest admin verification wins; if user submits after verification, it becomes pending again.
+      let section_statuses = {};
+      try {
+        const { data: rows } = await admin
+          .from('activity_logs')
+          .select('id,action,details,created_at')
+          .eq('user_id', me.id)
+          .in('action', ['admin_verified_section', 'submitted_section_verification', 'submitted_verification'])
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(100);
+        for (const row of rows || []) {
+          let details = {};
+          try {
+            details = typeof row.details === 'string' ? JSON.parse(row.details || '{}') : (row.details || {});
+          } catch (_) {
+            details = {};
+          }
+          const rawSection = details.section || (row.action === 'submitted_verification' ? 'documents' : 'profile');
+          // Keep old admin key `verification` and user-facing card key `documents` in sync.
+          // The first/latest activity for a section must win exactly:
+          // submitted -> pending, admin_verified -> verified.
+          const section = rawSection === 'verification' ? 'documents' : rawSection;
+          if (!section_statuses[section]) {
+            section_statuses[section] = row.action === 'admin_verified_section' ? 'verified' : 'pending';
+          }
+        }
+
+        // If admin used Final Verify, mark every required card Done unless that
+        // exact card has a newer Pending submission above. Do not overwrite pending.
+        if (extra?.verified === true && extra?.verification_status === 'verified') {
+          const requiredSections = profile?.role === 'worker' ? ['profile', 'documents', 'bank'] : ['profile', 'documents'];
+          for (const sec of requiredSections) {
+            if (!section_statuses[sec]) section_statuses[sec] = 'verified';
+          }
+        }
+
+        const persistedSection = extra?.verification_section === 'verification' ? 'documents' : extra?.verification_section;
+        if (extra?.verification_status === 'verified' && persistedSection) {
+          // Persisted admin approval must win over older or same-time pending activity.
+          // This keeps the worker document card showing Done after admin approval.
+          section_statuses[persistedSection] = 'verified';
+        }
+      } catch (e) {
+        section_statuses = {};
+      }
+      return json({ profile, extra, section_statuses });
+    }
+
+    if (path === 'me/activity' && method === 'GET') {
+      let activity = [];
+      try {
+        const { data } = await admin.from('activity_logs').select('*').or(`user_id.eq.${me.id},actor_id.eq.${me.id}`).order('created_at', { ascending: false }).limit(100);
+        activity = data || [];
+      } catch (e) {
+        activity = [];
+      }
+      return json({ activity });
+    }
+
+    if (path === 'me/account' && method === 'DELETE') {
+      const userId = me.id;
+
+      await admin.from('messages').delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+      await admin.from('notifications').delete().eq('user_id', userId);
+      await admin.from('applications').delete().eq('worker_id', userId);
+      await admin.from('jobs').delete().eq('employer_id', userId);
+      await admin.from('workers').delete().eq('user_id', userId);
+      await admin.from('employers').delete().eq('user_id', userId);
+      await admin.from('user_profiles').delete().eq('id', userId);
+
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error) return err(error.message, 400);
+
+      return json({ ok: true });
+    }
+
+    if (path === 'me/profile' && method === 'PATCH') {
+      const body = await request.json();
+      const profileFields = ['full_name', 'phone', 'photo_url', 'language'];
+      const profileUpdate = {};
+      for (const k of profileFields) if (k in body) profileUpdate[k] = body[k];
+      if (Object.keys(profileUpdate).length) {
+        profileUpdate.updated_at = new Date().toISOString();
+        await admin.from('user_profiles').update(profileUpdate).eq('id', me.id);
+      }
+      const { data: profile } = await admin.from('user_profiles').select('*').eq('id', me.id).maybeSingle();
+
+      const role = profile?.role;
+      let updatedExtra = null;
+
+      if (role === 'worker') {
+        const wf = ['age', 'gender', 'skills', 'experience_years', 'experience_level', 'expected_daily_wage', 'languages_known',
+                    'bank_account', 'account_holder_name', 'bank_name', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url', 'selfie_url', 'selfie_front_url', 'selfie_left_url', 'selfie_right_url', 'selfie_verified', 'selfie_verified_at', 'certificate_url', 'previous_employer_reference',
+                    'location_text', 'latitude', 'longitude', 'place_id', 'place_name', 'bio', 'available', 'address',
+                    'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url',
+                    'verification_status', 'verification_section', 'verification_notes', 'badge_immediate_joiner'];
+        const wu = {}; for (const k of wf) if (k in body) wu[k] = body[k];
+        if ('available' in body) wu.badge_immediate_joiner = !!body.available;
+
+        if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
+          const pendingSection = normalizeVerifySectionName(body.verification_section || 'profile');
+          Object.assign(wu, await buildPendingSectionPayload(admin, 'workers', me.id, pendingSection));
+          wu.verified = false;
+          wu.verification_status = 'pending';
+          wu.verification_section = pendingSection;
+          wu.verification_notes = null;
+          wu.verification_submitted_at = new Date().toISOString();
+        }
+
+        if (Object.keys(wu).length) {
+          const { data: existingWorker } = await admin.from('workers').select('user_id').eq('user_id', me.id).maybeSingle();
+          let result;
+          if (existingWorker) {
+            result = await admin.from('workers').update(wu).eq('user_id', me.id).select().maybeSingle();
+          } else {
+            result = await admin.from('workers').insert({ user_id: me.id, ...wu }).select().maybeSingle();
+          }
+          if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
+            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','selfie_front_url','selfie_left_url','selfie_right_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','section_statuses','verified_sections','profile_verified','bank_verified','documents_verified','document_verified','verification_verified','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safe = {}; for (const k of safeKeys) if (k in wu) safe[k] = wu[k];
+            result = existingWorker
+              ? await admin.from('workers').update(safe).eq('user_id', me.id).select().maybeSingle()
+              : await admin.from('workers').insert({ user_id: me.id, ...safe }).select().maybeSingle();
+          }
+          if (result.error) return err(result.error.message, 400);
+          updatedExtra = result.data;
+        }
+      } else if (role === 'employer') {
+        const ef = ['company_name', 'company_logo', 'industry', 'company_size', 'hr_contact', 'official_email', 'location_text',
+                    'latitude', 'longitude', 'place_id', 'place_name', 'description', 'company_address', 'gst_number',
+                    'aadhaar_number', 'pan_number', 'aadhaar_front_url', 'aadhaar_back_url', 'pan_image_url', 'pan_back_url', 'gst_certificate_url',
+                    'account_holder_name', 'bank_name', 'bank_account', 'ifsc_code', 'branch_name', 'upi_id', 'bank_qr_url',
+                    'mobile_verified', 'selfie_url', 'selfie_verified', 'selfie_verified_at',
+                    'verification_status', 'verification_section', 'verification_notes'];
+        const eu = {}; for (const k of ef) if (k in body) eu[k] = body[k];
+
+        if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
+          const pendingSection = normalizeVerifySectionName(body.verification_section || 'profile');
+          Object.assign(eu, await buildPendingSectionPayload(admin, 'employers', me.id, pendingSection));
+          eu.verified = false;
+          eu.verification_status = 'pending';
+          eu.verification_section = pendingSection;
+          eu.verification_notes = null;
+          eu.verification_submitted_at = new Date().toISOString();
+        }
+
+        if (body.verification_status === 'verified') {
+          eu.verified = true;
+          eu.verification_status = 'verified';
+          eu.verification_notes = null;
+        }
+
+        if (Object.keys(eu).length) {
+          const { data: existingEmployer } = await admin.from('employers').select('user_id').eq('user_id', me.id).maybeSingle();
+          let result;
+          if (existingEmployer) {
+            result = await admin.from('employers').update(eu).eq('user_id', me.id).select().maybeSingle();
+          } else {
+            result = await admin.from('employers').insert({ user_id: me.id, ...eu }).select().maybeSingle();
+          }
+          if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
+            const safeKeys = ['company_name','company_logo','industry','company_size','hr_contact','official_email','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','section_statuses','verified_sections','profile_verified','documents_verified','document_verified','verification_verified','mobile_verified','selfie_url','selfie_verified','selfie_verified_at','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
+            const safe = {}; for (const k of safeKeys) if (k in eu) safe[k] = eu[k];
+            result = existingEmployer
+              ? await admin.from('employers').update(safe).eq('user_id', me.id).select().maybeSingle()
+              : await admin.from('employers').insert({ user_id: me.id, ...safe }).select().maybeSingle();
+          }
+          if (result.error) return err(result.error.message, 400);
+          updatedExtra = result.data;
+        }
+      }
+
+      if (body.verification_status === 'submitted' || body.verification_status === 'pending') {
+        const { data: admins } = await admin.from('user_profiles').select('id').eq('role', 'admin').eq('blocked', false);
+        const displayName = profile?.full_name || profile?.company_name || profile?.email || 'A user';
+        const verificationSection = body.verification_section || 'documents';
+        const sectionLabel = verificationSection === 'bank' ? 'Bank details' : verificationSection === 'profile' ? 'Profile details' : 'Documents';
+        const changedFields = Object.keys(body).filter(k => !['verification_status','verification_notes','verification_section'].includes(k));
+        const isSkillOnly = changedFields.length === 1 && changedFields[0] === 'certificate_url';
+        const title = isSkillOnly ? 'Skill certificate needs review' : `${sectionLabel} needs review`;
+        const bodyText = isSkillOnly
+          ? `${displayName} added a skill certificate. Review it and mark the account verified again.`
+          : `${displayName} (${profile?.role || 'user'}) submitted ${sectionLabel.toLowerCase()} for admin verification. Updated: ${changedFields.join(', ') || sectionLabel}.`;
+        for (const a of admins || []) {
+          await notify(admin, a.id, title, bodyText, 'verification', me.id);
+        }
+      }
+
+      await logActivity(
+        admin,
+        me.id,
+        (body.verification_status === 'submitted' || body.verification_status === 'pending') ? 'submitted_section_verification' : 'updated_profile',
+        { section: body.verification_section || 'profile', fields: Object.keys(body).filter(k => !['password','verification_section'].includes(k)) },
+        me.id
+      );
+      return json({ ok: true, profile, extra: updatedExtra });
+    }
+
+
+    // ---------- Public profile summary ----------
+    if (path.match(/^profiles\/[^/]+$/) && method === 'GET') {
+      const profileId = path.split('/')[1];
+      const { data: user, error: userError } = await admin.from('user_profiles').select('*').eq('id', profileId).maybeSingle();
+      if (userError) return err(userError.message, 400);
+      if (!user) return err('Profile not found', 404);
+      let extra = null, completedWorks = 0, feedbacks = [], blackMarks = [], postedJobs = [], activeHires = [], ratingAverage = 0, ratingCount = 0, ratingEligibleCount = 0;
+      if (user.role === 'worker') {
+        const { data: worker } = await admin.from('workers').select('*').eq('user_id', profileId).maybeSingle();
+        extra = worker || {};
+        const { count } = await admin.from('applications').select('id', { count: 'exact', head: true }).eq('worker_id', profileId).eq('status', 'completed');
+        completedWorks = count || 0;
+        const { data: wf } = await admin.from('worker_feedbacks').select('rating,feedback_text,created_at,employer_id,application_id').eq('worker_id', profileId).order('created_at', { ascending: false }).limit(10);
+        feedbacks = wf || [];
+        const { data: allWf } = await admin.from('worker_feedbacks').select('rating,employer_id').eq('worker_id', profileId);
+        const workerRatings = allWf || [];
+        ratingCount = workerRatings.length;
+        ratingEligibleCount = new Set(workerRatings.map(r => r.employer_id).filter(Boolean)).size;
+        ratingAverage = ratingEligibleCount >= 5 && ratingCount
+          ? Number((workerRatings.reduce((sum, r) => sum + Number(r.rating || 0), 0) / ratingCount).toFixed(1))
+          : 0;
+        const { data: ah } = await admin.from('applications').select('id,status,applied_at,started_at,completed_at,jobs(title,location_text,daily_pay,start_date,duration_days,employer_id,employers(company_name,company_logo))').eq('worker_id', profileId).in('status', ['accepted','ongoing','completed']).order('applied_at', { ascending: false }).limit(8);
+        activeHires = ah || [];
+      } else if (user.role === 'employer') {
+        const { data: employer } = await admin.from('employers').select('*').eq('user_id', profileId).maybeSingle();
+        extra = employer || {};
+        const { data: jobs } = await admin.from('jobs').select('id,title,category,location_text,daily_pay,status,created_at,duration_days,workers_needed').eq('employer_id', profileId).order('created_at', { ascending: false }).limit(10);
+        postedJobs = jobs || [];
+        const { data: cf } = await admin.from('company_feedbacks').select('rating,feedback_text,created_at,worker_id,application_id').eq('company_id', profileId).order('created_at', { ascending: false }).limit(10);
+        feedbacks = cf || [];
+        const { data: allCf } = await admin.from('company_feedbacks').select('rating,worker_id').eq('company_id', profileId);
+        const companyRatings = allCf || [];
+        ratingCount = companyRatings.length;
+        ratingEligibleCount = new Set(companyRatings.map(r => r.worker_id).filter(Boolean)).size;
+        ratingAverage = ratingEligibleCount >= 5 && ratingCount
+          ? Number((companyRatings.reduce((sum, r) => sum + Number(r.rating || 0), 0) / ratingCount).toFixed(1))
+          : 0;
+        const { count } = await admin.from('applications').select('id,jobs!inner(employer_id)', { count: 'exact', head: true }).eq('jobs.employer_id', profileId).eq('status', 'completed');
+        completedWorks = count || 0;
+      }
+      let blackMarkCount = Number(user.black_mark_count || extra?.black_mark_count || 0) || 0;
+      try {
+        const { count: bmCount } = await admin.from('profile_black_marks').select('id', { count: 'exact', head: true }).eq('profile_id', profileId).eq('status', 'active');
+        blackMarkCount = bmCount || blackMarkCount;
+        const { data: bmRows } = await admin.from('profile_black_marks')
+          .select('reason,created_at,marked_by,status')
+          .eq('profile_id', profileId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(20);
+        blackMarks = bmRows || [];
+      } catch {}
+      return json({
+        profile: { ...user, ...extra, role: user.role, id: user.id, black_mark_count: blackMarkCount },
+        stats: {
+          completedWorks,
+          feedbackCount: ratingCount || feedbacks.length,
+          postedJobs: postedJobs.length,
+          ratingAverage,
+          ratingCount,
+          ratingEligibleCount,
+          ratingReady: ratingEligibleCount >= 5,
+          blackMarkCount,
+        },
+        feedbacks,
+        blackMarks,
+        postedJobs,
+        activeHires,
+      });
+    }
+
+    // Worker confirms an employer-selected application before job moves forward.
+
+    if (path.match(/^applications\/[^/]+$/) && method === 'GET') {
+      const appId = path.split('/')[1];
+      const { data: appRow, error } = await admin.from('applications')
+        .select('*, jobs(id,title,employer_id,location_text,duration_days,daily_pay,status)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (error || !appRow) return err('Application not found', 404);
+      const isEmployer = appRow.jobs?.employer_id === me.id;
+      const isWorker = appRow.worker_id === me.id;
+      const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
+      if (!isEmployer && !isWorker && profile?.role !== 'admin') return err('Not allowed', 403);
+      return json({ application: appRow });
+    }
+
+    if (path.match(/^applications\/[^/]+\/worker-confirm$/) && method === 'POST') {
+      const appId = path.split('/')[1];
+
+      // Employee/worker accepts the employer invitation.
+      // Do not depend on role text here because some project copies store the role as
+      // "employee" while older code used "worker". Ownership of the application is
+      // the real permission check.
+      const { data: appRow } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id,title,start_date,duration_days)')
+        .eq('id', appId).eq('worker_id', me.id).maybeSingle();
+      if (!appRow) return err('Application not found for this employee', 404);
+      if (!['accepted', 'ongoing'].includes(appRow.status)) return err('Only accepted jobs can be confirmed', 400);
+
+      const { data: workerProfile } = await admin.from('user_profiles')
+        .select('full_name,email')
+        .eq('id', me.id)
+        .maybeSingle();
+
+      const startedAt = appRow.started_at || new Date().toISOString();
+      const updateData = { status: 'ongoing', started_at: startedAt };
+      let { data, error } = await admin.from('applications')
+        .update({ ...updateData, worker_confirmed_at: new Date().toISOString() })
+        .eq('id', appId)
+        .select()
+        .single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        ({ data, error } = await admin.from('applications').update(updateData).eq('id', appId).select().single());
+      }
+      if (error) return err(error.message, 400);
+
+      await notify(admin, appRow.jobs.employer_id, 'Worker accepted the hire', `${workerProfile?.full_name || 'Worker'} accepted "${appRow.jobs.title}". The job moved to ongoing. You can now mark attendance.`, 'application', appId);
+      await notify(admin, me.id, 'Job moved to ongoing', `You accepted "${appRow.jobs.title}". Attendance tracking is now enabled.`, 'application', appId);
+      await logActivity(admin, me.id, 'worker_confirmed_hire', { application_id: appId, job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, appRow.jobs.employer_id, 'worker_confirmed_hire', { application_id: appId, worker_id: me.id, job_title: appRow.jobs.title }, me.id);
+      return json({ application: data });
+    }
+
+
+    // ---------- Device Push Notifications ----------
+    if (path === 'push/subscribe' && method === 'POST') {
+      const body = await request.json();
+      const subscription = body?.subscription || {};
+      const endpoint = subscription?.endpoint;
+      const p256dh = subscription?.keys?.p256dh;
+      const authKey = subscription?.keys?.auth;
+      if (!endpoint || !p256dh || !authKey) return err('Invalid notification subscription', 400);
+
+      const payload = {
+        user_id: me.id,
+        endpoint,
+        p256dh,
+        auth: authKey,
+        permission: body?.permission || 'granted',
+        user_agent: body?.user_agent || null,
+        enabled: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await admin
+        .from('user_push_subscriptions')
+        .upsert(payload, { onConflict: 'user_id,endpoint' });
+      if (error) return err(error.message, 400);
+      return json({ ok: true });
+    }
+
+    if (path === 'push/test' && method === 'POST') {
+      await notify(admin, me.id, 'Work2Wish notifications enabled', 'You will receive important job, application, attendance and verification updates on this device.', 'device_push_test', me.id);
+      return json({ ok: true });
+    }
+
+    // ---------- Jobs ----------
+    if (path === 'jobs' && method === 'GET') {
+      const url = new URL(request.url);
+      const q = (url.searchParams.get('q') || '').toLowerCase();
+      const category = url.searchParams.get('category') || '';
+      const minPay = Number(url.searchParams.get('min_pay') || 0);
+      let qb = admin.from('jobs')
+        .select('*, employers!inner(company_name, company_logo, location_text, verified), applications(id,status)')
+        .eq('status', 'open')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (category) qb = qb.eq('category', category);
+      const { data, error } = await qb;
+      if (error) return err(error.message, 400);
+      const now = Date.now();
+      const jobs = (data || []).filter(j => {
+        const text = `${j.title || ''} ${j.description || ''} ${j.category || ''} ${j.skill_needed || ''} ${j.location_text || ''} ${j.employers?.company_name || ''}`.toLowerCase();
+        const exp = j.expires_at ? new Date(j.expires_at).getTime() : (j.post_valid_days && j.created_at ? new Date(j.created_at).getTime() + Number(j.post_valid_days) * 86400000 : null);
+        return (!q || text.includes(q)) && (!minPay || Number(j.daily_pay || 0) >= minPay) && (!exp || exp >= now);
+      }).slice(0, 50).map(j => {
+        const apps = j.applications || [];
+        return {
+          ...j,
+          applications: undefined,
+          applicants_count: apps.length,
+          pending_count: apps.filter(a => a.status === 'pending').length,
+          hired_count: apps.filter(a => ['accepted','ongoing','completed'].includes(a.status)).length,
+        };
+      });
+      return json({ jobs });
+    }
+
+    if (path === 'jobs' && method === 'POST') {
+      const body = await request.json();
+      // ensure employer
+      const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
+      if (profile?.role !== 'employer') return err('Only employers can post jobs', 403);
+      const employerSub = await getActiveSubscription(admin, me.id, 'employer');
+      const employerFeatures = planFeatures('employer', employerSub?.plan_name || 'Free');
+      if (Number.isFinite(employerFeatures.maxActiveJobs)) {
+        const { count } = await admin.from('jobs')
+          .select('id', { count: 'exact', head: true })
+          .eq('employer_id', me.id)
+          .not('status', 'in', '(completed,closed,deleted)');
+        if ((count || 0) >= employerFeatures.maxActiveJobs) return err(`${employerFeatures.plan_name} plan allows only ${employerFeatures.maxActiveJobs} active job posts. Upgrade your plan to post more jobs.`, 403);
+      }
+
+      const { data: employer } = await admin.from('employers')
+        .select('location_text, latitude, longitude')
+        .eq('user_id', me.id)
+        .maybeSingle();
+
+      const locationText = employer?.location_text || (body.location_text || '').trim() || null;
+      const latitude = employer?.latitude !== undefined && employer?.latitude !== null
+        ? Number(employer.latitude)
+        : (body.latitude !== undefined && body.latitude !== null && body.latitude !== '' ? Number(body.latitude) : null);
+      const longitude = employer?.longitude !== undefined && employer?.longitude !== null
+        ? Number(employer.longitude)
+        : (body.longitude !== undefined && body.longitude !== null && body.longitude !== '' ? Number(body.longitude) : null);
+      const attendanceLatitude = body.attendance_latitude !== undefined && body.attendance_latitude !== null && body.attendance_latitude !== '' ? Number(body.attendance_latitude) : null;
+      const attendanceLongitude = body.attendance_longitude !== undefined && body.attendance_longitude !== null && body.attendance_longitude !== '' ? Number(body.attendance_longitude) : null;
+
+      const basePayload = {
+        employer_id: me.id,
+        title: body.title,
+        category: body.category,
+        description: body.description,
+        location_text: locationText,
+        latitude: Number.isFinite(latitude) ? latitude : null,
+        longitude: Number.isFinite(longitude) ? longitude : null,
+        daily_pay: Number(body.daily_pay) || 0,
+        duration_days: Number(body.duration_days) || 1,
+        start_date: body.start_date || null,
+        status: 'open',
+      };
+
+      // Extra job-form fields. These will be saved if your Supabase jobs table has these columns.
+      // If the columns are not added yet, the API retries with the base payload so posting still works.
+      const extendedPayload = {
+        ...basePayload,
+        workers_needed: Number(body.workers_needed) || 1,
+        skill_needed: body.skill_needed || null,
+        shift_timing: body.shift_timing || null,
+        experience: body.experience || null,
+        contact_number: body.contact_number || null,
+        accommodation_available: body.accommodation_available === true || body.accommodation_available === 'yes',
+        food_included: body.food_included === true || body.food_included === 'yes',
+        urgent_hiring: !!body.urgent_hiring,
+        overtime_available: !!body.overtime_available,
+        transportation_provided: !!body.transportation_provided,
+        post_valid_days: Number(body.post_valid_days) || 5,
+        attendance_radius_meters: Math.max(1, Math.min(Number(body.attendance_radius_meters) || 20, 1000)),
+        attendance_latitude: Number.isFinite(attendanceLatitude) ? attendanceLatitude : null,
+        attendance_longitude: Number.isFinite(attendanceLongitude) ? attendanceLongitude : null,
+        hourly_pay: Number(body.hourly_pay) || 0,
+        pay_type: body.pay_type || null,
+        duration_hours: Number(body.duration_hours) || 0,
+        work_duration_type: body.work_duration_type || null,
+        end_date: body.end_date || null,
+        start_time: body.start_time || null,
+        start_meridiem: body.start_meridiem || null,
+        end_time: body.end_time || null,
+        end_meridiem: body.end_meridiem || null,
+        work_time_range: body.work_time_range || null,
+        candidate_verification: body.candidate_verification || 'all',
+        expires_at: (() => { const d = new Date(); d.setDate(d.getDate() + (Number(body.post_valid_days) || 5)); return d.toISOString(); })(),
+      };
+
+      let { data, error } = await admin.from('jobs').insert(extendedPayload).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        ({ data, error } = await admin.from('jobs').insert(basePayload).select().single());
+      }
+      if (error) return err(error.message, 400);
+      await logActivity(admin, me.id, 'posted_job', { job_id: data.id, title: data.title, daily_pay: data.daily_pay }, me.id);
+      const { data: adminsForJob } = await admin.from('user_profiles').select('id').eq('role', 'admin').eq('blocked', false);
+      for (const a of adminsForJob || []) await notify(admin, a.id, 'New job posted', `${body.title} was posted by an employer.`, 'job_post', data.id);
+
+      const { data: workersForJob } = await admin.from('user_profiles').select('id').eq('role', 'worker').eq('blocked', false);
+      for (const w of workersForJob || []) {
+        await notify(admin, w.id, 'New job posted', `${body.title} is available at ${locationText || 'a company location'}.`, 'new_job_posted', data.id);
+      }
+      return json({ job: data });
+    }
+
+    if (path.match(/^jobs\/[^/]+$/) && method === 'PATCH') {
+      const jobId = path.split('/')[1];
+      const body = await request.json();
+      const { data: current } = await admin.from('jobs').select('*').eq('id', jobId).maybeSingle();
+      if (!current) return err('Job not found', 404);
+      if (current.employer_id !== me.id) return err('Forbidden', 403);
+      const { data: employer } = await admin.from('employers').select('location_text, latitude, longitude').eq('user_id', me.id).maybeSingle();
+      const attendanceLatitude = body.attendance_latitude !== undefined && body.attendance_latitude !== null && body.attendance_latitude !== '' ? Number(body.attendance_latitude) : current.attendance_latitude;
+      const attendanceLongitude = body.attendance_longitude !== undefined && body.attendance_longitude !== null && body.attendance_longitude !== '' ? Number(body.attendance_longitude) : current.attendance_longitude;
+      const days = Number(body.post_valid_days || current.post_valid_days || 5);
+      const expires = new Date(); expires.setDate(expires.getDate() + days);
+      const updatePayload = {
+        title: body.title,
+        category: body.category,
+        description: body.description,
+        location_text: employer?.location_text || body.location_text || current.location_text,
+        latitude: employer?.latitude !== undefined && employer?.latitude !== null ? Number(employer.latitude) : (body.latitude !== '' && body.latitude !== undefined ? Number(body.latitude) : current.latitude),
+        longitude: employer?.longitude !== undefined && employer?.longitude !== null ? Number(employer.longitude) : (body.longitude !== '' && body.longitude !== undefined ? Number(body.longitude) : current.longitude),
+        daily_pay: Number(body.daily_pay) || current.daily_pay,
+        duration_days: Number(body.duration_days) || current.duration_days,
+        start_date: body.start_date || current.start_date,
+        workers_needed: Number(body.workers_needed) || current.workers_needed || 1,
+        skill_needed: body.skill_needed || null,
+        shift_timing: body.shift_timing || null,
+        experience: body.experience || null,
+        contact_number: body.contact_number || null,
+        accommodation_available: body.accommodation_available === true || body.accommodation_available === 'yes',
+        food_included: body.food_included === true || body.food_included === 'yes',
+        urgent_hiring: !!body.urgent_hiring,
+        overtime_available: !!body.overtime_available,
+        transportation_provided: !!body.transportation_provided,
+        post_valid_days: days,
+        attendance_radius_meters: Math.max(1, Math.min(Number(body.attendance_radius_meters || current.attendance_radius_meters) || 20, 1000)),
+        attendance_latitude: Number.isFinite(Number(attendanceLatitude)) ? Number(attendanceLatitude) : null,
+        attendance_longitude: Number.isFinite(Number(attendanceLongitude)) ? Number(attendanceLongitude) : null,
+        hourly_pay: Number(body.hourly_pay) || current.hourly_pay || 0,
+        pay_type: body.pay_type || current.pay_type || null,
+        duration_hours: Number(body.duration_hours) || current.duration_hours || 0,
+        work_duration_type: body.work_duration_type || current.work_duration_type || null,
+        end_date: body.end_date || current.end_date || null,
+        start_time: body.start_time || current.start_time || null,
+        start_meridiem: body.start_meridiem || current.start_meridiem || null,
+        end_time: body.end_time || current.end_time || null,
+        end_meridiem: body.end_meridiem || current.end_meridiem || null,
+        work_time_range: body.work_time_range || current.work_time_range || null,
+        expires_at: expires.toISOString(),
+        status: body.status || current.status || 'open',
+      };
+      let { data, error } = await admin.from('jobs').update(updatePayload).eq('id', jobId).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        const basic = { title: updatePayload.title, category: updatePayload.category, description: updatePayload.description, location_text: updatePayload.location_text, daily_pay: updatePayload.daily_pay, duration_days: updatePayload.duration_days, start_date: updatePayload.start_date, status: updatePayload.status };
+        ({ data, error } = await admin.from('jobs').update(basic).eq('id', jobId).select().single());
+      }
+      if (error) return err(error.message, 400);
+      await logActivity(admin, me.id, 'updated_job_post', { job_id: jobId, title: data.title, visible_for_days: days }, me.id);
+      return json({ job: data });
+    }
+
+    if (path.startsWith('jobs/') && !path.includes('/apply') && method === 'GET') {
+      const id = path.split('/')[1];
+      const { data, error } = await admin.from('jobs')
+        .select('*, employers!inner(company_name, company_logo, location_text, description, verified)')
+        .eq('id', id).maybeSingle();
+      if (error || !data) return err('Job not found', 404);
+      return json({ job: data });
+    }
+
+    if (path.match(/^jobs\/[^/]+\/apply$/) && method === 'POST') {
+      const jobId = path.split('/')[1];
+      const body = await request.json().catch(() => ({}));
+      let { data: profile } = await admin.from('user_profiles').select('id,role,full_name,email,verified,verification_status').eq('id', me.id).maybeSingle();
+      if (!profile && me.email) {
+        const byEmail = await admin.from('user_profiles').select('id,role,full_name,email,verified,verification_status').eq('email', me.email).maybeSingle();
+        profile = byEmail.data || null;
+      }
+      const resolvedRole = String(profile?.role || me.user_metadata?.role || me.app_metadata?.role || '').toLowerCase();
+      if (resolvedRole !== 'worker') return err('Only workers can apply', 403);
+      const workerId = profile?.id || me.id;
+      const workerSub = await getActiveSubscription(admin, workerId, 'worker');
+      const workerFeatures = planFeatures('worker', workerSub?.plan_name || 'Free');
+      if (Number.isFinite(workerFeatures.maxApplicationsPerMonth)) {
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0,0,0,0);
+        const { count } = await admin.from('applications')
+          .select('id', { count: 'exact', head: true })
+          .eq('worker_id', workerId)
+          .gte('applied_at', monthStart.toISOString());
+        if ((count || 0) >= workerFeatures.maxApplicationsPerMonth) return err(`${workerFeatures.plan_name} plan allows ${workerFeatures.maxApplicationsPerMonth} job applications per month. Upgrade to apply more.`, 403);
+      }
+
+      const { data: job } = await admin.from('jobs').select('*').eq('id', jobId).maybeSingle();
+      if (!job) return err('Job not found', 404);
+      const requiredCandidate = String(job.candidate_verification || 'all').toLowerCase();
+      const isWorkerVerified = !!profile?.verified || profile?.verification_status === 'verified';
+      if (requiredCandidate === 'verified' && !isWorkerVerified) return err('Only verified candidates can apply for this job', 403);
+      if (requiredCandidate === 'unverified' && isWorkerVerified) return err('Only unverified candidates can apply for this job', 403);
+
+      const { data: existingApp } = await admin.from('applications')
+        .select('id,status')
+        .eq('job_id', jobId)
+        .eq('worker_id', workerId)
+        .maybeSingle();
+      if (existingApp) {
+        return json({ application: existingApp, already_applied: true, message: 'You have already applied for this job.' });
+      }
+
+      const { data: app, error } = await admin.from('applications').insert({
+        job_id: jobId, worker_id: workerId, message: body.message || null,
+      }).select().single();
+      if (error) {
+        const msg = String(error.message || '').toLowerCase();
+        if (error.code === '23505' || msg.includes('duplicate key') || msg.includes('already exists')) {
+          const { data: existingAfterRace } = await admin.from('applications')
+            .select('id,status')
+            .eq('job_id', jobId)
+            .eq('worker_id', workerId)
+            .maybeSingle();
+          return json({ application: existingAfterRace || null, already_applied: true, message: 'You have already applied for this job.' });
+        }
+        return err(error.message, 400);
+      }
+
+      // notify employer
+      await notify(admin, job.employer_id, 'New applicant',
+        `${profile?.full_name || 'A worker'} applied to "${job.title}"`, 'application', app.id);
+      // email employer
+      const { data: emp } = await admin.from('user_profiles').select('email').eq('id', job.employer_id).maybeSingle();
+      if (emp?.email) sendEmail({
+        to: emp.email, subject: `New applicant for ${job.title}`,
+        html: `<p><b>${profile?.full_name || 'A worker'}</b> applied to your job <b>${job.title}</b>.</p>`,
+      });
+      return json({ application: app });
+    }
+
+    // ---------- Employer routes ----------
+    if (path === 'employer/jobs' && method === 'GET') {
+      const { data, error } = await admin.from('jobs')
+        .select('*, applications(id,status)')
+        .eq('employer_id', me.id).order('created_at', { ascending: false });
+      if (error) return err(error.message, 400);
+      const enriched = (data || []).map(j => {
+        const apps = j.applications || [];
+        const hiredApps = apps.filter(a => ['accepted', 'ongoing', 'completed'].includes(a.status));
+        return {
+          ...j,
+          applicants_count: apps.length,
+          pending_count: apps.filter(a => a.status === 'pending').length,
+          hired_count: hiredApps.length,
+          ongoing_count: apps.filter(a => a.status === 'ongoing').length,
+          invitation_count: apps.filter(a => a.status === 'accepted').length,
+          completed_count: apps.filter(a => a.status === 'completed').length,
+        };
+      });
+      return json({ jobs: enriched });
+    }
+
+    if (path.match(/^employer\/jobs\/[^/]+$/) && method === 'DELETE') {
+      const jobId = path.split('/')[2];
+      const { data: jobRow } = await admin.from('jobs')
+        .select('id,title,employer_id')
+        .eq('id', jobId)
+        .maybeSingle();
+      if (!jobRow) return err('Job not found', 404);
+      if (jobRow.employer_id !== me.id && me.role !== 'admin') return err('Forbidden', 403);
+
+      const { data: appRows } = await admin.from('applications').select('id').eq('job_id', jobId);
+      const appIds = (appRows || []).map(a => a.id);
+      if (appIds.length) await admin.from('attendance_records').delete().in('application_id', appIds);
+      await admin.from('applications').delete().eq('job_id', jobId);
+      const { error } = await admin.from('jobs').delete().eq('id', jobId);
+      if (error) return err(error.message, 400);
+
+      await logActivity(admin, me.id, 'deleted_job_post', { job_id: jobId, job_title: jobRow.title }, me.id);
+      return json({ ok: true });
+    }
+
+    if (path === 'employer/attendance' && method === 'GET') {
+      const { data, error } = await admin.from('applications')
+        .select('id,status,applied_at,accepted_at,started_at,completed_at,worker_id,workers!inner(skills,experience_years,expected_daily_wage,user_profiles!workers_user_id_fkey(full_name,email,phone,photo_url)),jobs!inner(title,location_text,start_date,duration_days,daily_pay,employer_id)')
+        .eq('jobs.employer_id', me.id)
+        .in('status', ['accepted', 'ongoing', 'completed'])
+        .order('applied_at', { ascending: false });
+      if (error) return err(error.message, 400);
+
+      const appIds = (data || []).map((app) => app.id);
+      const attendanceByApp = {};
+      if (appIds.length) {
+        const { data: attendanceRows, error: attendanceError } = await admin.from('attendance_records')
+          .select('*')
+          .in('application_id', appIds)
+          .order('attendance_date', { ascending: true });
+        if (attendanceError) return err(attendanceError.message, 400);
+        for (const row of attendanceRows || []) {
+          if (!attendanceByApp[row.application_id]) attendanceByApp[row.application_id] = [];
+          attendanceByApp[row.application_id].push(row);
+        }
+      }
+
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const items = (data || []).map((app) => {
+        const startValue = app.started_at || app.accepted_at || app.jobs?.start_date || app.applied_at || new Date().toISOString();
+        const start = new Date(startValue);
+        const duration = Math.max(1, Math.min(Number(app.jobs?.duration_days || 1), 60));
+        const existing = attendanceByApp[app.id] || [];
+        const existingByDate = new Map(existing.map((row) => [String(row.attendance_date).slice(0, 10), row]));
+        const attendance_days = [];
+
+        for (let i = 0; i < duration; i++) {
+          const dayDate = new Date(start);
+          dayDate.setDate(dayDate.getDate() + i);
+          const dateKey = dayDate.toISOString().slice(0, 10);
+          const row = existingByDate.get(dateKey);
+          let status = row?.status || 'unmarked';
+          if (!row && dateKey > todayKey) status = 'upcoming';
+          if (!row && dateKey === todayKey && app.status === 'ongoing') status = 'today';
+          attendance_days.push({
+            day: i + 1,
+            date: dateKey,
+            status,
+            marked: !!row,
+            marked_at: row?.marked_at || null,
+            marked_by: row?.marked_by || null,
+            attendance_id: row?.id || null,
+          });
+        }
+
+        return {
+          application_id: app.id,
+          status: app.status,
+          start_date: startValue,
+          duration_days: duration,
+          job_title: app.jobs?.title || '',
+          location_text: app.jobs?.location_text || '',
+          daily_pay: app.jobs?.daily_pay || 0,
+          present_days: existing.filter((row) => row.status === 'present').length,
+          absent_days: existing.filter((row) => row.status === 'absent').length,
+          total_marked_days: existing.length,
+          worker: {
+            id: app.worker_id,
+            full_name: app.workers?.user_profiles?.full_name || '',
+            email: app.workers?.user_profiles?.email || '',
+            phone: app.workers?.user_profiles?.phone || '',
+            photo_url: app.workers?.user_profiles?.photo_url || '',
+            skills: app.workers?.skills || [],
+            experience_years: app.workers?.experience_years || 0,
+            expected_daily_wage: app.workers?.expected_daily_wage || 0,
+          },
+          attendance_days,
+        };
+      });
+
+      return json({ items });
+    }
+
+    if (path.match(/^employer\/jobs\/[^/]+\/applicants$/) && method === 'GET') {
+      const jobId = path.split('/')[2];
+      const { data, error } = await admin.from('applications')
+        .select('*, workers!inner(*, user_profiles!workers_user_id_fkey(full_name,email,phone,photo_url)), jobs!inner(start_date,duration_days)')
+        .eq('job_id', jobId).order('applied_at', { ascending: false });
+      if (error) return err(error.message, 400);
+
+      // IMPORTANT: Do not auto-complete ongoing jobs here.
+      // After the employee accepts the invitation, the application must stay in `ongoing`
+      // until the employer manually clicks Complete & Pay.
+
+      try {
+        const ids = (data || []).map(a => a.id);
+        if (ids.length) {
+          const { data: employerGivenFeedbacks } = await admin.from('worker_feedbacks')
+            .select('application_id')
+            .eq('employer_id', me.id)
+            .in('application_id', ids);
+          const employerGivenSet = new Set((employerGivenFeedbacks || []).map(r => r.application_id));
+          for (const app of data || []) app.feedback_given = employerGivenSet.has(app.id);
+        }
+      } catch (e) {
+        for (const app of data || []) app.feedback_given = false;
+      }
+
+      return json({ applicants: data });
+    }
+
+
+    if (path.match(/^applications\/[^/]+\/attendance$/) && method === 'GET') {
+      const appId = path.split('/')[1];
+      const { data: appRow } = await admin.from('applications')
+        .select('id,worker_id,jobs!inner(employer_id)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      const isEmployer = appRow.jobs?.employer_id === me.id;
+      const isWorker = appRow.worker_id === me.id;
+      if (!isEmployer && !isWorker && me.role !== 'admin') return err('Forbidden', 403);
+
+      const { data, error } = await admin.from('attendance_records')
+        .select('*')
+        .eq('application_id', appId)
+        .order('attendance_date', { ascending: true });
+      if (error) return err(error.message, 400);
+      return json({ attendance: data || [] });
+    }
+
+    if (path.match(/^applications\/[^/]+\/gps-attendance$/) && method === 'POST') {
+      const appId = path.split('/')[1];
+      const body = await request.json().catch(() => ({}));
+      const date = body.date || new Date().toISOString().slice(0, 10);
+      const workerLat = Number(body.latitude);
+      const workerLng = Number(body.longitude);
+      if (!Number.isFinite(workerLat) || !Number.isFinite(workerLng)) return err('Current GPS is required to mark attendance', 400);
+
+      const { data: appRow } = await admin.from('applications')
+        .select('id,status,worker_id,job_id,jobs!inner(employer_id,title,latitude,longitude,attendance_latitude,attendance_longitude,attendance_radius_meters)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      if (appRow.worker_id !== me.id && me.role !== 'admin') return err('Only assigned employee can mark GPS attendance', 403);
+      const workerSub = await getActiveSubscription(admin, appRow.worker_id, 'worker');
+      const workerFeatures = planFeatures('worker', workerSub?.plan_name || 'Free');
+      if (!workerFeatures.gpsAttendance && me.role !== 'admin') return err('GPS attendance is available from Growth plan. Basic plan uses employer manual attendance.', 403);
+      if (appRow.status !== 'ongoing') return err('Attendance can be marked only for ongoing jobs', 400);
+
+      const jobLat = Number(appRow.jobs?.attendance_latitude ?? appRow.jobs?.latitude);
+      const jobLng = Number(appRow.jobs?.attendance_longitude ?? appRow.jobs?.longitude);
+      if (!Number.isFinite(jobLat) || !Number.isFinite(jobLng)) return err('Employer has not saved attendance GPS location', 400);
+
+      const allowedMeters = Math.max(1, Math.min(Number(appRow.jobs?.attendance_radius_meters) || 20, 1000));
+      const distance = distanceMeters(workerLat, workerLng, jobLat, jobLng);
+      if (distance === null) return err('Unable to calculate GPS distance', 400);
+      if (distance > allowedMeters) return err(`You are ${Math.round(distance)}m away from attendance GPS point. Attendance allowed within ${allowedMeters}m only.`, 400);
+
+      const payload = {
+        application_id: appId,
+        job_id: appRow.job_id,
+        worker_id: appRow.worker_id,
+        employer_id: appRow.jobs.employer_id,
+        date,
+        attendance_date: date,
+        status: 'present',
+        marked_by: me.id,
+        marked_at: new Date().toISOString(),
+        worker_latitude: workerLat,
+        worker_longitude: workerLng,
+        distance_meters: Math.round(distance),
+        verification_method: 'gps',
+      };
+
+      let { data, error } = await admin.from('attendance_records')
+        .upsert(payload, { onConflict: 'application_id,attendance_date' })
+        .select()
+        .single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        const fallback = { application_id: appId, job_id: appRow.job_id, worker_id: appRow.worker_id, employer_id: appRow.jobs.employer_id, date, attendance_date: date, status: 'present', marked_by: me.id, marked_at: new Date().toISOString() };
+        ({ data, error } = await admin.from('attendance_records').upsert(fallback, { onConflict: 'application_id,attendance_date' }).select().single());
+      }
+      if (error) return err(error.message, 400);
+
+      await notify(admin, appRow.jobs.employer_id, 'Employee marked attendance', `Employee GPS attendance completed for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
+      await notify(admin, appRow.worker_id, 'Attendance marked', `Your GPS attendance was completed for ${appRow.jobs.title} on ${date}.`, 'attendance_marked', appId);
+      await logActivity(admin, appRow.worker_id, 'gps_attendance_completed', { application_id: appId, date, distance_meters: Math.round(distance), job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, appRow.jobs.employer_id, 'worker_gps_attendance_marked', { application_id: appId, worker_id: appRow.worker_id, date, distance_meters: Math.round(distance), job_title: appRow.jobs.title }, me.id);
+
+      return json({ attendance: data, distance_meters: Math.round(distance), allowed_meters: allowedMeters });
+    }
+
+    if (path.match(/^applications\/[^/]+\/attendance$/) && method === 'POST') {
+      const appId = path.split('/')[1];
+      const body = await request.json().catch(() => ({}));
+      const date = body.date || new Date().toISOString().slice(0, 10);
+      const status = body.status || 'present';
+      if (!['present', 'absent'].includes(status)) return err('Invalid attendance status', 400);
+
+      const { data: appRow } = await admin.from('applications')
+        .select('id,status,worker_id,job_id,jobs!inner(employer_id,title)')
+        .eq('id', appId)
+        .maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      if (appRow.jobs?.employer_id !== me.id && me.role !== 'admin') return err('Only employer can mark attendance', 403);
+      // Manual attendance is enabled for employers in every subscription plan.
+      if (appRow.status !== 'ongoing') return err('Attendance can be marked only after worker accepts and job moves to ongoing', 400);
+
+      const payload = {
+        application_id: appId,
+        job_id: appRow.job_id,
+        worker_id: appRow.worker_id,
+        employer_id: appRow.jobs.employer_id,
+        // Support both old and new schemas. Some older SQL had a required `date` column.
+        date,
+        attendance_date: date,
+        status,
+        marked_by: me.id,
+        marked_at: new Date().toISOString(),
+      };
+
+      let { data, error } = await admin.from('attendance_records')
+        .upsert(payload, { onConflict: 'application_id,attendance_date' })
+        .select()
+        .single();
+      if (error) return err(error.message, 400);
+
+      await notify(admin, appRow.worker_id, 'Attendance updated', `Attendance marked ${status} for ${appRow.jobs.title} on ${date}.`, 'attendance', appId);
+      await logActivity(admin, appRow.worker_id, 'attendance_marked', { application_id: appId, date, status, job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, me.id, 'marked_attendance', { application_id: appId, worker_id: appRow.worker_id, date, status, job_title: appRow.jobs.title }, me.id);
+
+      return json({ attendance: data });
+    }
+
+    if (path.match(/^applications\/[^/]+$/) && method === 'PATCH') {
+      const appId = path.split('/')[1];
+      const body = await request.json();
+      const status = body.status;
+      if (!['accepted','rejected','ongoing','completed'].includes(status))
+        return err('Invalid status', 400);
+      const { data: appRow } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id,title,start_date,duration_days)')
+        .eq('id', appId).maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      const isEmployerOwner = appRow.jobs.employer_id === me.id;
+      const isWorkerOwner = appRow.worker_id === me.id;
+      if (!isEmployerOwner && !(isWorkerOwner && status === 'ongoing')) return err('Forbidden', 403);
+
+      // Employer accept means invitation only. Employee/worker must accept before it becomes ongoing.
+      const nowIso = new Date().toISOString();
+      const updateData = { status };
+      if (status === 'accepted') {
+        updateData.accepted_at = appRow.accepted_at || nowIso;
+      } else if (status === 'ongoing') {
+        updateData.accepted_at = appRow.accepted_at || nowIso;
+        updateData.started_at = appRow.started_at || nowIso;
+        updateData.worker_confirmed_at = appRow.worker_confirmed_at || nowIso;
+      } else if (status === 'completed') {
+        updateData.completed_at = appRow.completed_at || nowIso;
+      }
+
+      let { data, error } = await admin.from('applications').update(updateData).eq('id', appId).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        // Older databases may not yet have accepted_at / started_at / worker_confirmed_at / completed_at.
+        // Status is the source of truth for tabs, so keep the workflow working.
+        ({ data, error } = await admin.from('applications').update({ status }).eq('id', appId).select().single());
+      }
+      if (error) return err(error.message, 400);
+      if (status === 'completed' && body.payment_method) {
+        try {
+          await admin.from('application_payments').insert({
+            application_id: appId,
+            employer_id: appRow.jobs.employer_id,
+            worker_id: appRow.worker_id,
+            amount: Number(body.payment_amount || 0) || null,
+            currency: 'INR',
+            status: String(body.payment_method || '').toLowerCase() === 'manual' ? 'manual_paid' : 'upi_paid',
+            raw_response: {
+              payment_method: body.payment_method,
+              payment_status: body.payment_status || 'paid',
+              payment_note: body.payment_note || null,
+              marked_by: me.id,
+              marked_at: nowIso
+            },
+            created_at: nowIso,
+            updated_at: nowIso
+          });
+        } catch (paymentLogError) {
+          console.warn('manual/upi payment log skipped:', paymentLogError?.message);
+        }
+      }
+      await notify(admin, appRow.worker_id,
+        status === 'accepted' ? 'Job invitation received' : `Application ${status}`,
+        status === 'accepted' ? `Your application for "${appRow.jobs.title}" was accepted. Open Applied Jobs and accept the invitation to move it to Ongoing Jobs.` : `Your application for "${appRow.jobs.title}" was ${status}.`,
+        'application', appId);
+      await logActivity(admin, appRow.worker_id, `application_${status}`, { application_id: appId, job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, me.id, `set_application_${status}`, { application_id: appId, worker_id: appRow.worker_id, job_title: appRow.jobs.title }, me.id);
+      const { data: w } = await admin.from('user_profiles').select('email,full_name').eq('id', appRow.worker_id).maybeSingle();
+      if (w?.email) sendEmail({
+        to: w.email,
+        subject: status === 'accepted' ? `Job invitation: ${appRow.jobs.title}` : `Your application was ${status}`,
+        html: status === 'accepted'
+          ? `<p>Hi ${w.full_name || ''},</p><p>Your application for <b>${appRow.jobs.title}</b> was accepted. Please open Work2Wish Applied Jobs and accept the invitation to start the job.</p>`
+          : `<p>Hi ${w.full_name || ''},</p><p>Your application for <b>${appRow.jobs.title}</b> is now <b>${status}</b>.</p>`,
+      });
+      return json({ application: data });
+    }
+
+    if (path.match(/^applications\/[^/]+$/) && method === 'DELETE') {
+      const appId = path.split('/')[1];
+      const { data: appRow } = await admin.from('applications')
+        .select('id,worker_id,job_id,status,jobs!inner(employer_id,title)')
+        .eq('id', appId).maybeSingle();
+      if (!appRow) return err('Application not found', 404);
+      if (appRow.jobs.employer_id !== me.id && me.role !== 'admin') return err('Forbidden', 403);
+
+      await admin.from('attendance_records').delete().eq('application_id', appId);
+      const { error } = await admin.from('applications').delete().eq('id', appId);
+      if (error) return err(error.message, 400);
+
+      await notify(admin, appRow.worker_id, 'Removed from hired job', `You were removed from "${appRow.jobs.title}" by the employer.`, 'application', appId);
+      await logActivity(admin, appRow.worker_id, 'removed_from_hired_job', { application_id: appId, job_title: appRow.jobs.title }, me.id);
+      await logActivity(admin, me.id, 'removed_hired_worker', { application_id: appId, worker_id: appRow.worker_id, job_title: appRow.jobs.title }, me.id);
+      return json({ ok: true });
+    }
+
+    // ---------- Feedback routes ----------
+    if (path === 'feedback/company' && method === 'POST') {
+      const body = await request.json();
+      const { application_id, rating, feedback_text } = body;
+      const cleanRating = Number(rating);
+      const cleanFeedback = String(feedback_text || '').trim();
+      if (!application_id || !Number.isFinite(cleanRating) || cleanRating < 1 || cleanRating > 5) return err('Please select a rating from 1 to 5 stars.', 400);
+      if (!cleanFeedback) return err('Please add feedback before submitting.', 400);
+
+      const { data: app } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id)')
+        .eq('id', application_id).eq('worker_id', me.id).maybeSingle();
+      if (!app) return err('Application not found or not yours', 404);
+      if (app.status !== 'completed') return err('Feedback can be given only after the work is completed.', 400);
+
+      const { data: existing } = await admin.from('company_feedbacks')
+        .select('id')
+        .eq('application_id', application_id)
+        .eq('worker_id', me.id)
+        .maybeSingle();
+      if (existing) return err('You already gave feedback for this completed work.', 409);
+
+      const { data, error } = await admin.from('company_feedbacks').insert({
+        worker_id: me.id,
+        company_id: app.jobs.employer_id,
+        application_id,
+        rating: cleanRating,
+        feedback_text: cleanFeedback,
+      }).select().single();
+      if (error) return err(error.message, 400);
+
+      // Update employer/company average rating after every feedback.
+      try {
+        const { data: ratings } = await admin.from('company_feedbacks')
+          .select('rating')
+          .eq('company_id', app.jobs.employer_id);
+        const rows = ratings || [];
+        const count = rows.length;
+        const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+        await admin.from('employers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', app.jobs.employer_id);
+      } catch {}
+
+      await notify(admin, app.jobs.employer_id, 'New company feedback', 'A completed worker rated your company profile.', 'feedback', application_id);
+      return json({ feedback: data });
+    }
+
+    if (path === 'feedback/worker' && method === 'POST') {
+      const body = await request.json();
+      const { application_id, rating, feedback_text } = body;
+      const cleanRating = Number(rating);
+      const cleanFeedback = String(feedback_text || '').trim();
+      if (!application_id || !Number.isFinite(cleanRating) || cleanRating < 1 || cleanRating > 5) return err('Please select a rating from 1 to 5 stars.', 400);
+      if (!cleanFeedback) return err('Please add feedback before submitting.', 400);
+
+      const { data: app } = await admin.from('applications')
+        .select('*, jobs!inner(employer_id)')
+        .eq('id', application_id)
+        .maybeSingle();
+      if (!app || app.jobs?.employer_id !== me.id) return err('Application not found or not yours', 404);
+      if (app.status !== 'completed') return err('Feedback can be given only after the work is completed.', 400);
+
+      const { data: existing } = await admin.from('worker_feedbacks')
+        .select('id')
+        .eq('application_id', application_id)
+        .eq('employer_id', me.id)
+        .maybeSingle();
+      if (existing) return err('You already rated this worker for this completed work.', 409);
+
+      const { data, error } = await admin.from('worker_feedbacks').insert({
+        employer_id: me.id,
+        worker_id: app.worker_id,
+        application_id,
+        rating: cleanRating,
+        feedback_text: cleanFeedback,
+      }).select().single();
+      if (error) return err(error.message, 400);
+
+      // Update worker average rating after every feedback.
+      try {
+        const { data: ratings } = await admin.from('worker_feedbacks')
+          .select('rating')
+          .eq('worker_id', app.worker_id);
+        const rows = ratings || [];
+        const count = rows.length;
+        const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+        await admin.from('workers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', app.worker_id);
+      } catch {}
+
+      await notify(admin, app.worker_id, 'New work feedback', 'An employer rated your completed work.', 'feedback', application_id);
+      return json({ feedback: data });
+    }
+
+
+    if (path === 'profiles/feedback' && method === 'POST') {
+      const body = await request.json();
+      const profileId = body.profile_id;
+      const cleanRating = Number(body.rating);
+      const cleanFeedback = String(body.feedback_text || '').trim();
+      if (!profileId) return err('Profile is required.', 400);
+      if (profileId === me.id) return err('You cannot rate your own profile.', 400);
+      if (!Number.isFinite(cleanRating) || cleanRating < 1 || cleanRating > 5) return err('Please select a rating from 1 to 5 stars.', 400);
+      if (!cleanFeedback) return err('Please add feedback before submitting.', 400);
+
+      const { data: target } = await admin.from('user_profiles').select('id,role').eq('id', profileId).maybeSingle();
+      if (!target) return err('Profile not found.', 404);
+
+      if (target.role === 'worker' || target.role === 'employee') {
+        const { data: existing } = await admin.from('worker_feedbacks')
+          .select('id')
+          .eq('worker_id', profileId)
+          .eq('employer_id', me.id)
+          .is('application_id', null)
+          .maybeSingle();
+        if (existing) return err('You already gave profile feedback.', 409);
+        const { data, error } = await admin.from('worker_feedbacks').insert({
+          employer_id: me.id,
+          worker_id: profileId,
+          application_id: null,
+          rating: cleanRating,
+          feedback_text: cleanFeedback,
+        }).select().single();
+        if (error) return err(error.message, 400);
+        try {
+          const { data: ratings } = await admin.from('worker_feedbacks').select('rating').eq('worker_id', profileId);
+          const rows = ratings || [];
+          const count = rows.length;
+          const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+          await admin.from('workers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', profileId);
+        } catch {}
+        await notify(admin, profileId, 'New profile feedback', 'Someone added feedback to your worker profile.', 'feedback', profileId);
+        return json({ feedback: data });
+      }
+
+      const { data: existing } = await admin.from('company_feedbacks')
+        .select('id')
+        .eq('company_id', profileId)
+        .eq('worker_id', me.id)
+        .is('application_id', null)
+        .maybeSingle();
+      if (existing) return err('You already gave profile feedback.', 409);
+      const { data, error } = await admin.from('company_feedbacks').insert({
+        worker_id: me.id,
+        company_id: profileId,
+        application_id: null,
+        rating: cleanRating,
+        feedback_text: cleanFeedback,
+      }).select().single();
+      if (error) return err(error.message, 400);
+      try {
+        const { data: ratings } = await admin.from('company_feedbacks').select('rating').eq('company_id', profileId);
+        const rows = ratings || [];
+        const count = rows.length;
+        const avg = count ? Number((rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count).toFixed(2)) : 0;
+        await admin.from('employers').update({ average_rating: avg, rating_average: avg, rating_count: count }).eq('user_id', profileId);
+      } catch {}
+      await notify(admin, profileId, 'New company feedback', 'Someone added feedback to your company profile.', 'feedback', profileId);
+      return json({ feedback: data });
+    }
+
+    // Backward-compatible alias: employer-to-worker feedback uses the worker feedback table.
+    if (path === 'feedback/employer' && method === 'POST') {
+      const body = await request.json();
+      return err('Use feedback/worker for employer-to-worker feedback.', 410);
+    }
+
+
+
+    // ---------- Black mark routes ----------
+    if (path === 'blackmarks/mark' && method === 'POST') {
+      const body = await request.json();
+      const profileId = body.profile_id;
+      const reason = String(body.reason || '').trim();
+      if (!profileId) return err('Profile is required.', 400);
+      if (!reason) return err('Reason is required.', 400);
+      if (profileId === me.id) return err('You cannot mark your own profile.', 400);
+
+      const { data: target } = await admin.from('user_profiles').select('id,role').eq('id', profileId).maybeSingle();
+      if (!target) return err('Profile not found.', 404);
+
+      const payload = {
+        profile_id: profileId,
+        marked_by: me.id,
+        reason,
+        status: 'active',
+        created_at: nowIso,
+        updated_at: nowIso
+      };
+      let { data, error } = await admin.from('profile_black_marks').insert(payload).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('duplicate')) {
+        return err('You already marked this profile.', 409);
+      }
+      if (error) return err(error.message, 400);
+
+      const { count } = await admin.from('profile_black_marks')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', profileId)
+        .eq('status', 'active');
+      try {
+        await admin.from('user_profiles').update({ black_mark_count: count || 0, updated_at: nowIso }).eq('id', profileId);
+        if (target.role === 'worker') await admin.from('workers').update({ black_mark_count: count || 0 }).eq('user_id', profileId);
+        if (target.role === 'employer') await admin.from('employers').update({ black_mark_count: count || 0 }).eq('user_id', profileId);
+      } catch {}
+      await notify(admin, profileId, 'Black mark added', 'A black mark was added to your profile after a report.', 'profile', profileId);
+      return json({ black_mark: data, black_mark_count: count || 0 });
+    }
+
+    // ---------- Worker routes ----------
+    if (path === 'worker/applications' && method === 'GET') {
+      const { data, error } = await admin.from('applications')
+        .select('*, jobs!inner(*, employers!inner(company_name,company_logo,location_text))')
+        .eq('worker_id', me.id).order('applied_at', { ascending: false });
+      if (error) return err(error.message, 400);
+
+      // IMPORTANT: Do not auto-complete ongoing jobs here.
+      // After the employee accepts the invitation, the application must stay in `ongoing`
+      // until the employer manually clicks Complete & Pay.
+
+      try {
+        const ids = (data || []).map((a) => a.id);
+        if (ids.length) {
+          const { data: attendanceRows } = await admin.from('attendance_records')
+            .select('*')
+            .in('application_id', ids)
+            .order('attendance_date', { ascending: true });
+          const byApp = {};
+          for (const row of attendanceRows || []) {
+            if (!byApp[row.application_id]) byApp[row.application_id] = [];
+            byApp[row.application_id].push(row);
+          }
+          for (const app of data || []) {
+            app.attendance_records = byApp[app.id] || [];
+          }
+
+          const { data: workerGivenFeedbacks } = await admin.from('company_feedbacks')
+            .select('application_id')
+            .eq('worker_id', me.id)
+            .in('application_id', ids);
+          const workerGivenSet = new Set((workerGivenFeedbacks || []).map(r => r.application_id));
+          for (const app of data || []) {
+            app.feedback_given = workerGivenSet.has(app.id);
+          }
+        }
+      } catch (e) {
+        // Attendance/feedback tables may not exist until SQL is run. Never block jobs loading.
+        for (const app of data || []) {
+          app.attendance_records = app.attendance_records || [];
+          app.feedback_given = false;
+        }
+      }
+
+      return json({ applications: data });
+    }
+
+    // ---------- Notifications ----------
+    if (path === 'notifications' && method === 'GET') {
+      const { data } = await admin.from('notifications')
+        .select('*').eq('user_id', me.id).order('created_at', { ascending: false }).limit(75);
+      return json({ notifications: data || [] });
+    }
+    if (path === 'notifications/read-all' && method === 'POST') {
+      await admin.from('notifications').update({ read: true }).eq('user_id', me.id).eq('read', false);
+      return json({ ok: true });
+    }
+    if (path === 'notifications/clear-read' && method === 'DELETE') {
+      await admin.from('notifications').delete().eq('user_id', me.id).eq('read', true);
+      return json({ ok: true });
+    }
+    if (path.match(/^notifications\/[^/]+\/read$/) && method === 'POST') {
+      const id = path.split('/')[1];
+      await admin.from('notifications').update({ read: true }).eq('id', id).eq('user_id', me.id);
+      return json({ ok: true });
+    }
+
+    // ---------- Upload (profile photo / company logo) ----------
+    if (path === 'upload' && method === 'POST') {
+      const form = await request.formData();
+      const file = form.get('file');
+      const kind = (form.get('kind') || 'avatar').toString(); // avatar|logo
+      if (!file || typeof file === 'string') return err('file required', 400);
+      const buf = Buffer.from(await file.arrayBuffer());
+      const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const key = `users/${me.id}/${kind}-${Date.now()}.${ext}`;
+      const { error: upErr } = await admin.storage.from('w2w-public').upload(key, buf, {
+        contentType: file.type || 'image/jpeg',
+        upsert: true,
+      });
+      if (upErr) return err(upErr.message, 400);
+      const { data: pub } = admin.storage.from('w2w-public').getPublicUrl(key);
+      return json({ url: pub.publicUrl, path: key });
+    }
+
+    // ---------- Chat threads ----------
+    if (path === 'users/search' && method === 'GET') {
+      const url = new URL(request.url);
+      const q = (url.searchParams.get('q') || '').trim().toLowerCase();
+      if (q.length < 2) return json({ users: [] });
+      const { data: profiles } = await admin.from('user_profiles')
+        .select('id,role,full_name,email,phone,photo_url,verified,blocked')
+        .in('role', ['worker','employer'])
+        .eq('blocked', false)
+        .limit(40);
+      const workerIds = (profiles || []).filter(p => p.role === 'worker').map(p => p.id);
+      const employerIds = (profiles || []).filter(p => p.role === 'employer').map(p => p.id);
+      const { data: workers } = workerIds.length ? await admin.from('workers').select('*').in('user_id', workerIds) : { data: [] };
+      const { data: employers } = employerIds.length ? await admin.from('employers').select('*').in('user_id', employerIds) : { data: [] };
+      const wm = new Map((workers || []).map(x => [x.user_id, x]));
+      const em = new Map((employers || []).map(x => [x.user_id, x]));
+      const users = (profiles || []).filter(p => p.id !== me.id).map(p => {
+        const extra = p.role === 'employer' ? em.get(p.id) : wm.get(p.id);
+        const name = p.role === 'employer' ? (extra?.company_name || p.full_name || p.email) : (p.full_name || p.email);
+        return { peer_id: p.id, peer_name: name, peer_photo: p.role === 'employer' ? extra?.company_logo : p.photo_url, peer_role: p.role, email: p.email, location_text: extra?.location_text || extra?.address || extra?.company_address || '' };
+      }).filter(u => `${u.peer_name} ${u.email} ${u.location_text} ${u.peer_role}`.toLowerCase().includes(q)).slice(0, 12);
+      return json({ users });
+    }
+
+    if (path === 'chat/threads' && method === 'GET') {
+      const { data: profile } = await admin.from('user_profiles').select('role').eq('id', me.id).maybeSingle();
+      let peerIds = new Set();
+      if (profile?.role === 'worker') {
+        const { data } = await admin.from('applications')
+          .select('jobs!inner(employer_id)').eq('worker_id', me.id);
+        (data || []).forEach(a => a.jobs?.employer_id && peerIds.add(a.jobs.employer_id));
+      } else if (profile?.role === 'employer') {
+        const { data } = await admin.from('applications')
+          .select('worker_id, jobs!inner(employer_id)').eq('jobs.employer_id', me.id);
+        (data || []).forEach(a => a.worker_id && peerIds.add(a.worker_id));
+      }
+      // Also include anyone who has messaged me
+      const { data: msgs } = await admin.from('messages')
+        .select('sender_id, receiver_id').or(`sender_id.eq.${me.id},receiver_id.eq.${me.id}`);
+      (msgs || []).forEach(m => {
+        if (m.sender_id !== me.id) peerIds.add(m.sender_id);
+        if (m.receiver_id !== me.id) peerIds.add(m.receiver_id);
+      });
+      const ids = Array.from(peerIds);
+      if (ids.length === 0) return json({ threads: [] });
+
+      const { data: peers } = await admin.from('user_profiles')
+        .select('id, full_name, email, photo_url, role').in('id', ids);
+
+      // last message per peer + unread count
+      const threads = [];
+      for (const p of peers || []) {
+        const { data: lastArr } = await admin.from('messages').select('*')
+          .or(`and(sender_id.eq.${me.id},receiver_id.eq.${p.id}),and(sender_id.eq.${p.id},receiver_id.eq.${me.id})`)
+          .order('created_at', { ascending: false }).limit(1);
+        const { count: unread } = await admin.from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('sender_id', p.id).eq('receiver_id', me.id).eq('read', false);
+        // For employer side, fetch company name; for worker side, no extra
+        let extraName = null;
+        let extraPhoto = p.photo_url;
+        if (p.role === 'employer') {
+          const { data: emp } = await admin.from('employers').select('company_name,company_logo').eq('user_id', p.id).maybeSingle();
+          extraName = emp?.company_name;
+          extraPhoto = emp?.company_logo || p.photo_url;
+        }
+        threads.push({
+          peer_id: p.id,
+          peer_name: extraName || p.full_name || p.email,
+          peer_photo: extraPhoto,
+          peer_role: p.role,
+          last_message: lastArr?.[0] || null,
+          unread_count: unread || 0,
+        });
+      }
+      threads.sort((a, b) => new Date(b.last_message?.created_at || 0) - new Date(a.last_message?.created_at || 0));
+      return json({ threads });
+    }
+
+    // Mark messages from peer as read
+    if (path === 'messages/mark-read' && method === 'POST') {
+      const { peer_id } = await request.json();
+      if (!peer_id) return err('peer_id required', 400);
+      await admin.from('messages').update({ read: true })
+        .eq('sender_id', peer_id).eq('receiver_id', me.id).eq('read', false);
+      return json({ ok: true });
+    }
+
+    // ---------- Messages ----------
+
+    if (path.match(/^messages\/[^/]+$/) && method === 'PATCH') {
+      const id = path.split('/')[1];
+      const body = await request.json();
+      const content = (body.content || '').trim();
+      if (!content) return err('content required', 400);
+      const { data: current } = await admin.from('messages').select('*').eq('id', id).maybeSingle();
+      if (!current) return err('Message not found', 404);
+      if (current.sender_id !== me.id) return err('You can edit only your messages', 403);
+      let { data, error } = await admin.from('messages').update({ content, edited_at: new Date().toISOString() }).eq('id', id).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        ({ data, error } = await admin.from('messages').update({ content }).eq('id', id).select().single());
+      }
+      if (error) return err(error.message, 400);
+      return json({ message: data });
+    }
+
+    if (path.match(/^messages\/[^/]+$/) && method === 'DELETE') {
+      const id = path.split('/')[1];
+      const url = new URL(request.url);
+      const mode = url.searchParams.get('mode') || 'me';
+      const { data: current } = await admin.from('messages').select('*').eq('id', id).maybeSingle();
+      if (!current) return err('Message not found', 404);
+      if (current.sender_id !== me.id && current.receiver_id !== me.id) return err('Forbidden', 403);
+      if (mode === 'everyone') {
+        if (current.sender_id !== me.id) return err('Only sender can delete for everyone', 403);
+        let { data, error } = await admin.from('messages').update({ content: 'This message was deleted', deleted_for_everyone: true }).eq('id', id).select().single();
+        if (error && String(error.message || '').toLowerCase().includes('column')) {
+          ({ data, error } = await admin.from('messages').update({ content: 'This message was deleted' }).eq('id', id).select().single());
+        }
+        if (error) return err(error.message, 400);
+        return json({ message: data });
+      }
+      const deletedFor = Array.isArray(current.deleted_for) ? Array.from(new Set([...current.deleted_for, me.id])) : [me.id];
+      const { data, error } = await admin.from('messages').update({ deleted_for: deletedFor }).eq('id', id).select().single();
+      if (error && String(error.message || '').toLowerCase().includes('column')) {
+        return json({ ok: true, local_only: true });
+      }
+      if (error) return err(error.message, 400);
+      return json({ message: data });
+    }
+
+    if (path === 'messages' && method === 'GET') {
+      const url = new URL(request.url);
+      const peer = url.searchParams.get('peer');
+      if (!peer) return err('peer required', 400);
+      const { data } = await admin.from('messages').select('*')
+        .or(`and(sender_id.eq.${me.id},receiver_id.eq.${peer}),and(sender_id.eq.${peer},receiver_id.eq.${me.id})`)
+        .order('created_at', { ascending: true }).limit(200);
+      return json({ messages: data || [] });
+    }
+    if (path === 'messages' && method === 'POST') {
+      const body = await request.json();
+      const payload = {
+        sender_id: me.id, receiver_id: body.receiver_id,
+        content: body.content, job_id: body.job_id || null, application_id: body.application_id || null,
+      };
+      const { data, error } = await admin.from('messages').insert(payload).select().single();
+      if (error) return err(error.message, 400);
+      return json({ message: data });
+    }
+
+    return err(`Not found: ${method} /${path}`, 404);
+  } catch (e) {
+    console.error('API error:', e);
+    const message = String(e?.message || 'Server error');
+    if (/supabase|configuration|environment|service role|secret key/i.test(message)) {
+      return err('Work2Wish server configuration is incomplete. Add the required Supabase environment variables in Vercel and redeploy.', 500);
+    }
+    return err(message, 500);
+  }
+}
+
+export const GET    = route;
+export const POST   = route;
+export const PATCH  = route;
+export const PUT    = route;
+export const DELETE = route;
