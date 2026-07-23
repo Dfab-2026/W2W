@@ -17,6 +17,36 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+
+function missingColumnFromError(error) {
+  const message = String(error?.message || error || '');
+  const patterns = [
+    /Could not find the ['"]([^'"]+)['"] column/i,
+    /column ['"]?([a-zA-Z0-9_]+)['"]? (?:of relation .* )?does not exist/i,
+    /schema cache.*['"]([^'"]+)['"]/i,
+  ];
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return '';
+}
+
+async function upsertRoleProfileCompatible(admin, table, userId, payload) {
+  const working = { ...payload };
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const { data: existing } = await admin.from(table).select('user_id').eq('user_id', userId).maybeSingle();
+    const result = existing
+      ? await admin.from(table).update(working).eq('user_id', userId).select().maybeSingle()
+      : await admin.from(table).insert({ user_id: userId, ...working }).select().maybeSingle();
+    if (!result.error) return result;
+    const missing = missingColumnFromError(result.error);
+    if (!missing || !(missing in working)) return result;
+    delete working[missing];
+  }
+  return { data: null, error: new Error(`Unable to save ${table} profile after compatibility retries`) };
+}
+
 function normalizeVerifySectionName(section) {
   return section === 'verification' ? 'documents' : section;
 }
@@ -1442,20 +1472,7 @@ async function route(request, { params }) {
         }
 
         if (Object.keys(wu).length) {
-          const { data: existingWorker } = await admin.from('workers').select('user_id').eq('user_id', me.id).maybeSingle();
-          let result;
-          if (existingWorker) {
-            result = await admin.from('workers').update(wu).eq('user_id', me.id).select().maybeSingle();
-          } else {
-            result = await admin.from('workers').insert({ user_id: me.id, ...wu }).select().maybeSingle();
-          }
-          if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['age','skills','experience_years','expected_daily_wage','location_text','latitude','longitude','place_id','place_name','bio','available','address','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','certificate_url','account_holder_name','bank_name','bank_account','ifsc_code','branch_name','upi_id','bank_qr_url','selfie_front_url','selfie_left_url','selfie_right_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','section_statuses','verified_sections','profile_verified','bank_verified','documents_verified','document_verified','verification_verified','mobile_verified','selfie_verified','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
-            const safe = {}; for (const k of safeKeys) if (k in wu) safe[k] = wu[k];
-            result = existingWorker
-              ? await admin.from('workers').update(safe).eq('user_id', me.id).select().maybeSingle()
-              : await admin.from('workers').insert({ user_id: me.id, ...safe }).select().maybeSingle();
-          }
+          const result = await upsertRoleProfileCompatible(admin, 'workers', me.id, wu);
           if (result.error) return err(result.error.message, 400);
           updatedExtra = result.data;
         }
@@ -1485,20 +1502,7 @@ async function route(request, { params }) {
         }
 
         if (Object.keys(eu).length) {
-          const { data: existingEmployer } = await admin.from('employers').select('user_id').eq('user_id', me.id).maybeSingle();
-          let result;
-          if (existingEmployer) {
-            result = await admin.from('employers').update(eu).eq('user_id', me.id).select().maybeSingle();
-          } else {
-            result = await admin.from('employers').insert({ user_id: me.id, ...eu }).select().maybeSingle();
-          }
-          if (result.error && String(result.error.message || '').toLowerCase().includes('column')) {
-            const safeKeys = ['company_name','company_logo','industry','company_size','hr_contact','official_email','location_text','latitude','longitude','place_id','place_name','description','company_address','gst_number','aadhaar_number','pan_number','aadhaar_front_url','aadhaar_back_url','pan_image_url','pan_back_url','gst_certificate_url','verification_status','verification_section','verification_notes','verified','verification_submitted_at','section_statuses','verified_sections','profile_verified','documents_verified','document_verified','verification_verified','mobile_verified','selfie_url','selfie_verified','selfie_verified_at','badge_verified_worker','badge_skilled_worker','badge_experienced','badge_immediate_joiner'];
-            const safe = {}; for (const k of safeKeys) if (k in eu) safe[k] = eu[k];
-            result = existingEmployer
-              ? await admin.from('employers').update(safe).eq('user_id', me.id).select().maybeSingle()
-              : await admin.from('employers').insert({ user_id: me.id, ...safe }).select().maybeSingle();
-          }
+          const result = await upsertRoleProfileCompatible(admin, 'employers', me.id, eu);
           if (result.error) return err(result.error.message, 400);
           updatedExtra = result.data;
         }
