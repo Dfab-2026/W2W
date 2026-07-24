@@ -489,6 +489,8 @@ async function api(path, { method = 'GET', body, token } = {}) {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+      credentials: 'same-origin',
     });
   };
 
@@ -577,6 +579,8 @@ async function uploadFile(file, kind, token) {
       method: 'POST',
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       body: fd,
+      cache: 'no-store',
+      credentials: 'same-origin',
     });
   };
 

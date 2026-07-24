@@ -3,9 +3,16 @@ import { getAdmin, getUserFromRequest } from '@/lib/supabase/admin';
 import { Resend } from 'resend';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-const json = (data, status = 200) => NextResponse.json(data, { status });
-const err  = (message, status = 400) => NextResponse.json({ error: message }, { status });
+const RESPONSE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+};
+const json = (data, status = 200) => NextResponse.json(data, { status, headers: RESPONSE_HEADERS });
+const err  = (message, status = 400) => NextResponse.json({ error: message }, { status, headers: RESPONSE_HEADERS });
 
 function distanceMeters(lat1, lon1, lat2, lon2) {
   const aLat = Number(lat1), aLon = Number(lon1), bLat = Number(lat2), bLon = Number(lon2);
